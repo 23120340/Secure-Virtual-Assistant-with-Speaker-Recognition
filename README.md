@@ -10,23 +10,22 @@ Train ECAPA-TDNN trên VoxCeleb1 cho **cả** Speaker Identification (SID) và S
 - **Random crop 3s khi train**, full utterance khi extract embedding để verify.
 - Sau khi train xong, dùng **cosine similarity** giữa hai embedding để verify.
 
-## Dataset: VoxCeleb1
+## Dataset: VoxCeleb1 (Indian subset)
 
 | Thông số | Giá trị |
 |---|---|
-| Số speaker | 1251 |
-| Số utterance | ~150K |
-| File split SID | `iden_split.txt` (1=train, 2=val, 3=test, cùng tập speaker — closed-set) |
-| File trial SV | `veri_test.txt` (37,720 cặp, label 1=cùng người, 0=khác) |
+| Dataset Kaggle | `gaurav41/voxceleb1-audio-wav-files-for-india-celebrity` |
+| Số speaker | ~24 (Indian celebrities) |
 | Sampling rate | 16kHz |
+| Audio root | `/kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian` |
 
-**Lấy dataset trên Kaggle**: thêm dataset `nghiapickatlu/voxceleb1` (hoặc tương đương) vào notebook. Hai file split sẽ ở `/kaggle/input/<dataset>/iden_split.txt` và `veri_test.txt`. Audio ở `/kaggle/input/<dataset>/wav/`.
+**Lưu ý**: Dataset này không có sẵn `iden_split.txt` và `veri_test.txt` — cần tạo thủ công (xem bước 3 bên dưới).
 
-## Setup trên Kaggle (khuyến nghị)
+## Setup trên Kaggle
 
-1. Tạo notebook mới, bật **GPU T4 ×2** (Settings → Accelerator).
-2. Add VoxCeleb1 dataset.
-3. Trong cell đầu:
+1. Tạo notebook mới, bật **GPU T4 x1** (Settings → Accelerator).
+2. Add dataset `gaurav41/voxceleb1-audio-wav-files-for-india-celebrity`.
+3. Clone repo và cài dependencies:
 
 ```bash
 !pip install -q speechbrain
@@ -34,49 +33,111 @@ Train ECAPA-TDNN trên VoxCeleb1 cho **cả** Speaker Identification (SID) và S
 %cd speaker-recognition
 ```
 
-Hoặc upload thẳng 3 file `.py` này vào notebook nếu chưa có repo.
+Hoặc upload thẳng 4 file `.py` vào notebook.
 
-4. Train (giảm `epochs` nếu hết quota):
+4. Tạo split files (chạy trong cell Python):
+
+```python
+import os, random
+from pathlib import Path
+
+random.seed(42)
+DATA_ROOT = "/kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian"
+
+all_files = []
+for spk in sorted(os.listdir(DATA_ROOT)):
+    spk_dir = os.path.join(DATA_ROOT, spk)
+    if not os.path.isdir(spk_dir): continue
+    for vid in os.listdir(spk_dir):
+        vid_dir = os.path.join(spk_dir, vid)
+        if not os.path.isdir(vid_dir): continue
+        for f in os.listdir(vid_dir):
+            if f.endswith('.wav'):
+                all_files.append(f"{spk}/{vid}/{f}")
+
+random.shuffle(all_files)
+n = len(all_files)
+n_train = int(0.70 * n)
+n_val   = int(0.15 * n)
+
+with open("/kaggle/working/iden_split.txt", "w") as f:
+    for i, path in enumerate(all_files):
+        if i < n_train:               split_id = 1
+        elif i < n_train + n_val:     split_id = 2
+        else:                         split_id = 3
+        f.write(f"{split_id} {path}\n")
+
+test_files = [all_files[i] for i in range(n_train + n_val, n)]
+spk2files = {}
+for f in test_files:
+    spk = f.split("/")[0]
+    spk2files.setdefault(spk, []).append(f)
+
+pos, neg = [], []
+spks = list(spk2files.keys())
+for spk, files in spk2files.items():
+    for i in range(len(files)):
+        for j in range(i+1, min(i+4, len(files))):
+            pos.append((1, files[i], files[j]))
+for i in range(len(spks)):
+    for j in range(i+1, len(spks)):
+        f1 = random.choice(spk2files[spks[i]])
+        f2 = random.choice(spk2files[spks[j]])
+        neg.append((0, f1, f2))
+
+k = min(len(pos), len(neg))
+trials = random.sample(pos, k) + random.sample(neg, k)
+random.shuffle(trials)
+
+with open("/kaggle/working/veri_test.txt", "w") as f:
+    for label, p1, p2 in trials:
+        f.write(f"{label} {p1} {p2}\n")
+
+print(f"Total: {n} | Train: {n_train} | Val: {n_val} | Test: {n-n_train-n_val}")
+print(f"Trial pairs (SV): {len(trials)} | Speakers: {len(spk2files)}")
+```
+
+5. Train:
 
 ```bash
 !python train_ecapa.py \
-    --data_root /kaggle/input/voxceleb1/wav \
-    --split_file /kaggle/input/voxceleb1/iden_split.txt \
+    --data_root /kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian \
+    --split_file /kaggle/working/iden_split.txt \
     --save_dir /kaggle/working/checkpoints \
-    --epochs 15 --batch_size 128 --lr 1e-3 --num_workers 2
+    --epochs 15 --batch_size 64 --lr 1e-3 --num_workers 2
 ```
 
-Với T4 ×2 và batch 128, mỗi epoch ~25–35 phút trên VoxCeleb1 train (~138K samples). 15 epochs ≈ 6–9 giờ. Nếu quota chật, có thể train 8–10 epochs cũng đủ ra số đẹp.
+Với T4 x1 và batch 64, mỗi epoch ~5–10 phút trên dataset này. 15 epochs ≈ 1–2 giờ.
 
-5. Đánh giá SID:
+6. Đánh giá SID:
 
 ```bash
 !python evaluate_sid.py \
     --ckpt /kaggle/working/checkpoints/best_model.pt \
     --spk2idx /kaggle/working/checkpoints/spk2idx.json \
-    --data_root /kaggle/input/voxceleb1/wav \
-    --split_file /kaggle/input/voxceleb1/iden_split.txt
+    --data_root /kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian \
+    --split_file /kaggle/working/iden_split.txt
 ```
 
-6. Đánh giá SV:
+7. Đánh giá SV:
 
 ```bash
 !python evaluate_sv.py \
     --ckpt /kaggle/working/checkpoints/best_model.pt \
-    --data_root /kaggle/input/voxceleb1/wav \
-    --trial_file /kaggle/input/voxceleb1/veri_test.txt
+    --data_root /kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian \
+    --trial_file /kaggle/working/veri_test.txt
 ```
 
 ## Kết quả tham khảo
 
-| Metric | Train from scratch (15 epochs, VoxCeleb1) | Pretrained SpeechBrain (VoxCeleb2) |
+| Metric | Indian subset (15 epochs, ~24 speakers) | Full VoxCeleb1 (15 epochs, 1251 speakers) |
 |---|---|---|
-| SID Top-1 | ~85–90% | – |
-| SID Top-5 | ~95–98% | – |
-| SV EER | ~3–5% | ~0.9% |
-| SV minDCF (p=0.01) | ~0.30–0.45 | ~0.10 |
+| SID Top-1 | ~95–99% | ~85–90% |
+| SID Top-5 | ~99–100% | ~95–98% |
+| SV EER | ~1–3% | ~3–5% |
+| SV minDCF (p=0.01) | ~0.10–0.25 | ~0.30–0.45 |
 
-Số liệu thực tế phụ thuộc batch size, augmentation, số epoch. Train 20+ epochs với SpecAugment thường ra EER ~2.5%.
+Số liệu cao hơn full VoxCeleb1 vì dataset nhỏ hơn (~24 speakers). Số liệu thực tế phụ thuộc batch size, augmentation, số epoch.
 
 ## Tip để báo cáo "đẹp" hơn
 
