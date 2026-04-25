@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Secure Virtual Assistant{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+  <nav class="bg-slate-900 text-slate-100">
+    <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="{{ url_for('home') }}" class="text-lg font-semibold">
+        🎙 Secure Virtual Assistant
+      </a>
+      <div class="flex gap-4 text-sm">
+        <a href="{{ url_for('home') }}" class="hover:text-emerald-300">Người dùng</a>
+        <a href="{{ url_for('enroll_page') }}" class="hover:text-emerald-300">Đăng ký mới</a>
+        <a href="{{ url_for('assistant_page') }}" class="hover:text-emerald-300">Trợ lý</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-5xl mx-auto px-6 py-8">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="mb-4 p-3 rounded
+                    {% if cat == 'error' %}bg-rose-100 text-rose-800
+                    {% else %}bg-emerald-100 text-emerald-800{% endif %}">
+          {{ msg }}
+        </div>
+      {% endfor %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="text-center text-xs text-slate-400 py-6">
+    Đồ Án Cuối Kỳ &middot; Speaker Verification + Identification
+  </footer>
+</body>
+</html>

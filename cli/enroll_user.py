@@ -1,11 +1,11 @@
 """Enroll user mới qua CLI.
 
 Cách dùng:
-    python scripts/enroll_user.py --user_id minh --name "Nguyễn Văn Minh"
+    python cli/enroll_user.py --user_id minh --name "Nguyễn Văn Minh"
     # → record 5 lần × 4s, lưu vào DB
 
 Hoặc dùng file wav có sẵn:
-    python scripts/enroll_user.py --user_id minh --name "Minh" \
+    python cli/enroll_user.py --user_id minh --name "Minh" \
         --audio_files sample1.wav sample2.wav sample3.wav
 """
 import sys

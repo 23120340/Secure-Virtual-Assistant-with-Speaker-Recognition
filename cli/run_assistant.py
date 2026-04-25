@@ -1,9 +1,9 @@
 """REPL chạy virtual assistant end-to-end qua mic.
 
 Cách dùng:
-    python scripts/run_assistant.py             # mic mode
-    python scripts/run_assistant.py --no-tts    # không phát loa, chỉ in text
-    python scripts/run_assistant.py --text-mode # nhập text thay vì nói (debug NLU)
+    python cli/run_assistant.py             # mic mode
+    python cli/run_assistant.py --no-tts    # không phát loa, chỉ in text
+    python cli/run_assistant.py --text-mode # nhập text thay vì nói (debug NLU)
 
 Workflow mỗi turn:
     1. Press Enter → record 5s từ mic

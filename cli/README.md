@@ -17,7 +17,7 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 │   ├── nlu.py             # Gemini NLU + rule-based fallback
 │   ├── handlers.py        # logic mỗi intent
 │   └── router.py          # orchestrator + SV/SID gating
-├── scripts/
+├── cli/
 │   ├── enroll_user.py     # đăng ký user mới
 │   ├── run_assistant.py   # REPL chạy assistant
 │   └── test_pipeline.py   # smoke test với file wav (không cần mic)
@@ -70,13 +70,13 @@ Use case chấm điểm tốt:
 
 ```bash
 # User Minh (dùng --preferences_file để tránh lỗi quoting trên Windows)
-python scripts/enroll_user.py --user_id minh --name "Minh" --preferences_file data/profiles/minh.json
+python cli/enroll_user.py --user_id minh --name "Minh" --preferences_file data/profiles/minh.json
 
 # User Lan
-python scripts/enroll_user.py --user_id lan --name "Lan" --preferences_file data/profiles/lan.json
+python cli/enroll_user.py --user_id lan --name "Lan" --preferences_file data/profiles/lan.json
 
 # Enroll bằng wav file có sẵn thay vì record mic (thay đường dẫn bằng file thực tế của bạn):
-python scripts/enroll_user.py --user_id minh --name "Minh" --preferences_file data/profiles/minh.json \
+python cli/enroll_user.py --user_id minh --name "Minh" --preferences_file data/profiles/minh.json \
     --audio_files data/enroll_audio/minh/sample_1.wav data/enroll_audio/minh/sample_2.wav data/enroll_audio/minh/sample_3.wav
 ```
 
@@ -91,7 +91,7 @@ Khi enroll, mỗi mẫu sẽ được:
 ### 2. Chạy assistant
 
 ```bash
-python scripts/run_assistant.py
+python cli/run_assistant.py
 ```
 
 Mỗi turn bấm Enter → nói 5 giây → xem log → nghe response.
@@ -114,10 +114,10 @@ Mỗi turn bấm Enter → nói 5 giây → xem log → nghe response.
 
 ```bash
 # Chỉ test NLU + handler (text input thay vì voice)
-python scripts/run_assistant.py --text-mode
+python cli/run_assistant.py --text-mode
 
 # Test pipeline với file wav có sẵn
-python scripts/test_pipeline.py --audio data/enroll_audio/minh/sample_1.wav
+python cli/test_pipeline.py --audio data/enroll_audio/minh/sample_1.wav
 ```
 
 ## Calibrate threshold (quan trọng!)

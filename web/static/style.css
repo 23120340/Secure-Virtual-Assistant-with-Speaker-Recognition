@@ -1,0 +1,4 @@
+/* Tweaks nhỏ ngoài Tailwind */
+.touch-none { touch-action: none; }
+button:disabled { cursor: not-allowed; }
+audio::-webkit-media-controls-panel { background-color: transparent; }

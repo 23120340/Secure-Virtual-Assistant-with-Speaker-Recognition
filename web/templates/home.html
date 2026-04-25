@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Người dùng đã đăng ký{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Người dùng đã đăng ký</h1>
+  <a href="{{ url_for('enroll_page') }}"
+     class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">
+    + Đăng ký mới
+  </a>
+</div>
+
+{% if users %}
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for u in users %}
+      <a href="{{ url_for('user_detail', user_id=u.user_id) }}"
+         class="block p-4 bg-white border rounded-lg hover:shadow-md transition">
+        <div class="text-lg font-semibold">{{ u.name }}</div>
+        <div class="text-sm text-slate-500">id: {{ u.user_id }}</div>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="bg-white border rounded-lg p-10 text-center text-slate-500">
+    <p>Chưa có user nào.</p>
+    <a href="{{ url_for('enroll_page') }}"
+       class="inline-block mt-4 px-4 py-2 bg-emerald-600 text-white rounded">
+      Đăng ký user đầu tiên
+    </a>
+  </div>
+{% endif %}
+
+<div class="mt-8 p-4 bg-amber-50 border border-amber-200 rounded text-sm">
+  <strong>Hệ thống bảo mật 3 lớp:</strong>
+  <ul class="list-disc list-inside mt-2 space-y-1">
+    <li><strong>Normal</strong> — chức năng công khai, ai cũng dùng được (giờ, thời tiết, kể chuyện cười).</li>
+    <li><strong>Important</strong> — yêu cầu Speaker Verification (đọc ghi chú, gửi email, xem số dư, xóa dữ liệu).</li>
+    <li><strong>Personal</strong> — Speaker Identification để cá nhân hóa (chào theo tên, gu nhạc, lịch riêng).</li>
+  </ul>
+</div>
+{% endblock %}

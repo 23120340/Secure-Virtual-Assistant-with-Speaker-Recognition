@@ -6,8 +6,8 @@ Hữu ích khi:
   - Calibrate threshold
 
 Cách dùng:
-    python scripts/test_pipeline.py --audio sample.wav
-    python scripts/test_pipeline.py --audio sample.wav --claimed_user minh
+    python cli/test_pipeline.py --audio sample.wav
+    python cli/test_pipeline.py --audio sample.wav --claimed_user minh
 """
 import sys
 import argparse

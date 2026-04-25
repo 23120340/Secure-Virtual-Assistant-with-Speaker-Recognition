@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Đăng ký người dùng mới{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">Đăng ký người dùng mới</h1>
+<p class="text-slate-600 mb-6">
+  Hệ thống sẽ thu <strong>{{ num_samples }}</strong> mẫu giọng nói (~{{ duration }}s/mẫu)
+  để tạo speaker embedding đại diện cho bạn.
+</p>
+
+<div class="bg-white border rounded-lg p-6 space-y-6">
+
+  <!-- Step 1: Thông tin user -->
+  <section>
+    <h2 class="font-semibold mb-3">1. Thông tin</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="block">
+        <span class="text-sm text-slate-600">User ID (không dấu, không space)</span>
+        <input id="user_id" type="text" class="w-full border rounded px-3 py-2 mt-1"
+               placeholder="vd: minh, lan_nguyen"/>
+      </label>
+      <label class="block">
+        <span class="text-sm text-slate-600">Tên hiển thị</span>
+        <input id="name" type="text" class="w-full border rounded px-3 py-2 mt-1"
+               placeholder="vd: Nguyễn Văn Minh"/>
+      </label>
+    </div>
+
+    <details class="mt-4">
+      <summary class="cursor-pointer text-sm text-emerald-700">
+        Tùy chỉnh (preferences) — JSON
+      </summary>
+      <textarea id="preferences" rows="6"
+                class="w-full mt-2 border rounded px-3 py-2 font-mono text-xs"
+                placeholder='{"favorite_genre":"rock","balance":15000000,"notes":["Họp 9h","Mua sữa"]}'></textarea>
+      <p class="text-xs text-slate-500 mt-1">
+        Các key tham khảo: <code>favorite_genre</code>, <code>favorite_artist</code>,
+        <code>balance</code>, <code>notes</code> (array), <code>schedule</code> (array).
+      </p>
+    </details>
+  </section>
+
+  <!-- Step 2: Ghi âm -->
+  <section>
+    <h2 class="font-semibold mb-3">2. Thu mẫu giọng nói</h2>
+
+    <div class="mb-4 p-3 bg-slate-50 border rounded text-sm">
+      <strong>Câu mẫu:</strong>
+      <span id="prompt-text" class="italic">Trợ lý ơi, hôm nay thời tiết thế nào?</span>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button id="record-btn"
+              class="px-5 py-3 bg-rose-600 text-white rounded hover:bg-rose-700 disabled:bg-slate-300">
+        🎙 Bắt đầu thu mẫu <span id="sample-counter">1</span>/{{ num_samples }}
+      </button>
+      <span id="status" class="text-sm text-slate-500"></span>
+    </div>
+
+    <div id="samples-list" class="mt-4 space-y-2"></div>
+  </section>
+
+  <!-- Step 3: Submit -->
+  <section>
+    <h2 class="font-semibold mb-3">3. Hoàn tất</h2>
+    <button id="submit-btn" disabled
+            class="px-5 py-3 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:bg-slate-300">
+      Lưu và tạo speaker profile
+    </button>
+    <div id="result" class="mt-3 text-sm"></div>
+  </section>
+</div>
+
+<script>
+const NUM_SAMPLES = {{ num_samples }};
+const DURATION_MS = {{ duration }} * 1000;
+const PROMPTS = [
+  "Trợ lý ơi, hôm nay thời tiết thế nào?",
+  "Phát một bản nhạc tôi yêu thích đi.",
+  "Cho tôi xem lịch làm việc hôm nay.",
+  "Đọc cho tôi ghi chú cuối tuần.",
+  "Một hai ba bốn năm sáu bảy tám chín mười.",
+];
+
+let samples = [];        // {blob, url} cho mỗi mẫu
+let recording = false;
+let mediaRecorder = null;
+let chunks = [];
+
+const $btn = document.getElementById("record-btn");
+const $status = document.getElementById("status");
+const $counter = document.getElementById("sample-counter");
+const $promptText = document.getElementById("prompt-text");
+const $list = document.getElementById("samples-list");
+const $submit = document.getElementById("submit-btn");
+const $result = document.getElementById("result");
+
+function updatePrompt() {
+  $promptText.textContent = PROMPTS[samples.length % PROMPTS.length];
+  $counter.textContent = samples.length + 1;
+}
+
+function renderSamples() {
+  $list.innerHTML = "";
+  samples.forEach((s, i) => {
+    const div = document.createElement("div");
+    div.className = "flex items-center gap-3 p-2 bg-slate-50 border rounded";
+    div.innerHTML = `
+      <span class="text-sm font-medium">Mẫu ${i+1}</span>
+      <audio controls src="${s.url}" class="h-8"></audio>
+      <button data-i="${i}" class="text-xs text-rose-600 hover:underline">Xóa</button>
+    `;
+    div.querySelector("button").onclick = (e) => {
+      const idx = +e.target.dataset.i;
+      samples.splice(idx, 1);
+      renderSamples();
+      updatePrompt();
+      $btn.disabled = false;
+      $submit.disabled = samples.length < 2;
+    };
+    $list.appendChild(div);
+  });
+  $submit.disabled = samples.length < 2;
+}
+
+async function startRecording() {
+  if (samples.length >= NUM_SAMPLES) {
+    $status.textContent = "Đã đủ số mẫu yêu cầu.";
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    // Browser sẽ chọn codec phù hợp (webm/opus thường)
+    mediaRecorder = new MediaRecorder(stream);
+    chunks = [];
+
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, {type: mediaRecorder.mimeType});
+      const url = URL.createObjectURL(blob);
+      samples.push({blob, url});
+      stream.getTracks().forEach(t => t.stop());
+      renderSamples();
+      updatePrompt();
+      recording = false;
+      $btn.textContent = `🎙 Bắt đầu thu mẫu ${samples.length + 1}/${NUM_SAMPLES}`;
+      $btn.disabled = samples.length >= NUM_SAMPLES;
+      $status.textContent = samples.length >= NUM_SAMPLES
+        ? "Đã đủ mẫu. Bấm Lưu bên dưới."
+        : "Sẵn sàng thu mẫu tiếp theo.";
+    };
+
+    mediaRecorder.start();
+    recording = true;
+    $btn.textContent = "⏺ Đang thu... (tự dừng sau " + (DURATION_MS/1000) + "s)";
+    $status.textContent = "Đọc câu mẫu rõ ràng vào microphone.";
+
+    // Auto stop sau DURATION_MS
+    setTimeout(() => {
+      if (recording && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+      }
+    }, DURATION_MS);
+
+  } catch (err) {
+    $status.textContent = "Lỗi mic: " + err.message;
+  }
+}
+
+$btn.onclick = startRecording;
+
+$submit.onclick = async () => {
+  const user_id = document.getElementById("user_id").value.trim();
+  const name = document.getElementById("name").value.trim();
+  const prefs = document.getElementById("preferences").value.trim() || "{}";
+
+  if (!user_id || !name) {
+    $result.innerHTML = '<span class="text-rose-600">Cần nhập user_id và name.</span>';
+    return;
+  }
+  // Validate JSON
+  try { JSON.parse(prefs); } catch(e) {
+    $result.innerHTML = '<span class="text-rose-600">Preferences không phải JSON hợp lệ.</span>';
+    return;
+  }
+
+  $submit.disabled = true;
+  $result.innerHTML = '<span class="text-slate-600">Đang upload và xử lý...</span>';
+
+  const fd = new FormData();
+  fd.append("user_id", user_id);
+  fd.append("name", name);
+  fd.append("preferences", prefs);
+  samples.forEach((s, i) => fd.append(`sample_${i}`, s.blob, `sample_${i}.webm`));
+
+  try {
+    const r = await fetch("/api/enroll", {method: "POST", body: fd});
+    const data = await r.json();
+    if (!r.ok) {
+      $result.innerHTML = `<span class="text-rose-600">Lỗi: ${data.error}</span>`;
+      $submit.disabled = false;
+      return;
+    }
+    $result.innerHTML = `
+      <div class="p-3 bg-emerald-50 border border-emerald-200 rounded">
+        ✅ Đã đăng ký <strong>${data.name}</strong>
+        với ${data.n_samples} mẫu (centroid norm = ${data.centroid_norm.toFixed(4)}).
+        <a href="/users/${data.user_id}" class="text-emerald-700 underline">Xem chi tiết</a>
+      </div>
+    `;
+  } catch (e) {
+    $result.innerHTML = `<span class="text-rose-600">Lỗi mạng: ${e.message}</span>`;
+    $submit.disabled = false;
+  }
+};
+
+updatePrompt();
+</script>
+{% endblock %}

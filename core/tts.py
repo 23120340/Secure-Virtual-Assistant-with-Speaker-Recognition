@@ -52,15 +52,26 @@ class TTS:
             sf.write(str(save_path), samples, config.SAMPLE_RATE)
         return samples
 
+    def synthesize_to_mp3_bytes(self, text: str) -> bytes:
+        """Text → MP3 bytes (cho browser <audio> tag stream về client)."""
+        mp3_buf = io.BytesIO()
+        gTTS(text=text, lang=self.lang).write_to_fp(mp3_buf)
+        return mp3_buf.getvalue()
+
     def speak(self, text: str):
-        """Synthesize và play qua loa."""
+        """Synthesize và play qua loa. Chỉ chạy khi có sounddevice (CLI mode)."""
         if not text.strip():
+            return
+        try:
+            import sounddevice as _sd
+        except (ImportError, OSError):
+            print(f"  [TTS skipped — no audio device] {text}")
             return
         print(f"  🔊 Speaking: {text}")
         try:
             audio = self.synthesize(text)
-            sd.play(audio, config.SAMPLE_RATE)
-            sd.wait()
+            _sd.play(audio, config.SAMPLE_RATE)
+            _sd.wait()
         except Exception as e:
             print(f"  [TTS error: {e}] Falling back to text-only")
 
