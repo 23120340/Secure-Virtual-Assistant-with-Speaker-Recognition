@@ -1,6 +1,27 @@
+# Core ML
 torch>=2.0.0
 torchaudio>=2.0.0
 speechbrain>=1.0.0
 numpy
-scikit-learn
-tqdm
+
+# ASR
+faster-whisper>=1.0.0
+
+# VAD
+silero-vad>=5.0.0
+
+# Audio I/O
+sounddevice>=0.4.6
+soundfile>=0.12.1
+scipy
+
+# TTS
+gTTS>=2.5.0
+pydub>=0.25.1
+
+# NLU
+google-generativeai>=0.8.0
+
+# Misc
+python-dotenv>=1.0.0
+requests

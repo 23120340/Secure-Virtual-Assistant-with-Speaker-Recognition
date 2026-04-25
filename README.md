@@ -1,170 +1,43 @@
-# Phần 1 – ECAPA-TDNN Speaker Recognition
+# Secure Virtual Assistant with Speaker Recognition
 
-Train ECAPA-TDNN trên VoxCeleb1 cho **cả** Speaker Identification (SID) và Speaker Verification (SV). Cùng một mô hình, hai cách đánh giá.
+End-to-end hệ thống trợ lý ảo bảo mật, nhận diện người dùng qua giọng nói.
 
-## Kiến trúc & lý do chọn
+## Cấu trúc project
 
-- **ECAPA-TDNN (192-dim embedding)**: state-of-the-art baseline, đã được kiểm chứng rộng rãi. Dùng implementation từ SpeechBrain để tránh re-invent the wheel.
-- **AAM-Softmax loss (margin=0.2, scale=30)**: chuẩn cho speaker embedding, tách lớp trong không gian góc cosine tốt hơn cross-entropy thường.
-- **Mel-filterbank 80 chiều** + log + cepstral mean normalization.
-- **Random crop 3s khi train**, full utterance khi extract embedding để verify.
-- Sau khi train xong, dùng **cosine similarity** giữa hai embedding để verify.
-
-## Dataset: VoxCeleb1 (Indian subset)
-
-| Thông số | Giá trị |
-|---|---|
-| Dataset Kaggle | `gaurav41/voxceleb1-audio-wav-files-for-india-celebrity` |
-| Số speaker | ~24 (Indian celebrities) |
-| Sampling rate | 16kHz |
-| Audio root | `/kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian` |
-
-**Lưu ý**: Dataset này không có sẵn `iden_split.txt` và `veri_test.txt` — cần tạo thủ công (xem bước 3 bên dưới).
-
-## Setup trên Kaggle
-
-1. Tạo notebook mới, bật **GPU T4 x1** (Settings → Accelerator).
-2. Add dataset `gaurav41/voxceleb1-audio-wav-files-for-india-celebrity`.
-3. Clone repo và cài dependencies:
-
-```bash
-!pip install -q speechbrain
-!git clone https://github.com/<your-repo>/speaker-recognition.git
-%cd speaker-recognition
+```
+Secure-Virtual-Assistant-with-Speaker-Recognition/
+├── part1/                 # Phần 1 — ECAPA-TDNN Speaker Recognition
+│   ├── README.md          # Hướng dẫn train + evaluate trên Kaggle
+│   ├── train_ecapa.py
+│   ├── evaluate_sid.py
+│   ├── evaluate_sv.py
+│   ├── requirements.txt
+│   └── data/              # iden_split.txt, veri_test.txt (local)
+│
+├── core/                  # Phần 2 — Virtual Assistant core logic
+│   ├── config.py
+│   ├── audio_io.py
+│   ├── asr.py
+│   ├── tts.py
+│   ├── speaker_encoder.py
+│   ├── database.py
+│   ├── intents.py
+│   ├── nlu.py
+│   ├── handlers.py
+│   └── router.py
+│
+├── scripts/               # Phần 2 — Entry points
+│   ├── enroll_user.py
+│   ├── run_assistant.py
+│   └── test_pipeline.py
+│
+├── data/                  # Runtime: SQLite DB, audio enrollment, logs
+├── checkpoints/           # Model weights (best_model.pt từ Kaggle)
+├── requirements.txt       # Dependencies cho Phần 2
+└── .env.example           # Cấu hình API keys
 ```
 
-Hoặc upload thẳng 4 file `.py` vào notebook.
+## Bắt đầu
 
-4. Tạo split files (chạy trong cell Python):
-
-```python
-import os, random
-from pathlib import Path
-
-random.seed(42)
-DATA_ROOT = "/kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian"
-
-all_files = []
-for spk in sorted(os.listdir(DATA_ROOT)):
-    spk_dir = os.path.join(DATA_ROOT, spk)
-    if not os.path.isdir(spk_dir): continue
-    for vid in os.listdir(spk_dir):
-        vid_dir = os.path.join(spk_dir, vid)
-        if not os.path.isdir(vid_dir): continue
-        for f in os.listdir(vid_dir):
-            if f.endswith('.wav'):
-                all_files.append(f"{spk}/{vid}/{f}")
-
-random.shuffle(all_files)
-n = len(all_files)
-n_train = int(0.70 * n)
-n_val   = int(0.15 * n)
-
-with open("/kaggle/working/iden_split.txt", "w") as f:
-    for i, path in enumerate(all_files):
-        if i < n_train:               split_id = 1
-        elif i < n_train + n_val:     split_id = 2
-        else:                         split_id = 3
-        f.write(f"{split_id} {path}\n")
-
-test_files = [all_files[i] for i in range(n_train + n_val, n)]
-spk2files = {}
-for f in test_files:
-    spk = f.split("/")[0]
-    spk2files.setdefault(spk, []).append(f)
-
-pos, neg = [], []
-spks = list(spk2files.keys())
-for spk, files in spk2files.items():
-    for i in range(len(files)):
-        for j in range(i+1, min(i+4, len(files))):
-            pos.append((1, files[i], files[j]))
-for i in range(len(spks)):
-    for j in range(i+1, len(spks)):
-        f1 = random.choice(spk2files[spks[i]])
-        f2 = random.choice(spk2files[spks[j]])
-        neg.append((0, f1, f2))
-
-k = min(len(pos), len(neg))
-trials = random.sample(pos, k) + random.sample(neg, k)
-random.shuffle(trials)
-
-with open("/kaggle/working/veri_test.txt", "w") as f:
-    for label, p1, p2 in trials:
-        f.write(f"{label} {p1} {p2}\n")
-
-print(f"Total: {n} | Train: {n_train} | Val: {n_val} | Test: {n-n_train-n_val}")
-print(f"Trial pairs (SV): {len(trials)} | Speakers: {len(spk2files)}")
-```
-
-5. Train:
-
-```bash
-!python train_ecapa.py \
-    --data_root /kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian \
-    --split_file /kaggle/working/iden_split.txt \
-    --save_dir /kaggle/working/checkpoints \
-    --epochs 15 --batch_size 64 --lr 1e-3 --num_workers 2
-```
-
-Với T4 x1 và batch 64, mỗi epoch ~5–10 phút trên dataset này. 15 epochs ≈ 1–2 giờ.
-
-6. Đánh giá SID:
-
-```bash
-!python evaluate_sid.py \
-    --ckpt /kaggle/working/checkpoints/best_model.pt \
-    --spk2idx /kaggle/working/checkpoints/spk2idx.json \
-    --data_root /kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian \
-    --split_file /kaggle/working/iden_split.txt
-```
-
-7. Đánh giá SV:
-
-```bash
-!python evaluate_sv.py \
-    --ckpt /kaggle/working/checkpoints/best_model.pt \
-    --data_root /kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian \
-    --trial_file /kaggle/working/veri_test.txt
-```
-
-## Kết quả tham khảo
-
-| Metric | Indian subset (15 epochs, ~24 speakers) | Full VoxCeleb1 (15 epochs, 1251 speakers) |
-|---|---|---|
-| SID Top-1 | ~95–99% | ~85–90% |
-| SID Top-5 | ~99–100% | ~95–98% |
-| SV EER | ~1–3% | ~3–5% |
-| SV minDCF (p=0.01) | ~0.10–0.25 | ~0.30–0.45 |
-
-Số liệu cao hơn full VoxCeleb1 vì dataset nhỏ hơn (~24 speakers). Số liệu thực tế phụ thuộc batch size, augmentation, số epoch.
-
-## Tip để báo cáo "đẹp" hơn
-
-1. **Vẽ ROC curve** cho SV: lưu `labels` và `scores` trong `evaluate_sv.py`, plot bằng matplotlib.
-2. **Confusion matrix top-10 speakers** cho SID.
-3. **Loss/accuracy curves**: file `training_log.json` đã ghi sẵn, plot ra cho dễ nhìn.
-4. **Phân tích lỗi**: sample vài cặp trial sai trong SV (cosine cao nhưng khác người, hoặc cosine thấp nhưng cùng người) — gợi ý về độ dài audio, chất lượng thu âm, cross-gender, v.v.
-5. **Ablation nhỏ** (nếu có thời gian): so sánh AAM-Softmax vs CE thường, hoặc 80 mel vs 64 mel.
-
-## Fallback nếu compute không đủ
-
-Dùng pretrained ECAPA-TDNN của SpeechBrain (đã train trên VoxCeleb2):
-
-```python
-from speechbrain.inference.speaker import EncoderClassifier
-encoder = EncoderClassifier.from_hparams(
-    source="speechbrain/spkrec-ecapa-voxceleb",
-    savedir="pretrained_ecapa"
-)
-emb = encoder.encode_batch(wav)  # [B, 1, 192]
-```
-
-Và **chỉ làm phần evaluation** (không train). Báo cáo trình bày là "fine-tune sẽ là future work" hoặc fine-tune nhẹ vài epoch trên VoxCeleb1 dev. Tuy nhiên nếu bạn có Kaggle GPU thì train được — full pipeline luôn ấn tượng hơn cho điểm.
-
-## Files
-
-- `train_ecapa.py` — training với AAM-Softmax
-- `evaluate_sid.py` — Top-1/Top-5 accuracy
-- `evaluate_sv.py` — EER + minDCF trên trial pairs
-- `requirements.txt` — dependencies
+- **Phần 1** (train model): xem [part1/README.md](part1/README.md) — chạy trên Kaggle GPU.
+- **Phần 2** (chạy assistant): xem [part2_README.md](part2_README.md) — chạy local sau khi có checkpoint.
