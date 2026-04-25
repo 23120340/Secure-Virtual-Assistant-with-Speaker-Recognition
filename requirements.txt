@@ -1,0 +1,6 @@
+torch>=2.0.0
+torchaudio>=2.0.0
+speechbrain>=1.0.0
+numpy
+scikit-learn
+tqdm
