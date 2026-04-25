@@ -1,7 +1,19 @@
 """TTS module với gTTS — đơn giản, online, hỗ trợ tiếng Việt."""
 import io
+import os
 import tempfile
 from pathlib import Path
+
+# Thêm ffmpeg vào PATH TRƯỚC khi import pydub (pydub check PATH lúc import)
+_FFMPEG_BIN_HINTS = [
+    os.getenv("FFMPEG_BIN", ""),
+    r"C:\Users\Acer\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1-full_build\bin",
+]
+for _bin_dir in _FFMPEG_BIN_HINTS:
+    if _bin_dir and Path(_bin_dir).exists():
+        os.environ["PATH"] = _bin_dir + os.pathsep + os.environ.get("PATH", "")
+        break
+
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
@@ -9,6 +21,13 @@ from gtts import gTTS
 from pydub import AudioSegment
 
 from . import config
+
+# Set explicit path sau khi import để pydub dùng đúng binary
+for _bin_dir in _FFMPEG_BIN_HINTS:
+    if _bin_dir and Path(_bin_dir).exists():
+        AudioSegment.converter = str(Path(_bin_dir) / "ffmpeg.exe")
+        AudioSegment.ffprobe   = str(Path(_bin_dir) / "ffprobe.exe")
+        break
 
 
 class TTS:

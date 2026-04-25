@@ -79,6 +79,8 @@ def main():
                    help="Nếu có thì dùng file thay vì record")
     p.add_argument("--preferences", default="{}",
                    help='JSON string, ví dụ \'{"favorite_genre":"rock","balance":5000000}\'')
+    p.add_argument("--preferences_file", default=None,
+                   help="Đường dẫn tới file .json chứa preferences (thay thế --preferences)")
     args = p.parse_args()
 
     # Validate
@@ -103,7 +105,11 @@ def main():
         return
 
     # Enroll
-    prefs = json.loads(args.preferences)
+    if args.preferences_file:
+        with open(args.preferences_file, encoding="utf-8") as f:
+            prefs = json.load(f)
+    else:
+        prefs = json.loads(args.preferences)
     centroid = spk_mgr.enroll(args.user_id, args.name, audios, prefs)
     print(f"\n✅ Đăng ký thành công user '{args.name}' với centroid 192-d "
           f"(norm={float((centroid**2).sum()**0.5):.4f})")

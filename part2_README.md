@@ -69,20 +69,18 @@ Use case chấm điểm tốt:
 ### 1. Đăng ký 2-3 users
 
 ```bash
-# User Minh: thích rock, có balance giả
-python scripts/enroll_user.py \
-    --user_id minh --name "Minh" \
-    --preferences '{"favorite_genre":"rock","favorite_artist":"Bức Tường","balance":15000000,"notes":["Họp 9h sáng","Mua sữa","Đặt phòng cuối tuần"],"schedule":["9h họp team","2h gặp khách hàng","tối tập gym"]}'
+# User Minh (dùng --preferences_file để tránh lỗi quoting trên Windows)
+python scripts/enroll_user.py --user_id minh --name "Minh" --preferences_file data/profiles/minh.json
 
-# User Lan: thích ballad
-python scripts/enroll_user.py \
-    --user_id lan --name "Lan" \
-    --preferences '{"favorite_genre":"ballad","favorite_artist":"Mỹ Tâm","balance":8500000,"notes":["Đi chợ","Gọi mẹ"]}'
+# User Lan
+python scripts/enroll_user.py --user_id lan --name "Lan" --preferences_file data/profiles/lan.json
 
-# Có thể enroll bằng wav file thay vì record:
-python scripts/enroll_user.py --user_id test --name "Test" \
-    --audio_files samples/test1.wav samples/test2.wav samples/test3.wav
+# Enroll bằng wav file có sẵn thay vì record mic (thay đường dẫn bằng file thực tế của bạn):
+python scripts/enroll_user.py --user_id minh --name "Minh" --preferences_file data/profiles/minh.json \
+    --audio_files data/enroll_audio/minh/sample_1.wav data/enroll_audio/minh/sample_2.wav data/enroll_audio/minh/sample_3.wav
 ```
+
+File preferences mẫu đã có sẵn trong `data/profiles/`. Chỉnh sửa trực tiếp trong file nếu muốn thay đổi thông tin.
 
 Khi enroll, mỗi mẫu sẽ được:
 1. Record 4s từ mic (hoặc đọc file)

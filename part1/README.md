@@ -42,18 +42,14 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 
 - Tạo notebook mới, bật **GPU T4 x1** (Settings → Accelerator).
 - Add dataset `gaurav41/voxceleb1-audio-wav-files-for-india-celebrity`.
-- Upload 4 file từ thư mục `part1/` lên notebook: `train_ecapa.py`, `evaluate_sid.py`, `evaluate_sv.py`, `requirements.txt`.
+- Upload 4 file từ thư mục `part1/` lên notebook (dùng nút **Upload** trên Kaggle):
+  - `train_ecapa.py`
+  - `evaluate_sid.py`
+  - `evaluate_sv.py`
+  - `requirements.txt`
 
 ```bash
 !pip install -q speechbrain
-```
-
-Hoặc clone cả repo rồi cd vào `part1/`:
-
-```bash
-!pip install -q speechbrain
-!git clone https://github.com/<your-repo>/Secure-Virtual-Assistant-with-Speaker-Recognition.git
-%cd Secure-Virtual-Assistant-with-Speaker-Recognition/part1
 ```
 
 ### 2. Tạo split files

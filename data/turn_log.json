@@ -1,0 +1,16 @@
+[
+  {
+    "transcript": "phát nhạc",
+    "intent": "play_music",
+    "auth_level": "personal",
+    "entities": {},
+    "identified_user_id": null,
+    "identified_user_name": "Guest",
+    "sid_score": -0.04546570032835007,
+    "sv_required": false,
+    "sv_passed": null,
+    "sv_score": null,
+    "response": "Phát một bản nhạc pop cho khách nghe đây.",
+    "blocked": false
+  }
+]
