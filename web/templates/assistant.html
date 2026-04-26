@@ -24,8 +24,9 @@
 <div class="flex flex-col items-center gap-3">
   <button id="ptt-btn"
           class="w-32 h-32 rounded-full bg-rose-600 text-white text-lg font-semibold
-                 hover:bg-rose-700 active:bg-rose-800 select-none touch-none">
-    🎙<br>Bấm & giữ
+                 hover:bg-rose-700 active:bg-rose-800 select-none touch-none
+                 transition-all duration-150">
+    🎙<br><span id="ptt-label">Bấm & giữ</span>
   </button>
   <span id="ptt-status" class="text-sm text-slate-500">Sẵn sàng</span>
 </div>
@@ -33,14 +34,40 @@
 <audio id="tts-player" class="hidden"></audio>
 
 <script>
-const $chat = document.getElementById("chat");
-const $btn = document.getElementById("ptt-btn");
+const $chat   = document.getElementById("chat");
+const $btn    = document.getElementById("ptt-btn");
+const $label  = document.getElementById("ptt-label");
 const $status = document.getElementById("ptt-status");
 const $player = document.getElementById("tts-player");
 
 let mediaRecorder = null;
 let chunks = [];
 let stream = null;
+
+// Kiểm tra trình duyệt có hỗ trợ mic không (cần HTTPS hoặc localhost)
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+  $btn.disabled = true;
+  $btn.classList.replace("bg-rose-600", "bg-slate-400");
+  $btn.classList.remove("hover:bg-rose-700", "active:bg-rose-800");
+  $label.textContent = "Không hỗ trợ";
+  const isIP = location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
+  $status.textContent = isIP
+    ? `⚠ Cần HTTPS — chạy lại: python -m web.app --ssl rồi vào https://${location.host}`
+    : "⚠ Trình duyệt không hỗ trợ mic";
+  $status.classList.add("text-rose-600");
+}
+
+function setRecording(on) {
+  if (on) {
+    $btn.classList.replace("bg-rose-600", "bg-emerald-500");
+    $btn.classList.add("scale-110", "ring-4", "ring-emerald-300", "animate-pulse");
+    $label.textContent = "Đang nghe...";
+  } else {
+    $btn.classList.replace("bg-emerald-500", "bg-rose-600");
+    $btn.classList.remove("scale-110", "ring-4", "ring-emerald-300", "animate-pulse");
+    $label.textContent = "Bấm & giữ";
+  }
+}
 
 function addMsg(role, content) {
   const div = document.createElement("div");
@@ -89,17 +116,20 @@ async function startRecording() {
     };
 
     mediaRecorder.start();
-    $status.textContent = "Đang nghe... thả nút khi nói xong";
-    $btn.classList.add("ring-4", "ring-rose-300");
+    setRecording(true);
+    $status.textContent = "Đang nghe… thả nút khi nói xong";
   } catch (e) {
-    $status.textContent = "Lỗi mic: " + e.message;
+    const msg = e.name === "NotAllowedError"
+      ? "Bị từ chối quyền mic — kiểm tra quyền trình duyệt"
+      : "Lỗi mic: " + e.message;
+    $status.textContent = msg;
   }
 }
 
 function stopRecording() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
-    $btn.classList.remove("ring-4", "ring-rose-300");
+    setRecording(false);
     $status.textContent = "Đang xử lý...";
   }
 }

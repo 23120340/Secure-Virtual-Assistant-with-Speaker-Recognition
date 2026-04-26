@@ -269,6 +269,27 @@ def register_routes(app):
 # Entrypoint
 # ==========================================================================
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ssl", action="store_true",
+                        help="Bật HTTPS (cần pyopenssl) — cho phép dùng mic qua IP")
+    parser.add_argument("--port", type=int, default=5000)
+    args = parser.parse_args()
+
     app = create_app()
+
+    ssl_context = None
+    if args.ssl:
+        cert_path = Path(__file__).parent / "cert.pem"
+        key_path  = Path(__file__).parent / "key.pem"
+        if cert_path.exists() and key_path.exists():
+            ssl_context = (str(cert_path), str(key_path))
+            print(f"✓ HTTPS enabled (persistent cert) — truy cập qua https://<IP>:{args.port}")
+        else:
+            print("⚠ Chưa có cert.pem / key.pem — dùng adhoc (cert thay đổi mỗi lần restart)")
+            print("  Tạo cert cố định: python web/gen_cert.py")
+            ssl_context = "adhoc"
+
     # threaded=False vì model torch không thread-safe theo default
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=False)
+    app.run(host="0.0.0.0", port=args.port, debug=False,
+            threaded=False, ssl_context=ssl_context)

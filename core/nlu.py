@@ -52,20 +52,24 @@ def _build_system_prompt() -> str:
 class GeminiNLU:
     def __init__(self, api_key: str = config.GEMINI_API_KEY,
                  model_name: str = config.GEMINI_MODEL):
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(
-            model_name,
-            system_instruction=_build_system_prompt(),
-            generation_config={
-                "response_mime_type": "application/json",
-                "temperature": 0.1,
-            },
-        )
+        from google import genai
+        from google.genai import types
+        self._client = genai.Client(api_key=api_key)
+        self._model  = model_name
+        self._system = _build_system_prompt()
+        self._types  = types
 
     def parse(self, text: str) -> Dict[str, Any]:
         try:
-            resp = self.model.generate_content(text)
+            resp = self._client.models.generate_content(
+                model=self._model,
+                contents=text,
+                config=self._types.GenerateContentConfig(
+                    system_instruction=self._system,
+                    response_mime_type="application/json",
+                    temperature=0.1,
+                ),
+            )
             data = json.loads(resp.text)
         except Exception as e:
             print(f"  [NLU error: {e}] → fallback rule-based")

@@ -12,7 +12,7 @@ Virtual Assistant tiếng Việt với 3 lớp bảo mật dựa trên speaker r
 │   │ users        │  │ record N×4s  │  │ push-to-talk chat    │   │
 │   └─────────────┘  └──────────────┘  └──────────────────────┘   │
 └──────────────────────────────────────────────────────────────────┘
-                          ↓ HTTP (multipart audio)
+                          ↓ HTTPS (multipart audio)
 ┌──────────────────────────────────────────────────────────────────┐
 │   FLASK BACKEND (web/app.py)                                     │
 │   ┌──────────────────────────────────────────────────────────┐   │
@@ -51,6 +51,9 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 │   └── router.py               # orchestrator + SV/SID gating
 ├── web/
 │   ├── app.py                  # Flask app
+│   ├── gen_cert.py             # tạo self-signed TLS cert (chạy 1 lần)
+│   ├── cert.pem                # TLS certificate (import vào Windows Trust Store)
+│   ├── key.pem                 # TLS private key (không commit lên git)
 │   ├── templates/
 │   │   ├── base.html
 │   │   ├── home.html           # list users
@@ -94,12 +97,44 @@ Nếu chưa có → app tự fallback sang pretrained SpeechBrain ECAPA-TDNN (Vo
 
 ## Cách chạy
 
-### Web mode (khuyến nghị cho demo)
+### Bước 0 — Tạo TLS certificate (chỉ làm 1 lần)
+
+Trình duyệt chỉ cho phép `getUserMedia` (mic) khi trang chạy trên HTTPS hoặc `localhost`.
+Để truy cập qua địa chỉ IP trong LAN (ví dụ `192.168.1.9`) cần HTTPS với cert được trust.
 
 ```bash
-python -m web.app
-# → mở http://localhost:5000
+# Sinh cert.pem + key.pem trong thư mục web/
+python web/gen_cert.py
 ```
+
+Sau đó import `web/cert.pem` vào Windows Trusted Root CA (theo hướng dẫn in ra khi chạy lệnh trên):
+
+1. Mở **Run** (`Win+R`) → gõ `certlm.msc` → Enter
+2. Mở **Trusted Root Certification Authorities** → **Certificates**
+3. Chuột phải → **All Tasks** → **Import…**
+4. Chọn file `web/cert.pem`
+5. Chọn store **Trusted Root Certification Authorities** → **Finish** → **Yes**
+6. Khởi động lại trình duyệt
+
+> Cert có hiệu lực 825 ngày và có Subject Alternative Names cho `localhost`, `127.0.0.1`, và `192.168.1.9`.
+> Nếu IP máy đổi, sửa `HOSTNAMES` trong `web/gen_cert.py` và tạo lại.
+
+### Bước 1 — Chạy server HTTPS
+
+```bash
+python -m web.app --ssl
+# → mở https://localhost:5000
+# → mở https://192.168.1.9:5000  (từ thiết bị khác trong LAN)
+```
+
+Nếu chưa có `cert.pem`/`key.pem`, server tự dùng `adhoc` (cert tạm thời, thay đổi mỗi lần restart, trình duyệt vẫn hiện cảnh báo).
+
+Đổi port nếu cần:
+```bash
+python -m web.app --ssl --port 8443
+```
+
+### Bước 2 — Sử dụng
 
 Flow:
 1. `/enroll` — đăng ký user mới: nhập user_id/name, record 5 mẫu giọng, optional preferences (gu nhạc, balance, lịch...)
@@ -220,7 +255,7 @@ Phương pháp formal: chạy `part1/evaluate_sv.py` (Phần 1) → lấy thresh
 
 ## Bug & Workaround
 
-**`getUserMedia` không hoạt động** → trình duyệt yêu cầu HTTPS hoặc localhost. Khi deploy thật cần TLS.
+**`getUserMedia` không hoạt động / mic không có quyền** → trình duyệt chỉ cho phép mic trên HTTPS hoặc `localhost`. Làm theo Bước 0 để tạo cert và import vào Windows, sau đó chạy server với `--ssl`.
 
 **`No module named 'sounddevice'`** trên server → đã handle: server không cần audio device, chỉ cần ffmpeg để decode browser audio.
 
