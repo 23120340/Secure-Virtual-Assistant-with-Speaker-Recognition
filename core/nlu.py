@@ -99,6 +99,7 @@ class RuleBasedNLU:
         ("send_email", ["gửi email", "gửi mail", "soạn mail"]),
         ("check_balance", ["số dư", "bao nhiêu tiền", "tài khoản"]),
         ("delete_data", ["xóa", "xoá"]),
+        ("open_files", ["mở file", "xem file", "file của tôi", "danh sách file"]),
         ("greet", ["xin chào", "chào bạn", "hello", "hi"]),
         ("play_music", ["mở nhạc", "phát nhạc", "bật nhạc", "nghe nhạc"]),
         ("show_schedule", ["lịch", "việc gì", "nhắc việc"]),

@@ -67,6 +67,12 @@ INTENTS = {
         "entities": ["target"],
         "examples": ["xóa file báo cáo", "xóa hết ghi chú"],
     },
+    "open_files": {
+        "level": AuthLevel.IMPORTANT,
+        "desc": "Mở, xem danh sách file cá nhân đã lưu trữ",
+        "entities": ["filename"],
+        "examples": ["mở file của tôi", "xem file cá nhân", "cho tôi xem file", "danh sách file"],
+    },
 
     # --- PERSONAL: cần SID để cá nhân hóa ---
     "greet": {

@@ -19,6 +19,8 @@ SPEAKER_CKPT = os.getenv("SPEAKER_CKPT", str(ROOT / "checkpoints" / "best_model.
 DB_PATH = DATA_DIR / "users.db"
 ENROLL_AUDIO_DIR = DATA_DIR / "enroll_audio"
 ENROLL_AUDIO_DIR.mkdir(exist_ok=True)
+USER_FILES_DIR = DATA_DIR / "user_files"
+USER_FILES_DIR.mkdir(exist_ok=True)
 
 # ==========================================================================
 # Audio

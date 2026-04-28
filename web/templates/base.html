@@ -8,11 +8,10 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
+  {% block nav %}
   <nav class="bg-slate-900 text-slate-100">
     <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-      <a href="{{ url_for('home') }}" class="text-lg font-semibold">
-        🎙 Secure Virtual Assistant
-      </a>
+      <a href="{{ url_for('home') }}" class="text-lg font-semibold">🎙 Secure VA</a>
       <div class="flex gap-4 text-sm">
         <a href="{{ url_for('home') }}" class="hover:text-emerald-300">Người dùng</a>
         <a href="{{ url_for('enroll_page') }}" class="hover:text-emerald-300">Đăng ký mới</a>
@@ -20,7 +19,9 @@
       </div>
     </div>
   </nav>
+  {% endblock %}
 
+  {% block fullcontent %}
   <main class="max-w-5xl mx-auto px-6 py-8">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in messages %}
@@ -31,9 +32,9 @@
         </div>
       {% endfor %}
     {% endwith %}
-
     {% block content %}{% endblock %}
   </main>
+  {% endblock %}
 
   <footer class="text-center text-xs text-slate-400 py-6">
     Đồ Án Cuối Kỳ &middot; Speaker Verification + Identification

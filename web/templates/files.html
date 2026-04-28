@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% block title %}Quản lý file{% endblock %}
+
+{% block content %}
+
+<!-- ─── Verification section ─────────────────────────────── -->
+<div id="verify-section">
+  <h1 class="text-2xl font-bold mb-1">📁 Quản lý file cá nhân</h1>
+  <p class="text-slate-500 mb-6 text-sm">
+    Xác thực giọng nói để truy cập file của bạn.
+    Chỉ người đã đăng ký và pass Speaker Verification mới được phép.
+  </p>
+
+  <div class="bg-white border rounded-lg p-8 max-w-sm mx-auto text-center">
+    <button id="verify-btn"
+            class="w-28 h-28 rounded-full bg-blue-600 text-white text-base font-semibold
+                   hover:bg-blue-700 active:bg-blue-800 select-none
+                   transition-all duration-150 mx-auto block">
+      🎙<br><span id="verify-label">Bấm & giữ</span>
+    </button>
+    <p id="verify-status" class="mt-4 text-sm text-slate-500">Giữ nút để xác thực giọng nói</p>
+  </div>
+</div>
+
+<!-- ─── Files section (hidden until verified) ────────────── -->
+<div id="files-section" class="hidden">
+
+  <div class="flex items-center justify-between mb-5">
+    <div>
+      <h1 class="text-2xl font-bold">📁 File của <span id="files-username" class="text-emerald-700"></span></h1>
+      <p class="text-sm text-slate-500">Đã xác thực thành công ✓
+        <span id="sv-scores" class="ml-2 text-slate-400"></span>
+      </p>
+    </div>
+    <button id="logout-btn"
+            class="text-sm px-3 py-1.5 border rounded hover:bg-rose-50 hover:text-rose-600 hover:border-rose-300">
+      Đăng xuất
+    </button>
+  </div>
+
+  <!-- Upload area -->
+  <div class="bg-white border rounded-lg p-5 mb-4">
+    <h2 class="font-semibold mb-3">Tải lên file mới</h2>
+    <div class="flex gap-3 items-center flex-wrap">
+      <label class="flex-1 min-w-0">
+        <input id="file-input" type="file" multiple
+               class="w-full text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-3
+                      file:rounded file:border-0 file:text-sm file:bg-slate-100
+                      file:hover:bg-slate-200 cursor-pointer">
+      </label>
+      <button id="upload-btn"
+              class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-sm flex-shrink-0">
+        Tải lên
+      </button>
+    </div>
+    <div id="upload-msg" class="text-sm mt-2 hidden"></div>
+  </div>
+
+  <!-- File list -->
+  <div class="bg-white border rounded-lg overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b bg-slate-50">
+      <h2 class="font-semibold text-sm">Danh sách file</h2>
+      <button id="refresh-btn" class="text-xs text-slate-500 hover:text-slate-700">↻ Làm mới</button>
+    </div>
+    <div id="file-list"></div>
+    <div id="file-empty" class="hidden p-10 text-center text-slate-400 text-sm">
+      Chưa có file nào. Tải lên file đầu tiên.
+    </div>
+  </div>
+</div>
+
+<audio id="verify-audio-el" class="hidden"></audio>
+
+<div id="toast"
+     class="hidden fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50"></div>
+
+<script>
+// ============================================================
+// Verification (push-to-hold, same as assistant page)
+// ============================================================
+const $vBtn    = document.getElementById("verify-btn");
+const $vLabel  = document.getElementById("verify-label");
+const $vStatus = document.getElementById("verify-status");
+
+let _vMediaRecorder = null;
+let _vChunks = [];
+let _vStream = null;
+let _vStarting = false;
+let _vPendingStop = false;
+
+function setVerifyRecording(on) {
+  if (on) {
+    $vBtn.classList.replace("bg-blue-600", "bg-emerald-500");
+    $vBtn.classList.add("scale-110", "ring-4", "ring-emerald-300", "animate-pulse");
+    $vLabel.textContent = "Đang nghe...";
+  } else {
+    $vBtn.classList.replace("bg-emerald-500", "bg-blue-600");
+    $vBtn.classList.remove("scale-110", "ring-4", "ring-emerald-300", "animate-pulse");
+    $vLabel.textContent = "Bấm & giữ";
+  }
+}
+
+async function startVerify() {
+  if (_vStarting) return;
+  _vStarting = true;
+  _vPendingStop = false;
+  $vStatus.textContent = "Đang yêu cầu mic...";
+  try {
+    _vStream = await navigator.mediaDevices.getUserMedia({audio: true});
+    if (_vPendingStop) {
+      _vStream.getTracks().forEach(t => t.stop());
+      _vStarting = false; _vPendingStop = false;
+      $vStatus.textContent = "Giữ nút để xác thực giọng nói";
+      return;
+    }
+    _vMediaRecorder = new MediaRecorder(_vStream);
+    _vChunks = [];
+    _vMediaRecorder.ondataavailable = e => { if (e.data.size > 0) _vChunks.push(e.data); };
+    _vMediaRecorder.onstop = async () => {
+      _vStream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(_vChunks, {type: _vMediaRecorder.mimeType});
+      await submitVerify(blob);
+    };
+    _vMediaRecorder.start();
+    _vStarting = false;
+    setVerifyRecording(true);
+    $vStatus.textContent = "Đang nghe… thả tay khi xong";
+  } catch (e) {
+    _vStarting = false;
+    $vStatus.textContent = e.name === "NotAllowedError"
+      ? "Bị từ chối mic — kiểm tra quyền trình duyệt"
+      : "Lỗi mic: " + e.message;
+  }
+}
+
+function stopVerify() {
+  if (_vStarting) { _vPendingStop = true; return; }
+  if (_vMediaRecorder && _vMediaRecorder.state === "recording") {
+    _vMediaRecorder.stop();
+    setVerifyRecording(false);
+    $vStatus.textContent = "Đang xác thực...";
+  }
+}
+
+async function submitVerify(blob) {
+  const fd = new FormData();
+  fd.append("audio", blob, "verify.webm");
+  try {
+    const r = await fetch("/api/files/verify", {method: "POST", body: fd});
+    const d = await r.json();
+    if (!r.ok) {
+      $vStatus.textContent = "✗ " + d.error;
+      $vStatus.classList.add("text-rose-600");
+      return;
+    }
+    onVerified(d);
+  } catch (e) {
+    $vStatus.textContent = "Lỗi mạng: " + e.message;
+  }
+}
+
+function onVerified(data) {
+  document.getElementById("verify-section").classList.add("hidden");
+  document.getElementById("files-section").classList.remove("hidden");
+  document.getElementById("files-username").textContent = data.user_name;
+  document.getElementById("sv-scores").textContent =
+    `SID=${data.sid_score.toFixed(2)} SV=${data.sv_score.toFixed(2)}`;
+  loadFiles();
+}
+
+// Push-to-hold events
+$vBtn.addEventListener("mousedown",  startVerify);
+$vBtn.addEventListener("mouseup",    stopVerify);
+$vBtn.addEventListener("mouseleave", stopVerify);
+$vBtn.addEventListener("touchstart", e => { e.preventDefault(); startVerify(); });
+$vBtn.addEventListener("touchend",   e => { e.preventDefault(); stopVerify(); });
+
+// Space bar shortcut
+let spaceDown = false;
+window.addEventListener("keydown", e => {
+  if (e.code === "Space" && !spaceDown && !document.getElementById("verify-section").classList.contains("hidden")) {
+    e.preventDefault(); spaceDown = true; startVerify();
+  }
+});
+window.addEventListener("keyup", e => {
+  if (e.code === "Space" && spaceDown) { spaceDown = false; stopVerify(); }
+});
+
+// ============================================================
+// Logout
+// ============================================================
+document.getElementById("logout-btn").onclick = async () => {
+  await fetch("/api/files/logout", {method: "POST"});
+  location.reload();
+};
+
+// ============================================================
+// File list
+// ============================================================
+async function loadFiles() {
+  const r = await fetch("/api/files/list");
+  if (!r.ok) { showToast("Phiên đã hết hạn", true); location.reload(); return; }
+  const {files} = await r.json();
+  renderFiles(files);
+}
+
+function renderFiles(files) {
+  const $list  = document.getElementById("file-list");
+  const $empty = document.getElementById("file-empty");
+  $list.innerHTML = "";
+  if (!files.length) {
+    $empty.classList.remove("hidden");
+    return;
+  }
+  $empty.classList.add("hidden");
+  files.forEach(f => {
+    const row = document.createElement("div");
+    row.className = "flex items-center gap-3 px-4 py-3 border-b last:border-0 hover:bg-slate-50";
+    row.innerHTML = `
+      <span class="text-xl">${fileIcon(f.name)}</span>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-medium truncate">${esc(f.name)}</div>
+        <div class="text-xs text-slate-400">${fmtSize(f.size)} &middot; ${f.modified}</div>
+      </div>
+      <a href="/api/files/download/${encodeURIComponent(f.name)}"
+         class="text-xs px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
+         download="${esc(f.name)}">
+        ⬇ Tải
+      </a>
+      <button data-name="${esc(f.name)}"
+              class="btn-delete text-xs px-3 py-1.5 bg-rose-50 text-rose-600 rounded hover:bg-rose-100">
+        🗑 Xóa
+      </button>
+    `;
+    row.querySelector(".btn-delete").onclick = () => deleteFile(f.name);
+    $list.appendChild(row);
+  });
+}
+
+async function deleteFile(name) {
+  if (!confirm(`Xóa file "${name}"?`)) return;
+  const r = await fetch(`/api/files/delete/${encodeURIComponent(name)}`, {method: "POST"});
+  const d = await r.json();
+  if (r.ok) { showToast(`Đã xóa "${name}"`); loadFiles(); }
+  else showToast("Lỗi: " + d.error, true);
+}
+
+// ============================================================
+// Upload
+// ============================================================
+document.getElementById("upload-btn").onclick = async () => {
+  const files = document.getElementById("file-input").files;
+  if (!files.length) { showToast("Chọn file trước", true); return; }
+  const $msg = document.getElementById("upload-msg");
+  $msg.textContent = "Đang tải lên...";
+  $msg.className = "text-sm mt-2 text-slate-500";
+  $msg.classList.remove("hidden");
+  const fd = new FormData();
+  for (const f of files) fd.append(f.name, f);
+  const r = await fetch("/api/files/upload", {method: "POST", body: fd});
+  const d = await r.json();
+  if (r.ok) {
+    $msg.textContent = `✅ Đã tải lên: ${d.uploaded.join(", ")}`;
+    $msg.className = "text-sm mt-2 text-emerald-600";
+    document.getElementById("file-input").value = "";
+    loadFiles();
+  } else {
+    $msg.textContent = "✗ " + d.error;
+    $msg.className = "text-sm mt-2 text-rose-600";
+  }
+};
+
+document.getElementById("refresh-btn").onclick = loadFiles;
+
+// ============================================================
+// Helpers
+// ============================================================
+function fileIcon(name) {
+  const ext = name.split(".").pop().toLowerCase();
+  const map = {
+    pdf: "📄", doc: "📝", docx: "📝", txt: "📃", md: "📃",
+    jpg: "🖼", jpeg: "🖼", png: "🖼", gif: "🖼", svg: "🖼",
+    mp3: "🎵", wav: "🎵", flac: "🎵", mp4: "🎬", mov: "🎬",
+    zip: "🗜", rar: "🗜", "7z": "🗜",
+    xls: "📊", xlsx: "📊", csv: "📊",
+    py: "🐍", js: "📜", html: "🌐", json: "📋",
+  };
+  return map[ext] || "📄";
+}
+
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function showToast(msg, isErr = false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = `fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50
+    ${isErr ? "bg-rose-600" : "bg-emerald-600"}`;
+  t.classList.remove("hidden");
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => t.classList.add("hidden"), 3000);
+}
+</script>
+{% endblock %}

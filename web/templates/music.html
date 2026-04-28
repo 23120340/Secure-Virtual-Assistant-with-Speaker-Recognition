@@ -1,0 +1,499 @@
+{% extends "base.html" %}
+{% block title %}Music Player{% endblock %}
+
+{% block content %}
+<div class="pb-32">
+
+  <!-- Header -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <h1 class="text-2xl font-bold">🎵 Music Player</h1>
+    <select id="user-select" class="border rounded px-3 py-1.5 text-sm bg-white">
+      <option value="">— Khách (guest) —</option>
+      {% for u in users %}
+      <option value="{{ u.user_id }}">{{ u.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Search bar -->
+  <div class="flex gap-2 mb-6">
+    <input id="search-input" type="text"
+           placeholder="Tìm kiếm bài hát, ca sĩ, thể loại..."
+           class="flex-1 border rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"/>
+    <button id="search-btn"
+            class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
+      🔍 Tìm
+    </button>
+    <button id="suggest-btn"
+            class="hidden px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm">
+      ✨ Gợi ý
+    </button>
+    <button id="random-btn"
+            class="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm">
+      🎲 Ngẫu nhiên
+    </button>
+  </div>
+
+  <!-- Two-column layout -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+    <!-- LEFT: Playlist -->
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="font-semibold">
+          Playlist — <span id="playlist-username" class="text-emerald-700">Khách</span>
+        </h2>
+        <span id="playlist-count" class="text-xs text-slate-400"></span>
+      </div>
+      <div id="playlist-list" class="space-y-1.5 min-h-[180px]">
+        <p id="playlist-empty" class="text-sm text-slate-400 py-4">
+          Chọn người dùng để xem playlist cá nhân.<br>
+          Khách có thể dùng 🎲 để phát nhạc ngẫu nhiên.
+        </p>
+      </div>
+    </div>
+
+    <!-- RIGHT: Search results -->
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="font-semibold">Kết quả tìm kiếm</h2>
+        <span id="results-count" class="text-xs text-slate-400"></span>
+      </div>
+      <div id="results-list" class="space-y-1.5 min-h-[180px]">
+        <p id="results-empty" class="text-sm text-slate-400 py-4">
+          Nhập từ khóa để tìm nhạc từ Deezer.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Fixed player bar -->
+<div class="fixed bottom-0 left-0 right-0 bg-slate-900 text-white shadow-2xl">
+  <div class="max-w-5xl mx-auto px-4 py-3">
+    <div class="flex items-center gap-3">
+
+      <!-- Cover + info -->
+      <img id="np-cover" src="" alt=""
+           class="w-11 h-11 rounded object-cover bg-slate-700 flex-shrink-0 hidden">
+      <div class="w-36 min-w-0 hidden md:block">
+        <div id="np-title" class="text-sm font-semibold truncate">Chưa phát bài nào</div>
+        <div id="np-artist" class="text-xs text-slate-400 truncate"></div>
+      </div>
+
+      <!-- Controls -->
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <button id="prev-btn"
+                class="p-1.5 text-slate-400 hover:text-white rounded-full hover:bg-slate-700">
+          ⏮
+        </button>
+        <button id="play-btn"
+                class="w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400
+                       flex items-center justify-center text-lg font-bold">
+          ▶
+        </button>
+        <button id="next-btn"
+                class="p-1.5 text-slate-400 hover:text-white rounded-full hover:bg-slate-700">
+          ⏭
+        </button>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="flex items-center gap-2 flex-1 min-w-0">
+        <span id="time-cur" class="text-xs text-slate-400 w-8 text-right flex-shrink-0">0:00</span>
+        <div id="progress-track"
+             class="flex-1 h-1.5 bg-slate-600 rounded-full cursor-pointer relative group">
+          <div id="progress-fill"
+               class="h-full bg-emerald-400 rounded-full pointer-events-none"
+               style="width:0%"></div>
+        </div>
+        <span id="time-total" class="text-xs text-slate-400 w-8 flex-shrink-0">0:30</span>
+      </div>
+
+      <!-- Volume -->
+      <div class="flex items-center gap-1.5 flex-shrink-0">
+        <span class="text-xs text-slate-400">🔊</span>
+        <input id="volume-slider" type="range" min="0" max="1" step="0.05" value="0.8"
+               class="w-16 accent-emerald-400">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden audio element -->
+<audio id="audio-el" preload="none"></audio>
+
+<div id="toast"
+     class="hidden fixed bottom-20 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50"></div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+const params = new URLSearchParams(location.search);
+let currentUserId = params.get("uid") || "";
+let userPlaylist  = [];   // tracks saved by current user
+let searchResults = [];   // tracks from current search
+let queue         = [];   // currently active play queue
+let queueIdx      = -1;
+
+// ============================================================
+// DOM refs
+// ============================================================
+const $audio        = document.getElementById("audio-el");
+const $playBtn      = document.getElementById("play-btn");
+const $prevBtn      = document.getElementById("prev-btn");
+const $nextBtn      = document.getElementById("next-btn");
+const $npTitle      = document.getElementById("np-title");
+const $npArtist     = document.getElementById("np-artist");
+const $npCover      = document.getElementById("np-cover");
+const $progressFill = document.getElementById("progress-fill");
+const $progressTrack= document.getElementById("progress-track");
+const $timeCur      = document.getElementById("time-cur");
+const $timeTotal    = document.getElementById("time-total");
+const $volSlider    = document.getElementById("volume-slider");
+const $userSelect   = document.getElementById("user-select");
+const $searchInput  = document.getElementById("search-input");
+const $searchBtn    = document.getElementById("search-btn");
+const $suggestBtn   = document.getElementById("suggest-btn");
+const $randomBtn    = document.getElementById("random-btn");
+const $playlistList = document.getElementById("playlist-list");
+const $playlistEmpty= document.getElementById("playlist-empty");
+const $playlistName = document.getElementById("playlist-username");
+const $playlistCount= document.getElementById("playlist-count");
+const $resultsList  = document.getElementById("results-list");
+const $resultsEmpty = document.getElementById("results-empty");
+const $resultsCount = document.getElementById("results-count");
+
+// ============================================================
+// Audio player
+// ============================================================
+$audio.volume = $volSlider.value;
+$volSlider.oninput = () => { $audio.volume = $volSlider.value; };
+
+$audio.addEventListener("timeupdate", () => {
+  if (!$audio.duration) return;
+  const pct = ($audio.currentTime / $audio.duration) * 100;
+  $progressFill.style.width = pct + "%";
+  $timeCur.textContent  = fmt($audio.currentTime);
+  $timeTotal.textContent = fmt($audio.duration);
+});
+$audio.addEventListener("ended", () => { playNext(); });
+$audio.addEventListener("play",  () => { $playBtn.textContent = "⏸"; });
+$audio.addEventListener("pause", () => { $playBtn.textContent = "▶"; });
+$audio.addEventListener("error", () => { showToast("Không tải được bài hát này", true); playNext(); });
+
+$progressTrack.addEventListener("click", e => {
+  if (!$audio.duration) return;
+  $audio.currentTime = (e.offsetX / $progressTrack.offsetWidth) * $audio.duration;
+});
+
+$playBtn.onclick = () => {
+  if ($audio.src) {
+    $audio.paused ? $audio.play().catch(() => {}) : $audio.pause();
+  } else if (queue.length) {
+    playAt(0);
+  }
+};
+$prevBtn.onclick = () => { if (queueIdx > 0) playAt(queueIdx - 1); };
+$nextBtn.onclick = () => { playNext(); };
+
+function playNext() {
+  if (queueIdx < queue.length - 1) playAt(queueIdx + 1);
+}
+
+function playAt(idx) {
+  if (idx < 0 || idx >= queue.length) return;
+  queueIdx = idx;
+  const t = queue[idx];
+  $audio.src = t.preview;
+  $audio.play().catch(() => {});
+  $npTitle.textContent  = t.title;
+  $npArtist.textContent = t.artist;
+  if (t.cover) {
+    $npCover.src = t.cover;
+    $npCover.classList.remove("hidden");
+  }
+  highlightActive();
+}
+
+function highlightActive() {
+  document.querySelectorAll(".track-card").forEach(el => {
+    const sameQueue = (el.dataset.queueType === "playlist") === (queue === userPlaylist);
+    const active = sameQueue && Number(el.dataset.idx) === queueIdx;
+    el.classList.toggle("bg-emerald-50", active);
+    el.classList.toggle("border-emerald-300", active);
+  });
+}
+
+function fmt(s) {
+  return Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+}
+
+// ============================================================
+// User select
+// ============================================================
+if (currentUserId) {
+  $userSelect.value = currentUserId;
+}
+
+$userSelect.onchange = () => {
+  currentUserId = $userSelect.value;
+  const name = currentUserId
+    ? $userSelect.options[$userSelect.selectedIndex].text
+    : "Khách";
+  $playlistName.textContent = name;
+  if (currentUserId) {
+    $suggestBtn.classList.remove("hidden");
+    loadPlaylist(currentUserId);
+  } else {
+    $suggestBtn.classList.add("hidden");
+    userPlaylist = [];
+    queue = [];
+    queueIdx = -1;
+    renderPlaylist();
+  }
+};
+
+// ============================================================
+// Playlist
+// ============================================================
+async function loadPlaylist(uid) {
+  const r = await fetch(`/api/music/playlist/${uid}`);
+  const data = await r.json();
+  userPlaylist = r.ok ? (data.playlist || []) : [];
+  $playlistName.textContent =
+    $userSelect.options[$userSelect.selectedIndex]?.text || uid;
+  renderPlaylist();
+  // If coming from assistant with autoplay, use playlist as queue
+  if (params.get("autoplay") === "1") {
+    if (userPlaylist.length > 0) {
+      queue = [...userPlaylist];
+      playAt(0);
+    } else {
+      // No playlist yet — auto-search for user's genre
+      const q = params.get("q") || data.favorite_genre || "pop";
+      $searchInput.value = q;
+      await doSearch(q, true);
+    }
+  }
+}
+
+function renderPlaylist() {
+  $playlistList.innerHTML = "";
+  $playlistCount.textContent = userPlaylist.length ? `${userPlaylist.length} bài` : "";
+  if (!userPlaylist.length) {
+    $playlistList.appendChild($playlistEmpty);
+    $playlistEmpty.style.display = "block";
+    return;
+  }
+  $playlistEmpty.style.display = "none";
+  userPlaylist.forEach((t, i) => $playlistList.appendChild(makeCard(t, i, "playlist")));
+}
+
+// ============================================================
+// Search results
+// ============================================================
+async function doSearch(q, autoplayFirst = false) {
+  $searchBtn.disabled = true;
+  $searchBtn.textContent = "⏳";
+  const r = await fetch(`/api/music/search?q=${encodeURIComponent(q)}`);
+  const data = await r.json();
+  searchResults = data.tracks || [];
+  renderResults();
+  $searchBtn.disabled = false;
+  $searchBtn.textContent = "🔍 Tìm";
+  if (autoplayFirst && searchResults.length) {
+    queue = [...searchResults];
+    playAt(0);
+  }
+}
+
+function renderResults() {
+  $resultsList.innerHTML = "";
+  $resultsCount.textContent = searchResults.length ? `${searchResults.length} kết quả` : "";
+  if (!searchResults.length) {
+    $resultsList.appendChild($resultsEmpty);
+    $resultsEmpty.style.display = "block";
+    return;
+  }
+  $resultsEmpty.style.display = "none";
+  searchResults.forEach((t, i) => $resultsList.appendChild(makeCard(t, i, "result")));
+}
+
+$searchBtn.onclick = () => {
+  const q = $searchInput.value.trim();
+  if (q) doSearch(q);
+};
+$searchInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") { const q = $searchInput.value.trim(); if (q) doSearch(q); }
+});
+
+// ============================================================
+// Suggest button — search for user's favorite genre/artist
+// ============================================================
+$suggestBtn.onclick = async () => {
+  if (!currentUserId) return;
+  const r = await fetch(`/api/music/playlist/${currentUserId}`);
+  const data = await r.json();
+  const genre  = data.favorite_genre  || "pop";
+  const artist = data.favorite_artist || "";
+  const q = artist ? `${artist} ${genre}` : genre;
+  $searchInput.value = q;
+  doSearch(q);
+  showToast(`✨ Gợi ý dựa trên: ${q}`);
+};
+
+// ============================================================
+// Random button — pick a random genre and play
+// ============================================================
+$randomBtn.onclick = async () => {
+  const genres = ["pop", "rock", "ballad", "edm", "jazz", "r&b", "indie"];
+  const genre = genres[Math.floor(Math.random() * genres.length)];
+  $searchInput.value = genre;
+  await doSearch(genre);
+  if (searchResults.length) {
+    queue = [...searchResults];
+    const rnd = Math.floor(Math.random() * queue.length);
+    playAt(rnd);
+    showToast(`🎲 Phát ngẫu nhiên: ${genre}`);
+  }
+};
+
+// ============================================================
+// Track card factory
+// ============================================================
+function makeCard(t, idx, source) {
+  const card = document.createElement("div");
+  card.className = "track-card flex items-center gap-2.5 p-2 bg-white border rounded-lg " +
+                   "hover:border-slate-300 transition cursor-default";
+  card.dataset.idx = idx;
+  card.dataset.queueType = source;
+
+  const coverHtml = t.cover
+    ? `<img src="${t.cover}" class="w-10 h-10 rounded object-cover flex-shrink-0">`
+    : `<div class="w-10 h-10 rounded bg-slate-200 flex-shrink-0 flex items-center justify-center text-slate-400 text-xl">♪</div>`;
+
+  const addBtn = (source === "result" && currentUserId)
+    ? `<button class="btn-add text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded hover:bg-emerald-100 hover:text-emerald-700 flex-shrink-0">+</button>`
+    : "";
+  const delBtn = source === "playlist"
+    ? `<button class="btn-del text-xs px-2 py-1 bg-rose-50 text-rose-500 rounded hover:bg-rose-100 flex-shrink-0">✕</button>`
+    : "";
+
+  card.innerHTML = `
+    ${coverHtml}
+    <div class="flex-1 min-w-0">
+      <div class="text-sm font-medium truncate">${esc(t.title)}</div>
+      <div class="text-xs text-slate-500 truncate">${esc(t.artist)}</div>
+    </div>
+    <button class="btn-play text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex-shrink-0">▶</button>
+    ${addBtn}${delBtn}
+  `;
+
+  card.querySelector(".btn-play").onclick = () => {
+    if (source === "playlist") {
+      queue = [...userPlaylist];
+      playAt(idx);
+    } else {
+      queue = [...searchResults];
+      playAt(idx);
+    }
+  };
+
+  if (source === "result" && currentUserId) {
+    card.querySelector(".btn-add").onclick = () => addToPlaylist(t);
+  }
+  if (source === "playlist") {
+    card.querySelector(".btn-del").onclick = () => removeFromPlaylist(t.id, t.title);
+  }
+
+  return card;
+}
+
+// ============================================================
+// Playlist CRUD
+// ============================================================
+async function addToPlaylist(track) {
+  const r = await fetch(`/api/music/playlist/${currentUserId}/add`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(track),
+  });
+  if (r.ok) {
+    await loadPlaylistSilent(currentUserId);
+    showToast(`✅ Đã thêm "${track.title}"`);
+    renderResults();
+  } else {
+    const d = await r.json();
+    showToast("Lỗi: " + d.error, true);
+  }
+}
+
+async function removeFromPlaylist(trackId, title) {
+  const r = await fetch(`/api/music/playlist/${currentUserId}/remove`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({id: trackId}),
+  });
+  if (r.ok) {
+    await loadPlaylistSilent(currentUserId);
+    showToast(`Đã xóa "${title}" khỏi playlist`);
+  }
+}
+
+async function loadPlaylistSilent(uid) {
+  const r = await fetch(`/api/music/playlist/${uid}`);
+  const data = await r.json();
+  userPlaylist = r.ok ? (data.playlist || []) : [];
+  renderPlaylist();
+  if (queue === userPlaylist || queue.length === 0) {
+    queue = [...userPlaylist];
+  }
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+function esc(str) {
+  return String(str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function showToast(msg, isErr = false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = `fixed bottom-20 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50
+    ${isErr ? "bg-rose-600" : "bg-emerald-600"}`;
+  t.classList.remove("hidden");
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => t.classList.add("hidden"), 3000);
+}
+
+// ============================================================
+// Init
+// ============================================================
+(function init() {
+  const initQ = params.get("q");
+  const initUid = params.get("uid");
+  const autoplay = params.get("autoplay") === "1";
+
+  if (initUid) {
+    $userSelect.value = initUid;
+    currentUserId = initUid;
+    $suggestBtn.classList.remove("hidden");
+    $playlistName.textContent =
+      $userSelect.options[$userSelect.selectedIndex]?.text || initUid;
+    loadPlaylist(initUid);  // will handle autoplay logic
+  } else if (initQ) {
+    $searchInput.value = initQ;
+    doSearch(initQ, autoplay);
+  }
+
+  if (!initUid && !initQ) {
+    // No params: ready state, show guest hint
+  }
+})();
+</script>
+{% endblock %}

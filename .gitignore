@@ -1,0 +1,36 @@
+# Secrets — KHÔNG commit
+.env
+
+# TLS certs — sinh locally, không push
+web/cert.pem
+web/key.pem
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtualenv
+venv/
+.venv/
+env/
+
+# ML checkpoints & models (to lớn, dùng Drive/HF Hub)
+checkpoints/
+*.pt
+*.ckpt
+*.bin
+
+# Data người dùng
+data/users.db
+data/enroll_audio/
+data/log/
+
+# IDE
+.vscode/
+.idea/
+*.swp

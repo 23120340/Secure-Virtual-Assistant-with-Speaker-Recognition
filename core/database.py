@@ -1,9 +1,10 @@
 """User database: SQLite cho metadata, embedding lưu dưới dạng BLOB (numpy bytes).
 
 Schema:
-    users(user_id PK, name, created_at, preferences_json)
+    users(user_id PK, name, created_at, preferences_json, password_hash)
     embeddings(user_id FK, embedding BLOB)  -- centroid 192-d
 """
+import hashlib
 import json
 import sqlite3
 import numpy as np
@@ -13,6 +14,10 @@ from typing import Optional
 
 from . import config
 from . import speaker_encoder
+
+
+def _hash_pw(pw: str) -> str:
+    return hashlib.sha256(pw.encode("utf-8")).hexdigest()
 
 
 class UserDB:
@@ -40,18 +45,24 @@ class UserDB:
                     FOREIGN KEY(user_id) REFERENCES users(user_id)
                 )
             """)
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
 
     # ----------------------------------------------------------------
     # User CRUD
     # ----------------------------------------------------------------
     def add_user(self, user_id: str, name: str,
-                 embedding: np.ndarray, preferences: dict = None):
+                 embedding: np.ndarray, preferences: dict = None,
+                 password: str = ""):
         prefs = json.dumps(preferences or {})
+        pw_hash = _hash_pw(password) if password else ""
         with self._conn() as c:
             c.execute(
-                "INSERT INTO users(user_id, name, created_at, preferences) "
-                "VALUES (?, ?, ?, ?)",
-                (user_id, name, datetime.utcnow().isoformat(), prefs),
+                "INSERT INTO users(user_id, name, created_at, preferences, password_hash) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (user_id, name, datetime.utcnow().isoformat(), prefs, pw_hash),
             )
             c.execute(
                 "INSERT INTO embeddings(user_id, embedding) VALUES (?, ?)",
@@ -89,6 +100,44 @@ class UserDB:
             c.execute("DELETE FROM embeddings WHERE user_id=?", (user_id,))
             c.execute("DELETE FROM users WHERE user_id=?", (user_id,))
 
+    def check_password(self, user_id: str, password: str) -> bool:
+        """Verify password for user_id.
+        Returns False if user not found.
+        Returns True if no password is set (backward compat).
+        Otherwise compares stored hash to hash of supplied password."""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT password_hash FROM users WHERE user_id=?",
+                (user_id,)
+            ).fetchone()
+        if row is None:
+            return False
+        stored_hash = row[0]
+        if stored_hash == "":
+            return True
+        return stored_hash == _hash_pw(password)
+
+    def update_user_name(self, user_id: str, name: str):
+        with self._conn() as c:
+            c.execute("UPDATE users SET name=? WHERE user_id=?",
+                      (name, user_id))
+
+    def update_password(self, user_id: str, new_password: str):
+        with self._conn() as c:
+            c.execute("UPDATE users SET password_hash=? WHERE user_id=?",
+                      (_hash_pw(new_password), user_id))
+
+    def has_password(self, user_id: str) -> bool:
+        """Returns True if a non-empty password_hash is stored for user_id."""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT password_hash FROM users WHERE user_id=?",
+                (user_id,)
+            ).fetchone()
+        if row is None:
+            return False
+        return bool(row[0])
+
     # ----------------------------------------------------------------
     # Load tất cả embeddings (cho identification)
     # ----------------------------------------------------------------
@@ -122,12 +171,12 @@ class SpeakerManager:
         self._cache = self.db.load_all_embeddings()
 
     def enroll(self, user_id: str, name: str, audios: list,
-               preferences: dict = None) -> np.ndarray:
+               preferences: dict = None, password: str = "") -> np.ndarray:
         """Đăng ký user mới với list các audio mẫu. Trả về centroid."""
         if self.db.get_user(user_id):
             raise ValueError(f"User '{user_id}' đã tồn tại")
         centroid = self.encoder.encode_centroid(audios)
-        self.db.add_user(user_id, name, centroid, preferences)
+        self.db.add_user(user_id, name, centroid, preferences, password)
         self._cache = None  # invalidate
         return centroid
 

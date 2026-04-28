@@ -69,6 +69,10 @@ def handle_delete_data(entities, user) -> str:
     return f"Đã xác thực thành công. Mình sẽ xóa {target} của {user['name']}."
 
 
+def handle_open_files(entities, user) -> str:
+    return f"Đã xác thực thành công. Đang mở file của {user['name']}."
+
+
 # ==========================================================================
 # PERSONAL handlers — dùng user info để cá nhân hóa
 # ==========================================================================
@@ -121,6 +125,7 @@ HANDLERS = {
     "send_email": handle_send_email,
     "check_balance": handle_check_balance,
     "delete_data": handle_delete_data,
+    "open_files": handle_open_files,
     "greet": handle_greet,
     "play_music": handle_play_music,
     "show_schedule": handle_show_schedule,

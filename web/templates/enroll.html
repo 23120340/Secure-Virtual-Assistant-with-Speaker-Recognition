@@ -26,17 +26,41 @@
       </label>
     </div>
 
-    <details class="mt-4">
-      <summary class="cursor-pointer text-sm text-emerald-700">
-        Tùy chỉnh (preferences) — JSON
+    <details class="mt-4" open>
+      <summary class="cursor-pointer text-sm text-emerald-700 font-medium mb-3">
+        Tùy chỉnh cá nhân (preferences)
       </summary>
-      <textarea id="preferences" rows="6"
-                class="w-full mt-2 border rounded px-3 py-2 font-mono text-xs"
-                placeholder='{"favorite_genre":"rock","balance":15000000,"notes":["Họp 9h","Mua sữa"]}'></textarea>
-      <p class="text-xs text-slate-500 mt-1">
-        Các key tham khảo: <code>favorite_genre</code>, <code>favorite_artist</code>,
-        <code>balance</code>, <code>notes</code> (array), <code>schedule</code> (array).
-      </p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+        <label class="block">
+          <span class="text-sm text-slate-600">Thể loại nhạc yêu thích</span>
+          <input id="pref_genre" type="text" class="w-full border rounded px-3 py-2 mt-1 text-sm"
+                 placeholder="vd: rock, pop, ballad, jazz"/>
+        </label>
+        <label class="block">
+          <span class="text-sm text-slate-600">Ca sĩ yêu thích</span>
+          <input id="pref_artist" type="text" class="w-full border rounded px-3 py-2 mt-1 text-sm"
+                 placeholder="vd: Sơn Tùng, BTS"/>
+        </label>
+        <label class="block">
+          <span class="text-sm text-slate-600">Số dư tài khoản (đồng)</span>
+          <input id="pref_balance" type="number" class="w-full border rounded px-3 py-2 mt-1 text-sm"
+                 placeholder="vd: 15000000"/>
+        </label>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+        <label class="block">
+          <span class="text-sm text-slate-600">Ghi chú <span class="text-slate-400">(mỗi dòng 1 ghi chú)</span></span>
+          <textarea id="pref_notes" rows="3"
+                    class="w-full mt-1 border rounded px-3 py-2 text-sm"
+                    placeholder="Họp 9h&#10;Mua sữa&#10;Sinh nhật Lan ngày 15"></textarea>
+        </label>
+        <label class="block">
+          <span class="text-sm text-slate-600">Lịch hôm nay <span class="text-slate-400">(mỗi dòng 1 mục)</span></span>
+          <textarea id="pref_schedule" rows="3"
+                    class="w-full mt-1 border rounded px-3 py-2 text-sm"
+                    placeholder="9:00 - Họp nhóm&#10;12:00 - Ăn trưa&#10;15:00 - Review code"></textarea>
+        </label>
+      </div>
     </details>
   </section>
 
@@ -171,18 +195,27 @@ async function startRecording() {
 
 $btn.onclick = startRecording;
 
+function buildPreferences() {
+  const prefs = {};
+  const genre   = document.getElementById("pref_genre").value.trim();
+  const artist  = document.getElementById("pref_artist").value.trim();
+  const balance = document.getElementById("pref_balance").value.trim();
+  const notes   = document.getElementById("pref_notes").value.trim();
+  const sched   = document.getElementById("pref_schedule").value.trim();
+  if (genre)   prefs.favorite_genre   = genre;
+  if (artist)  prefs.favorite_artist  = artist;
+  if (balance) prefs.balance          = Number(balance);
+  if (notes)   prefs.notes    = notes.split("\n").map(s => s.trim()).filter(Boolean);
+  if (sched)   prefs.schedule = sched.split("\n").map(s => s.trim()).filter(Boolean);
+  return prefs;
+}
+
 $submit.onclick = async () => {
   const user_id = document.getElementById("user_id").value.trim();
-  const name = document.getElementById("name").value.trim();
-  const prefs = document.getElementById("preferences").value.trim() || "{}";
+  const name    = document.getElementById("name").value.trim();
 
   if (!user_id || !name) {
     $result.innerHTML = '<span class="text-rose-600">Cần nhập user_id và name.</span>';
-    return;
-  }
-  // Validate JSON
-  try { JSON.parse(prefs); } catch(e) {
-    $result.innerHTML = '<span class="text-rose-600">Preferences không phải JSON hợp lệ.</span>';
     return;
   }
 
@@ -192,7 +225,7 @@ $submit.onclick = async () => {
   const fd = new FormData();
   fd.append("user_id", user_id);
   fd.append("name", name);
-  fd.append("preferences", prefs);
+  fd.append("preferences", JSON.stringify(buildPreferences()));
   samples.forEach((s, i) => fd.append(`sample_${i}`, s.blob, `sample_${i}.webm`));
 
   try {

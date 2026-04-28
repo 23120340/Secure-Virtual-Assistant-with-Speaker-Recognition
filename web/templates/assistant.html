@@ -2,187 +2,743 @@
 {% block title %}Trợ lý ảo{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-4">
-  <h1 class="text-2xl font-bold">Trợ lý ảo</h1>
-  <span class="text-sm text-slate-500">{{ users | length }} người dùng đăng ký</span>
+<div class="flex items-center justify-between mb-3">
+  <h1 class="text-xl font-bold">Trợ lý ảo</h1>
+  <span class="text-slate-400 text-xs">{{ users | length }} người dùng đăng ký</span>
 </div>
 
-<!-- Conversation -->
-<div id="chat" class="bg-white border rounded-lg p-4 min-h-[300px] mb-4 space-y-3">
-  <div class="text-sm text-slate-400 italic">
-    Bấm và giữ nút bên dưới để nói. Buông tay để gửi.
-    <br>Bạn có thể thử các câu như:
-    <ul class="list-disc list-inside mt-1">
-      <li>"Mấy giờ rồi?" — không cần xác thực</li>
-      <li>"Đọc ghi chú của tôi" — cần Speaker Verification</li>
-      <li>"Phát nhạc đi" — cá nhân hóa theo gu mỗi user</li>
-    </ul>
+<!-- Main layout: chat + side panel -->
+<div class="flex gap-4" style="min-height:520px">
+
+  <!-- ─── LEFT: Chat ─────────────────────────────────── -->
+  <div class="flex flex-col flex-1 min-w-0">
+    <div id="chat"
+         class="flex-1 bg-white border rounded-lg p-4 space-y-2 overflow-y-auto"
+         style="min-height:340px;max-height:460px">
+      <div class="text-sm text-slate-400 italic">
+        Giữ nút hoặc phím <kbd class="px-1 border rounded text-xs">Space</kbd> để nói.
+        <ul class="list-disc list-inside mt-1 space-y-0.5">
+          <li>"Mấy giờ rồi?" — không cần xác thực</li>
+          <li>"Phát nhạc đi" → mở Music Player tích hợp</li>
+          <li>"Mở file của tôi" → xác thực giọng → mở Files</li>
+          <li>"Đọc ghi chú" → Speaker Verification</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- PTT button -->
+    <div class="mt-3 flex flex-col items-center gap-2">
+      <button id="ptt-btn"
+              class="w-24 h-24 rounded-full bg-rose-600 text-white text-base font-semibold
+                     hover:bg-rose-700 active:bg-rose-800 select-none touch-none
+                     transition-all duration-150">
+        🎙<br><span id="ptt-label">Bấm & giữ</span>
+      </button>
+      <span id="ptt-status" class="text-sm text-slate-500">Sẵn sàng</span>
+    </div>
+  </div>
+
+  <!-- ─── RIGHT: Side Panel ──────────────────────────── -->
+  <div id="side-panel"
+       class="hidden flex-col w-80 flex-shrink-0 bg-white border rounded-lg overflow-hidden"
+       style="min-height:520px">
+
+    <!-- Panel header / tabs -->
+    <div class="flex items-center border-b bg-slate-50 px-2 py-1.5 gap-1">
+      <button id="tab-music"
+              class="tab-btn flex-1 py-1 text-sm rounded hover:bg-slate-100">🎵 Nhạc</button>
+      <button id="tab-files"
+              class="tab-btn flex-1 py-1 text-sm rounded hover:bg-slate-100">📁 Files</button>
+      <button id="panel-close"
+              class="ml-1 px-2 py-1 text-slate-400 hover:text-slate-700 text-lg leading-none">✕</button>
+    </div>
+
+    <!-- ── MUSIC CONTENT ─────────────────────────── -->
+    <div id="content-music" class="hidden flex-col flex-1 overflow-hidden p-2 gap-2">
+
+      <!-- Search row -->
+      <div class="flex gap-1">
+        <input id="music-q" type="text" placeholder="Tìm bài hát, ca sĩ..."
+               class="flex-1 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
+        <button id="music-search-btn"
+                class="px-2 py-1 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700">🔍</button>
+        <button id="music-random-btn"
+                class="px-2 py-1 bg-amber-500 text-white rounded text-sm hover:bg-amber-600">🎲</button>
+      </div>
+
+      <!-- User label + suggest -->
+      <div id="music-user-row" class="hidden flex items-center justify-between text-xs text-slate-500 px-1">
+        <span>Playlist của <strong id="music-user-name"></strong></span>
+        <button id="music-suggest-btn" class="text-violet-600 hover:underline">✨ Gợi ý</button>
+      </div>
+
+      <!-- Playlist -->
+      <div class="flex-shrink-0">
+        <p class="text-xs font-medium text-slate-500 px-1 mb-1">
+          Playlist <span id="playlist-count" class="text-slate-400"></span>
+        </p>
+        <div id="music-playlist" class="space-y-1 max-h-44 overflow-y-auto">
+          <p id="playlist-empty" class="text-xs text-slate-400 px-1">Chưa có bài nào trong playlist.</p>
+        </div>
+      </div>
+
+      <!-- Search results -->
+      <div class="flex-1 overflow-y-auto">
+        <p class="text-xs font-medium text-slate-500 px-1 mb-1">
+          Kết quả <span id="results-count" class="text-slate-400"></span>
+        </p>
+        <div id="music-results" class="space-y-1">
+          <p id="results-empty" class="text-xs text-slate-400 px-1">Nhập từ khóa để tìm nhạc.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── FILES CONTENT ─────────────────────────── -->
+    <div id="content-files" class="hidden flex-col flex-1 overflow-hidden p-2 gap-2">
+
+      <!-- Verify widget (shown when not yet verified) -->
+      <div id="files-verify-widget" class="flex flex-col items-center gap-2 py-4">
+        <button id="files-verify-btn"
+                class="w-16 h-16 rounded-full bg-blue-600 text-white text-sm font-semibold
+                       hover:bg-blue-700 select-none touch-none transition-all">
+          🎙<br><span id="files-verify-label" class="text-xs">Giữ</span>
+        </button>
+        <p id="files-verify-status" class="text-xs text-slate-500 text-center">
+          Giữ nút để xác thực giọng nói
+        </p>
+      </div>
+
+      <!-- File manager (shown after verification) -->
+      <div id="files-manager" class="hidden flex-col gap-2 flex-1 overflow-hidden">
+        <div class="flex items-center justify-between text-xs px-1">
+          <span class="text-slate-500">
+            File của <strong id="files-user-name" class="text-emerald-700"></strong>
+          </span>
+          <button id="files-logout-btn" class="text-slate-400 hover:text-rose-600">Đăng xuất</button>
+        </div>
+
+        <!-- Upload -->
+        <div class="flex gap-1 items-center">
+          <input id="files-input" type="file" multiple
+                 class="flex-1 text-xs file:py-1 file:px-2 file:rounded file:border-0
+                        file:bg-slate-100 file:text-slate-600 file:hover:bg-slate-200">
+          <button id="files-upload-btn"
+                  class="px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700">
+            Tải lên
+          </button>
+        </div>
+        <div id="files-upload-msg" class="hidden text-xs px-1"></div>
+
+        <!-- File list -->
+        <div class="flex-1 overflow-y-auto border rounded">
+          <div id="files-list" class="divide-y text-xs"></div>
+          <div id="files-empty" class="hidden p-6 text-center text-slate-400 text-xs">
+            Chưa có file nào.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end side-panel -->
+</div>
+
+<!-- ─── Fixed music player bar ──────────────────────────── -->
+<div id="player-bar"
+     class="hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-white z-40 shadow-2xl">
+  <div class="max-w-5xl mx-auto px-4 py-2.5 flex items-center gap-3">
+    <img id="np-cover" src="" alt="" class="hidden w-10 h-10 rounded object-cover flex-shrink-0 bg-slate-700">
+    <div class="w-32 min-w-0 hidden sm:block">
+      <div id="np-title" class="text-sm font-semibold truncate">—</div>
+      <div id="np-artist" class="text-xs text-slate-400 truncate"></div>
+    </div>
+    <button id="prev-btn" class="text-slate-400 hover:text-white px-1">⏮</button>
+    <button id="play-btn"
+            class="w-9 h-9 rounded-full bg-emerald-500 hover:bg-emerald-400
+                   flex items-center justify-center font-bold">▶</button>
+    <button id="next-btn" class="text-slate-400 hover:text-white px-1">⏭</button>
+    <div class="flex items-center gap-1.5 flex-1 min-w-0">
+      <span id="time-cur" class="text-xs text-slate-400 w-7 text-right flex-shrink-0">0:00</span>
+      <div id="prog-track"
+           class="flex-1 h-1.5 bg-slate-600 rounded-full cursor-pointer">
+        <div id="prog-fill" class="h-full bg-emerald-400 rounded-full" style="width:0%"></div>
+      </div>
+      <span id="time-tot" class="text-xs text-slate-400 w-7 flex-shrink-0">0:30</span>
+    </div>
+    <input id="vol-slider" type="range" min="0" max="1" step="0.05" value="0.8"
+           class="w-14 accent-emerald-400 flex-shrink-0">
+    <button id="player-bar-close"
+            class="text-slate-500 hover:text-white text-lg leading-none px-1 flex-shrink-0">✕</button>
   </div>
 </div>
 
-<!-- Push to talk -->
-<div class="flex flex-col items-center gap-3">
-  <button id="ptt-btn"
-          class="w-32 h-32 rounded-full bg-rose-600 text-white text-lg font-semibold
-                 hover:bg-rose-700 active:bg-rose-800 select-none touch-none
-                 transition-all duration-150">
-    🎙<br><span id="ptt-label">Bấm & giữ</span>
-  </button>
-  <span id="ptt-status" class="text-sm text-slate-500">Sẵn sàng</span>
-</div>
-
+<audio id="audio-el" preload="none"></audio>
 <audio id="tts-player" class="hidden"></audio>
 
+<div id="toast"
+     class="hidden fixed bottom-16 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50"></div>
+
 <script>
+// ════════════════════════════════════════════════════════════
+// PTT recording state
+// ════════════════════════════════════════════════════════════
+let _mr = null, _chunks = [], _stream = null;
+let _starting = false, _pendingStop = false;
+
 const $chat   = document.getElementById("chat");
 const $btn    = document.getElementById("ptt-btn");
 const $label  = document.getElementById("ptt-label");
 const $status = document.getElementById("ptt-status");
-const $player = document.getElementById("tts-player");
+const $tts    = document.getElementById("tts-player");
 
-let mediaRecorder = null;
-let chunks = [];
-let stream = null;
-
-// Kiểm tra trình duyệt có hỗ trợ mic không (cần HTTPS hoặc localhost)
-if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+// Mic check
+if (!navigator.mediaDevices?.getUserMedia) {
   $btn.disabled = true;
-  $btn.classList.replace("bg-rose-600", "bg-slate-400");
-  $btn.classList.remove("hover:bg-rose-700", "active:bg-rose-800");
+  $btn.classList.replace("bg-rose-600","bg-slate-400");
+  $btn.classList.remove("hover:bg-rose-700","active:bg-rose-800");
   $label.textContent = "Không hỗ trợ";
-  const isIP = location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
+  const isIP = !["localhost","127.0.0.1"].includes(location.hostname);
   $status.textContent = isIP
-    ? `⚠ Cần HTTPS — chạy lại: python -m web.app --ssl rồi vào https://${location.host}`
+    ? `⚠ Cần HTTPS — python -m web.app --ssl`
     : "⚠ Trình duyệt không hỗ trợ mic";
   $status.classList.add("text-rose-600");
 }
 
-function setRecording(on) {
+function setRec(on) {
   if (on) {
-    $btn.classList.replace("bg-rose-600", "bg-emerald-500");
-    $btn.classList.add("scale-110", "ring-4", "ring-emerald-300", "animate-pulse");
+    $btn.classList.replace("bg-rose-600","bg-emerald-500");
+    $btn.classList.add("scale-110","ring-4","ring-emerald-300","animate-pulse");
     $label.textContent = "Đang nghe...";
   } else {
-    $btn.classList.replace("bg-emerald-500", "bg-rose-600");
-    $btn.classList.remove("scale-110", "ring-4", "ring-emerald-300", "animate-pulse");
+    $btn.classList.replace("bg-emerald-500","bg-rose-600");
+    $btn.classList.remove("scale-110","ring-4","ring-emerald-300","animate-pulse");
     $label.textContent = "Bấm & giữ";
   }
 }
 
-function addMsg(role, content) {
-  const div = document.createElement("div");
-  div.className = role === "user"
-    ? "flex justify-end"
-    : "flex justify-start";
-  div.innerHTML = `
-    <div class="${role === 'user'
-      ? 'bg-emerald-600 text-white'
-      : 'bg-slate-100 text-slate-800'} max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap">${content}</div>`;
-  $chat.appendChild(div);
-  $chat.scrollTop = $chat.scrollHeight;
-  return div;
-}
-
-function addTurnDetails(result) {
-  const meta = document.createElement("div");
-  meta.className = "text-xs text-slate-500 ml-2 mb-1";
-  let auth = "";
-  if (result.sv_required) {
-    auth = ` · SV ${result.sv_passed ? '✓' : '✗'} (${result.sv_score?.toFixed(2)})`;
-  }
-  meta.innerHTML = `
-    <span class="inline-block px-2 py-0.5 bg-slate-100 rounded mr-1">${result.intent}</span>
-    <span class="text-slate-400">[${result.auth_level}]</span>
-    · 👤 <strong>${result.identified_user_name}</strong>
-    (${result.sid_score.toFixed(2)})${auth}
-    ${result.blocked ? '<span class="text-rose-600 font-semibold ml-1">⛔ BLOCKED</span>' : ''}
-  `;
-  $chat.appendChild(meta);
-}
-
-async function startRecording() {
+async function startRec() {
+  if (_starting) return;
+  _starting = true; _pendingStop = false;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({audio: true});
-    mediaRecorder = new MediaRecorder(stream);
-    chunks = [];
-
-    mediaRecorder.ondataavailable = e => {
-      if (e.data.size > 0) chunks.push(e.data);
+    _stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    if (_pendingStop) {
+      _stream.getTracks().forEach(t=>t.stop());
+      _starting = false; _pendingStop = false;
+      $status.textContent = "Sẵn sàng"; return;
+    }
+    _mr = new MediaRecorder(_stream); _chunks = [];
+    _mr.ondataavailable = e => { if (e.data.size>0) _chunks.push(e.data); };
+    _mr.onstop = async () => {
+      _stream.getTracks().forEach(t=>t.stop());
+      await sendAudio(new Blob(_chunks, {type: _mr.mimeType}));
     };
-    mediaRecorder.onstop = async () => {
-      stream.getTracks().forEach(t => t.stop());
-      const blob = new Blob(chunks, {type: mediaRecorder.mimeType});
-      await sendAudio(blob);
-    };
-
-    mediaRecorder.start();
-    setRecording(true);
-    $status.textContent = "Đang nghe… thả nút khi nói xong";
-  } catch (e) {
-    const msg = e.name === "NotAllowedError"
-      ? "Bị từ chối quyền mic — kiểm tra quyền trình duyệt"
+    _mr.start(); _starting = false;
+    setRec(true); $status.textContent = "Đang nghe… thả tay để gửi";
+  } catch(e) {
+    _starting = false;
+    $status.textContent = e.name==="NotAllowedError"
+      ? "Bị từ chối mic — kiểm tra quyền trình duyệt"
       : "Lỗi mic: " + e.message;
-    $status.textContent = msg;
   }
 }
 
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-    setRecording(false);
-    $status.textContent = "Đang xử lý...";
+function stopRec() {
+  if (_starting) { _pendingStop = true; return; }
+  if (_mr?.state === "recording") {
+    _mr.stop(); setRec(false); $status.textContent = "Đang xử lý...";
   }
 }
 
+$btn.addEventListener("mousedown",  startRec);
+$btn.addEventListener("mouseup",    stopRec);
+$btn.addEventListener("mouseleave", stopRec);
+$btn.addEventListener("touchstart", e=>{ e.preventDefault(); startRec(); });
+$btn.addEventListener("touchend",   e=>{ e.preventDefault(); stopRec(); });
+
+let spaceDown = false;
+window.addEventListener("keydown", e=>{
+  if (e.code==="Space" && !spaceDown && document.activeElement.tagName!=="INPUT") {
+    e.preventDefault(); spaceDown=true; startRec();
+  }
+});
+window.addEventListener("keyup", e=>{
+  if (e.code==="Space" && spaceDown) { spaceDown=false; stopRec(); }
+});
+
+// ════════════════════════════════════════════════════════════
+// Send audio → process result
+// ════════════════════════════════════════════════════════════
 async function sendAudio(blob) {
   const fd = new FormData();
   fd.append("audio", blob, "rec.webm");
-
   try {
-    const r = await fetch("/api/assistant/turn", {method: "POST", body: fd});
+    const r = await fetch("/api/assistant/turn", {method:"POST", body:fd});
     const data = await r.json();
     if (!r.ok) {
-      addMsg("bot", "Lỗi: " + data.error);
-      $status.textContent = "Sẵn sàng";
-      return;
+      addMsg("bot","Lỗi: "+data.error);
+      $status.textContent = "Sẵn sàng"; return;
     }
     addMsg("user", data.transcript);
-    addTurnDetails(data);
+    addMeta(data);
     addMsg("bot", data.response);
 
-    // Phát TTS
     if (data.tts_url) {
-      $player.src = data.tts_url;
-      $player.play().catch(() => {});  // ignore autoplay block
+      $tts.src = data.tts_url;
+      $tts.play().catch(()=>{});
     }
+
+    // ── Panel actions ──────────────────────────
+    if (data.action_type === "play_music") {
+      const {query, uid} = data.action_data;
+      showPanel("music");
+      if (uid) { _musicUserId = uid; loadPlaylist(uid); }
+      doMusicSearch(query, true);
+    } else if (data.action_type === "show_files") {
+      showPanel("files");
+      onFilesVerified(data.action_data);
+    }
+
     $status.textContent = "Sẵn sàng";
-  } catch (e) {
-    addMsg("bot", "Lỗi mạng: " + e.message);
+  } catch(e) {
+    addMsg("bot","Lỗi mạng: "+e.message);
     $status.textContent = "Sẵn sàng";
   }
 }
 
-// Push-to-talk events: hỗ trợ cả mouse và touch
-$btn.addEventListener("mousedown", startRecording);
-$btn.addEventListener("mouseup", stopRecording);
-$btn.addEventListener("mouseleave", stopRecording);
-$btn.addEventListener("touchstart", e => { e.preventDefault(); startRecording(); });
-$btn.addEventListener("touchend", e => { e.preventDefault(); stopRecording(); });
+function addMsg(role, content) {
+  const d = document.createElement("div");
+  d.className = role==="user" ? "flex justify-end" : "flex justify-start";
+  d.innerHTML = `<div class="${role==="user"
+    ? "bg-emerald-600 text-white"
+    : "bg-slate-100 text-slate-800"} max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap">${esc(content)}</div>`;
+  $chat.appendChild(d);
+  $chat.scrollTop = $chat.scrollHeight;
+}
 
-// Keyboard shortcut: giữ phím Space
-let spaceDown = false;
-window.addEventListener("keydown", e => {
-  if (e.code === "Space" && !spaceDown && document.activeElement.tagName !== "INPUT") {
-    e.preventDefault();
-    spaceDown = true;
-    startRecording();
+function addMeta(r) {
+  const m = document.createElement("div");
+  m.className = "text-xs text-slate-400 pl-1 mb-1";
+  const sv = r.sv_required
+    ? ` · SV ${r.sv_passed?"✓":"✗"}(${r.sv_score?.toFixed(2)})`
+    : "";
+  m.innerHTML = `<span class="bg-slate-100 rounded px-1">${r.intent}</span>
+    [${r.auth_level}] · 👤 <b>${r.identified_user_name}</b>(${r.sid_score.toFixed(2)})${sv}
+    ${r.blocked?"<span class='text-rose-500 font-bold'>⛔</span>":""}`;
+  $chat.appendChild(m);
+}
+
+// ════════════════════════════════════════════════════════════
+// Panel management
+// ════════════════════════════════════════════════════════════
+const $panel = document.getElementById("side-panel");
+const $contentMusic = document.getElementById("content-music");
+const $contentFiles = document.getElementById("content-files");
+let _activeTab = null;
+
+function showPanel(tab) {
+  $panel.classList.remove("hidden");
+  $panel.classList.add("flex");
+  switchTab(tab);
+  // Add bottom padding for player bar
+  document.getElementById("player-bar").classList.contains("hidden") || setPbPad(true);
+}
+
+function hidePanel() {
+  $panel.classList.add("hidden");
+  $panel.classList.remove("flex");
+}
+
+function switchTab(tab) {
+  _activeTab = tab;
+  // classList.toggle accepts only a single token — toggle each class separately
+  ["bg-white", "font-semibold", "shadow-sm"].forEach(c => {
+    document.getElementById("tab-music").classList.toggle(c, tab === "music");
+    document.getElementById("tab-files").classList.toggle(c, tab === "files");
+  });
+  $contentMusic.classList.toggle("hidden", tab !== "music");
+  $contentFiles.classList.toggle("hidden", tab !== "files");
+  $contentMusic.classList.toggle("flex",   tab === "music");
+  $contentFiles.classList.toggle("flex",   tab === "files");
+}
+
+document.getElementById("tab-music").onclick = () => switchTab("music");
+document.getElementById("tab-files").onclick = () => switchTab("files");
+document.getElementById("panel-close").onclick = hidePanel;
+
+// ════════════════════════════════════════════════════════════
+// Music player
+// ════════════════════════════════════════════════════════════
+const $audio = document.getElementById("audio-el");
+const $playerBar = document.getElementById("player-bar");
+
+let _musicUserId = null;
+let userPlaylist  = [];
+let searchResults = [];
+let queue = [], queueIdx = -1;
+
+// Audio controls
+$audio.volume = 0.8;
+document.getElementById("vol-slider").oninput = e => { $audio.volume = e.target.value; };
+
+$audio.addEventListener("timeupdate", () => {
+  if (!$audio.duration) return;
+  const pct = ($audio.currentTime / $audio.duration) * 100;
+  document.getElementById("prog-fill").style.width = pct + "%";
+  document.getElementById("time-cur").textContent = fmt($audio.currentTime);
+  document.getElementById("time-tot").textContent = fmt($audio.duration);
+});
+$audio.addEventListener("ended", () => { playNext(); });
+$audio.addEventListener("play",  () => { document.getElementById("play-btn").textContent="⏸"; });
+$audio.addEventListener("pause", () => { document.getElementById("play-btn").textContent="▶"; });
+$audio.addEventListener("error", () => { showToast("Không tải được bài này",true); playNext(); });
+
+document.getElementById("prog-track").addEventListener("click", e => {
+  if ($audio.duration) $audio.currentTime = (e.offsetX / e.currentTarget.offsetWidth) * $audio.duration;
+});
+
+document.getElementById("play-btn").onclick = () => {
+  if ($audio.src) { $audio.paused ? $audio.play().catch(()=>{}) : $audio.pause(); }
+  else if (queue.length) playAt(0);
+};
+document.getElementById("prev-btn").onclick = () => { if (queueIdx>0) playAt(queueIdx-1); };
+document.getElementById("next-btn").onclick = () => playNext();
+document.getElementById("player-bar-close").onclick = () => {
+  $audio.pause(); $audio.src="";
+  $playerBar.classList.add("hidden");
+  setPbPad(false);
+};
+
+function playNext() { if (queueIdx < queue.length-1) playAt(queueIdx+1); }
+
+function playAt(idx) {
+  if (idx<0 || idx>=queue.length) return;
+  queueIdx = idx;
+  const t = queue[idx];
+  $audio.src = t.preview;
+  $audio.play().catch(()=>{});
+  document.getElementById("np-title").textContent  = t.title;
+  document.getElementById("np-artist").textContent = t.artist;
+  const $cov = document.getElementById("np-cover");
+  if (t.cover) { $cov.src=t.cover; $cov.classList.remove("hidden"); }
+  $playerBar.classList.remove("hidden");
+  setPbPad(true);
+  highlightActive();
+}
+
+function highlightActive() {
+  document.querySelectorAll(".track-card").forEach(el => {
+    const active = Number(el.dataset.queueSrc)===(queue===userPlaylist?0:1)
+      && Number(el.dataset.idx)===queueIdx;
+    el.classList.toggle("bg-emerald-50",active);
+    el.classList.toggle("border-emerald-300",active);
+  });
+}
+
+function fmt(s) {
+  return Math.floor(s/60)+":"+String(Math.floor(s%60)).padStart(2,"0");
+}
+
+function setPbPad(on) {
+  document.body.style.paddingBottom = on ? "64px" : "";
+}
+
+// Music search
+document.getElementById("music-search-btn").onclick = () => {
+  const q = document.getElementById("music-q").value.trim();
+  if (q) doMusicSearch(q, false);
+};
+document.getElementById("music-q").addEventListener("keydown", e=>{
+  if (e.key==="Enter") {
+    const q = document.getElementById("music-q").value.trim();
+    if (q) doMusicSearch(q, false);
   }
 });
-window.addEventListener("keyup", e => {
-  if (e.code === "Space" && spaceDown) {
-    spaceDown = false;
-    stopRecording();
+document.getElementById("music-random-btn").onclick = async () => {
+  const gs = ["pop","rock","ballad","edm","jazz","r&b","indie"];
+  const g = gs[Math.floor(Math.random()*gs.length)];
+  document.getElementById("music-q").value = g;
+  await doMusicSearch(g, true);
+  if (searchResults.length) showToast("🎲 "+g);
+};
+
+async function doMusicSearch(q, autoplay=false) {
+  const $btn = document.getElementById("music-search-btn");
+  $btn.textContent="⏳"; $btn.disabled=true;
+  const r = await fetch("/api/music/search?q="+encodeURIComponent(q));
+  const d = await r.json();
+  searchResults = d.tracks||[];
+  renderResults();
+  $btn.textContent="🔍"; $btn.disabled=false;
+  if (autoplay && searchResults.length) {
+    queue = [...searchResults];
+    playAt(0);
   }
-});
+}
+
+function renderResults() {
+  const $c = document.getElementById("music-results");
+  const $e = document.getElementById("results-empty");
+  $c.innerHTML="";
+  document.getElementById("results-count").textContent = searchResults.length ? `(${searchResults.length})` : "";
+  if (!searchResults.length) { $c.appendChild($e); $e.style.display="block"; return; }
+  $e.style.display="none";
+  searchResults.forEach((t,i) => $c.appendChild(makeTrackCard(t,i,"result")));
+}
+
+// Playlist
+async function loadPlaylist(uid) {
+  const r = await fetch(`/api/music/playlist/${uid}`);
+  const d = await r.json();
+  userPlaylist = r.ok ? (d.playlist||[]) : [];
+  const uName = document.querySelector(`#user-select option[value="${uid}"]`)?.textContent||uid;
+  document.getElementById("music-user-name").textContent = uName;
+  document.getElementById("music-user-row").classList.remove("hidden");
+  renderPlaylist();
+}
+
+function renderPlaylist() {
+  const $c = document.getElementById("music-playlist");
+  const $e = document.getElementById("playlist-empty");
+  $c.innerHTML="";
+  document.getElementById("playlist-count").textContent = userPlaylist.length ? `(${userPlaylist.length})` : "";
+  if (!userPlaylist.length) { $c.appendChild($e); $e.style.display="block"; return; }
+  $e.style.display="none";
+  userPlaylist.forEach((t,i) => $c.appendChild(makeTrackCard(t,i,"playlist")));
+}
+
+function makeTrackCard(t, idx, src) {
+  const card = document.createElement("div");
+  card.className = "track-card flex items-center gap-1.5 p-1.5 bg-white border rounded text-xs hover:border-slate-300 transition";
+  card.dataset.idx = idx;
+  card.dataset.queueSrc = src==="playlist"?0:1;
+
+  const coverHtml = t.cover
+    ? `<img src="${t.cover}" class="w-8 h-8 rounded object-cover flex-shrink-0">`
+    : `<div class="w-8 h-8 rounded bg-slate-200 flex-shrink-0 text-center leading-8 text-slate-400">♪</div>`;
+
+  const addBtn  = src==="result" && _musicUserId
+    ? `<button class="btn-add px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded hover:bg-emerald-100 hover:text-emerald-700 flex-shrink-0">+</button>` : "";
+  const delBtn  = src==="playlist"
+    ? `<button class="btn-del px-1.5 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100 flex-shrink-0">✕</button>` : "";
+
+  card.innerHTML = `
+    ${coverHtml}
+    <div class="flex-1 min-w-0">
+      <div class="font-medium truncate">${esc(t.title)}</div>
+      <div class="text-slate-500 truncate">${esc(t.artist)}</div>
+    </div>
+    <button class="btn-play px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex-shrink-0">▶</button>
+    ${addBtn}${delBtn}
+  `;
+  card.querySelector(".btn-play").onclick = () => {
+    queue = src==="playlist" ? [...userPlaylist] : [...searchResults];
+    playAt(idx);
+  };
+  if (src==="result" && _musicUserId)
+    card.querySelector(".btn-add").onclick = () => addToPlaylist(t);
+  if (src==="playlist")
+    card.querySelector(".btn-del").onclick = () => removeFromPlaylist(t.id, t.title);
+  return card;
+}
+
+async function addToPlaylist(track) {
+  const r = await fetch(`/api/music/playlist/${_musicUserId}/add`,{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(track)});
+  if (r.ok) { await loadPlaylist(_musicUserId); showToast(`✅ Thêm "${track.title}"`); renderResults(); }
+  else showToast("Lỗi thêm playlist",true);
+}
+
+async function removeFromPlaylist(id, title) {
+  const r = await fetch(`/api/music/playlist/${_musicUserId}/remove`,{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({id})});
+  if (r.ok) { await loadPlaylist(_musicUserId); showToast(`Xóa "${title}"`); }
+}
+
+document.getElementById("music-suggest-btn").onclick = async () => {
+  if (!_musicUserId) return;
+  const r = await fetch(`/api/music/playlist/${_musicUserId}`);
+  const d = await r.json();
+  const q = (d.favorite_artist||"") + " " + (d.favorite_genre||"pop");
+  document.getElementById("music-q").value = q.trim();
+  doMusicSearch(q.trim());
+};
+
+// ════════════════════════════════════════════════════════════
+// Files panel  (voice-verify inline, or pre-verified by assistant)
+// ════════════════════════════════════════════════════════════
+let _fvMr=null, _fvChunks=[], _fvStream=null;
+let _fvStarting=false, _fvPending=false;
+
+const $fvBtn    = document.getElementById("files-verify-btn");
+const $fvLabel  = document.getElementById("files-verify-label");
+const $fvStatus = document.getElementById("files-verify-status");
+
+function setFvRec(on) {
+  if (on) {
+    $fvBtn.classList.replace("bg-blue-600","bg-emerald-500");
+    $fvBtn.classList.add("scale-110","ring-4","ring-emerald-300","animate-pulse");
+    $fvLabel.textContent="Nghe...";
+  } else {
+    $fvBtn.classList.replace("bg-emerald-500","bg-blue-600");
+    $fvBtn.classList.remove("scale-110","ring-4","ring-emerald-300","animate-pulse");
+    $fvLabel.textContent="Giữ";
+  }
+}
+
+async function startFv() {
+  if (_fvStarting) return;
+  _fvStarting=true; _fvPending=false;
+  try {
+    _fvStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    if (_fvPending) {
+      _fvStream.getTracks().forEach(t=>t.stop());
+      _fvStarting=false; _fvPending=false;
+      $fvStatus.textContent="Giữ nút để xác thực"; return;
+    }
+    _fvMr = new MediaRecorder(_fvStream); _fvChunks=[];
+    _fvMr.ondataavailable = e=>{ if(e.data.size>0) _fvChunks.push(e.data); };
+    _fvMr.onstop = async () => {
+      _fvStream.getTracks().forEach(t=>t.stop());
+      $fvStatus.textContent="Đang xác thực...";
+      const blob = new Blob(_fvChunks,{type:_fvMr.mimeType});
+      const fd=new FormData(); fd.append("audio",blob,"fv.webm");
+      const r=await fetch("/api/files/verify",{method:"POST",body:fd});
+      const d=await r.json();
+      if (!r.ok) { $fvStatus.textContent="✗ "+d.error; $fvStatus.classList.add("text-rose-600"); return; }
+      onFilesVerified(d);
+    };
+    _fvMr.start(); _fvStarting=false;
+    setFvRec(true); $fvStatus.textContent="Đang nghe...";
+  } catch(e) {
+    _fvStarting=false;
+    $fvStatus.textContent="Lỗi mic: "+e.message;
+  }
+}
+
+function stopFv() {
+  if (_fvStarting) { _fvPending=true; return; }
+  if (_fvMr?.state==="recording") { _fvMr.stop(); setFvRec(false); }
+}
+
+$fvBtn.addEventListener("mousedown",  startFv);
+$fvBtn.addEventListener("mouseup",    stopFv);
+$fvBtn.addEventListener("mouseleave", stopFv);
+$fvBtn.addEventListener("touchstart", e=>{ e.preventDefault(); startFv(); });
+$fvBtn.addEventListener("touchend",   e=>{ e.preventDefault(); stopFv(); });
+
+function onFilesVerified(data) {
+  document.getElementById("files-verify-widget").classList.add("hidden");
+  const $mgr = document.getElementById("files-manager");
+  $mgr.classList.remove("hidden");
+  $mgr.classList.add("flex");
+  document.getElementById("files-user-name").textContent = data.user_name || data.user_id;
+  renderFileList(data.files || []);
+}
+
+function renderFileList(files) {
+  const $list  = document.getElementById("files-list");
+  const $empty = document.getElementById("files-empty");
+  $list.innerHTML="";
+  if (!files.length) { $empty.classList.remove("hidden"); return; }
+  $empty.classList.add("hidden");
+  files.forEach(f => {
+    const row = document.createElement("div");
+    row.className="flex items-center gap-1.5 px-2 py-2 hover:bg-slate-50";
+    row.innerHTML=`
+      <span class="text-base">${fileIcon(f.name)}</span>
+      <div class="flex-1 min-w-0">
+        <div class="font-medium truncate">${esc(f.name)}</div>
+        <div class="text-slate-400">${fmtSz(f.size)} · ${f.modified}</div>
+      </div>
+      <a href="/api/files/download/${encodeURIComponent(f.name)}"
+         download="${esc(f.name)}"
+         class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇</a>
+      <button data-name="${esc(f.name)}"
+              class="btn-fdel px-2 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100">🗑</button>
+    `;
+    row.querySelector(".btn-fdel").onclick = () => deleteFile(f.name);
+    $list.appendChild(row);
+  });
+}
+
+async function reloadFiles() {
+  const r = await fetch("/api/files/list");
+  if (!r.ok) { showToast("Phiên hết hạn — xác thực lại",true); resetFilesPanel(); return; }
+  const d = await r.json();
+  renderFileList(d.files);
+}
+
+async function deleteFile(name) {
+  if (!confirm(`Xóa "${name}"?`)) return;
+  const r = await fetch(`/api/files/delete/${encodeURIComponent(name)}`,{method:"POST"});
+  r.ok ? (showToast(`Đã xóa "${name}"`), reloadFiles()) : showToast("Lỗi xóa",true);
+}
+
+document.getElementById("files-upload-btn").onclick = async () => {
+  const files = document.getElementById("files-input").files;
+  if (!files.length) { showToast("Chọn file trước",true); return; }
+  const $msg = document.getElementById("files-upload-msg");
+  $msg.textContent="Đang tải..."; $msg.classList.remove("hidden");
+  const fd = new FormData();
+  for (const f of files) fd.append(f.name, f);
+  const r = await fetch("/api/files/upload",{method:"POST",body:fd});
+  const d = await r.json();
+  if (r.ok) {
+    $msg.textContent="✅ Đã tải: "+d.uploaded.join(", ");
+    $msg.className="text-xs px-1 text-emerald-600";
+    document.getElementById("files-input").value="";
+    reloadFiles();
+  } else {
+    $msg.textContent="✗ "+d.error;
+    $msg.className="text-xs px-1 text-rose-600";
+  }
+  $msg.classList.remove("hidden");
+};
+
+document.getElementById("files-logout-btn").onclick = async () => {
+  await fetch("/api/files/logout",{method:"POST"});
+  resetFilesPanel();
+};
+
+function resetFilesPanel() {
+  document.getElementById("files-verify-widget").classList.remove("hidden");
+  const $mgr = document.getElementById("files-manager");
+  $mgr.classList.add("hidden"); $mgr.classList.remove("flex");
+  $fvStatus.textContent="Giữ nút để xác thực giọng nói";
+  $fvStatus.classList.remove("text-rose-600");
+}
+
+// ════════════════════════════════════════════════════════════
+// Utilities
+// ════════════════════════════════════════════════════════════
+function fileIcon(n) {
+  const e=n.split(".").pop().toLowerCase();
+  return {pdf:"📄",doc:"📝",docx:"📝",txt:"📃",md:"📃",
+          jpg:"🖼",jpeg:"🖼",png:"🖼",gif:"🖼",
+          mp3:"🎵",wav:"🎵",mp4:"🎬",
+          zip:"🗜",rar:"🗜",py:"🐍",js:"📜",json:"📋"}[e]||"📄";
+}
+
+function fmtSz(b) {
+  if (b<1024) return b+"B";
+  if (b<1048576) return (b/1024).toFixed(1)+"KB";
+  return (b/1048576).toFixed(1)+"MB";
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+                  .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function showToast(msg, isErr=false) {
+  const t=document.getElementById("toast");
+  t.textContent=msg;
+  t.className=`fixed bottom-16 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50
+    ${isErr?"bg-rose-600":"bg-emerald-600"}`;
+  t.classList.remove("hidden");
+  clearTimeout(t._tid);
+  t._tid=setTimeout(()=>t.classList.add("hidden"),3000);
+}
 </script>
 {% endblock %}

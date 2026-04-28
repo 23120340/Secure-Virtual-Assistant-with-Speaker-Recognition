@@ -1,41 +1,1592 @@
 {% extends "base.html" %}
-{% block title %}Người dùng đã đăng ký{% endblock %}
+{% block title %}Secure Virtual Assistant{% endblock %}
 
-{% block content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold">Người dùng đã đăng ký</h1>
-  <a href="{{ url_for('enroll_page') }}"
-     class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">
-    + Đăng ký mới
-  </a>
-</div>
-
-{% if users %}
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    {% for u in users %}
-      <a href="{{ url_for('user_detail', user_id=u.user_id) }}"
-         class="block p-4 bg-white border rounded-lg hover:shadow-md transition">
-        <div class="text-lg font-semibold">{{ u.name }}</div>
-        <div class="text-sm text-slate-500">id: {{ u.user_id }}</div>
-      </a>
-    {% endfor %}
+{# ══════════════════════════════════════════════════════════
+   SCROLLSPY NAV
+   ══════════════════════════════════════════════════════════ #}
+{% block nav %}
+<nav id="main-nav" class="sticky top-0 z-30 bg-slate-900 text-slate-100 shadow-md">
+  <div class="px-6 py-3 flex items-center justify-between">
+    <span class="text-base font-semibold select-none">🎙 Secure Virtual Assistant</span>
+    <div class="flex items-center gap-1">
+      <a href="#assistant" class="spy-link px-3 py-1.5 rounded text-sm text-slate-300 hover:text-white transition"
+         data-section="assistant">Trợ lý</a>
+      <a href="#users"     class="spy-link px-3 py-1.5 rounded text-sm text-slate-300 hover:text-white transition"
+         data-section="users">Người dùng</a>
+      <a href="#enroll"    class="spy-link px-3 py-1.5 rounded text-sm text-slate-300 hover:text-white transition"
+         data-section="enroll">Đăng ký</a>
+    </div>
   </div>
-{% else %}
-  <div class="bg-white border rounded-lg p-10 text-center text-slate-500">
-    <p>Chưa có user nào.</p>
-    <a href="{{ url_for('enroll_page') }}"
-       class="inline-block mt-4 px-4 py-2 bg-emerald-600 text-white rounded">
-      Đăng ký user đầu tiên
-    </a>
-  </div>
-{% endif %}
+</nav>
+{% endblock %}
 
-<div class="mt-8 p-4 bg-amber-50 border border-amber-200 rounded text-sm">
-  <strong>Hệ thống bảo mật 3 lớp:</strong>
-  <ul class="list-disc list-inside mt-2 space-y-1">
-    <li><strong>Normal</strong> — chức năng công khai, ai cũng dùng được (giờ, thời tiết, kể chuyện cười).</li>
-    <li><strong>Important</strong> — yêu cầu Speaker Verification (đọc ghi chú, gửi email, xem số dư, xóa dữ liệu).</li>
-    <li><strong>Personal</strong> — Speaker Identification để cá nhân hóa (chào theo tên, gu nhạc, lịch riêng).</li>
-  </ul>
-</div>
+{# ══════════════════════════════════════════════════════════
+   FULL CONTENT  (no max-w wrapper — sections own their width)
+   ══════════════════════════════════════════════════════════ #}
+{% block fullcontent %}
+
+{# ─────────────────────────────────────────────────────────
+   SECTION 1 — VIRTUAL ASSISTANT
+   ───────────────────────────────────────────────────────── #}
+<section id="assistant" class="py-12 bg-slate-50">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="flex items-center justify-between mb-4">
+      <h1 class="text-2xl font-bold">Trợ lý ảo</h1>
+      <span class="text-slate-400 text-xs">{{ users | length }} người dùng đăng ký</span>
+    </div>
+
+    <!-- Main layout: chat + side panel -->
+    <div class="flex gap-4" style="min-height:520px">
+
+      <!-- ── LEFT: Chat ─────────────────────────────────── -->
+      <div class="flex flex-col flex-1 min-w-0">
+        <div id="chat"
+             class="flex-1 bg-white border rounded-lg p-4 space-y-2 overflow-y-auto"
+             style="min-height:320px;max-height:420px">
+          <div class="text-sm text-slate-400 italic">
+            Giữ nút hoặc phím <kbd class="px-1 border rounded text-xs">Space</kbd> để nói.
+            <ul class="list-disc list-inside mt-1 space-y-0.5">
+              <li>"Mấy giờ rồi?" — không cần xác thực</li>
+              <li>"Phát nhạc đi" → mở Music Player tích hợp</li>
+              <li>"Mở file của tôi" → xác thực giọng → mở Files</li>
+              <li>"Đọc ghi chú" → Speaker Verification</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- PTT button -->
+        <div class="mt-3 flex flex-col items-center gap-2">
+          <button id="ptt-btn"
+                  class="w-24 h-24 rounded-full bg-rose-600 text-white text-base font-semibold
+                         hover:bg-rose-700 active:bg-rose-800 select-none touch-none
+                         transition-all duration-150">
+            🎙<br><span id="ptt-label">Bấm &amp; giữ</span>
+          </button>
+          <span id="ptt-status" class="text-sm text-slate-500">Sẵn sàng</span>
+        </div>
+      </div>
+
+      <!-- ── RIGHT: Side Panel ──────────────────────────── -->
+      <div id="side-panel"
+           class="hidden flex-col w-80 flex-shrink-0 bg-white border rounded-lg overflow-hidden"
+           style="min-height:520px">
+
+        <!-- Panel tabs -->
+        <div class="flex items-center border-b bg-slate-50 px-2 py-1.5 gap-1">
+          <button id="tab-music"
+                  class="tab-btn flex-1 py-1 text-sm rounded hover:bg-slate-100">🎵 Nhạc</button>
+          <button id="tab-files"
+                  class="tab-btn flex-1 py-1 text-sm rounded hover:bg-slate-100">📁 Files</button>
+          <button id="panel-close"
+                  class="ml-1 px-2 py-1 text-slate-400 hover:text-slate-700 text-lg leading-none">✕</button>
+        </div>
+
+        <!-- ── MUSIC CONTENT ─────────────────────────────── -->
+        <div id="content-music" class="hidden flex-col flex-1 overflow-hidden p-2 gap-2">
+          <!-- Search row -->
+          <div class="flex gap-1">
+            <input id="music-q" type="text" placeholder="Tìm bài hát, ca sĩ..."
+                   class="flex-1 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
+            <button id="music-search-btn"
+                    class="px-2 py-1 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700">🔍</button>
+            <button id="music-random-btn"
+                    class="px-2 py-1 bg-amber-500 text-white rounded text-sm hover:bg-amber-600">🎲</button>
+          </div>
+          <!-- User label + suggest -->
+          <div id="music-user-row" class="hidden flex items-center justify-between text-xs text-slate-500 px-1">
+            <span>Playlist của <strong id="music-user-name"></strong></span>
+            <button id="music-suggest-btn" class="text-violet-600 hover:underline">✨ Gợi ý</button>
+          </div>
+          <!-- Playlist -->
+          <div class="flex-shrink-0">
+            <p class="text-xs font-medium text-slate-500 px-1 mb-1">
+              Playlist <span id="playlist-count" class="text-slate-400"></span>
+            </p>
+            <div id="music-playlist" class="space-y-1 max-h-44 overflow-y-auto">
+              <p id="playlist-empty" class="text-xs text-slate-400 px-1">Chưa có bài nào trong playlist.</p>
+            </div>
+          </div>
+          <!-- Search results -->
+          <div class="flex-1 overflow-y-auto">
+            <p class="text-xs font-medium text-slate-500 px-1 mb-1">
+              Kết quả <span id="results-count" class="text-slate-400"></span>
+            </p>
+            <div id="music-results" class="space-y-1">
+              <p id="results-empty" class="text-xs text-slate-400 px-1">Nhập từ khóa để tìm nhạc.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── FILES CONTENT ─────────────────────────────── -->
+        <div id="content-files" class="hidden flex-col flex-1 overflow-hidden p-2 gap-2">
+          <!-- Verify widget -->
+          <div id="files-verify-widget" class="flex flex-col items-center gap-2 py-4">
+            <button id="files-verify-btn"
+                    class="w-16 h-16 rounded-full bg-blue-600 text-white text-sm font-semibold
+                           hover:bg-blue-700 select-none touch-none transition-all">
+              🎙<br><span id="files-verify-label" class="text-xs">Giữ</span>
+            </button>
+            <p id="files-verify-status" class="text-xs text-slate-500 text-center">
+              Giữ nút để xác thực giọng nói
+            </p>
+          </div>
+          <!-- File manager (shown after verification) -->
+          <div id="files-manager" class="hidden flex-col gap-2 flex-1 overflow-hidden">
+            <div class="flex items-center justify-between text-xs px-1">
+              <span class="text-slate-500">
+                File của <strong id="files-user-name" class="text-emerald-700"></strong>
+              </span>
+              <button id="files-logout-btn" class="text-slate-400 hover:text-rose-600">Đăng xuất</button>
+            </div>
+            <div class="flex gap-1 items-center">
+              <input id="files-input" type="file" multiple
+                     class="flex-1 text-xs file:py-1 file:px-2 file:rounded file:border-0
+                            file:bg-slate-100 file:text-slate-600 file:hover:bg-slate-200">
+              <button id="files-upload-btn"
+                      class="px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700">
+                Tải lên
+              </button>
+            </div>
+            <div id="files-upload-msg" class="hidden text-xs px-1"></div>
+            <div class="flex-1 overflow-y-auto border rounded">
+              <div id="files-list" class="divide-y text-xs"></div>
+              <div id="files-empty" class="hidden p-6 text-center text-slate-400 text-xs">
+                Chưa có file nào.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end side-panel -->
+    </div><!-- end flex gap-4 -->
+
+    <!-- Fixed music player bar -->
+    <div id="player-bar"
+         class="hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-white z-40 shadow-2xl">
+      <div class="max-w-5xl mx-auto px-4 py-2.5 flex items-center gap-3">
+        <img id="np-cover" src="" alt=""
+             class="hidden w-10 h-10 rounded object-cover flex-shrink-0 bg-slate-700">
+        <div class="w-32 min-w-0 hidden sm:block">
+          <div id="np-title"  class="text-sm font-semibold truncate">—</div>
+          <div id="np-artist" class="text-xs text-slate-400 truncate"></div>
+        </div>
+        <button id="prev-btn" class="text-slate-400 hover:text-white px-1">⏮</button>
+        <button id="play-btn"
+                class="w-9 h-9 rounded-full bg-emerald-500 hover:bg-emerald-400
+                       flex items-center justify-center font-bold">▶</button>
+        <button id="next-btn" class="text-slate-400 hover:text-white px-1">⏭</button>
+        <div class="flex items-center gap-1.5 flex-1 min-w-0">
+          <span id="time-cur" class="text-xs text-slate-400 w-7 text-right flex-shrink-0">0:00</span>
+          <div id="prog-track" class="flex-1 h-1.5 bg-slate-600 rounded-full cursor-pointer">
+            <div id="prog-fill" class="h-full bg-emerald-400 rounded-full" style="width:0%"></div>
+          </div>
+          <span id="time-tot" class="text-xs text-slate-400 w-7 flex-shrink-0">0:30</span>
+        </div>
+        <input id="vol-slider" type="range" min="0" max="1" step="0.05" value="0.8"
+               class="w-14 accent-emerald-400 flex-shrink-0">
+        <button id="player-bar-close"
+                class="text-slate-500 hover:text-white text-lg leading-none px-1 flex-shrink-0">✕</button>
+      </div>
+    </div>
+
+    <audio id="audio-el"   preload="none"></audio>
+    <audio id="tts-player" class="hidden"></audio>
+
+  </div><!-- end max-w-5xl -->
+</section>
+
+{# ─────────────────────────────────────────────────────────
+   SECTION 2 — USERS
+   ───────────────────────────────────────────────────────── #}
+<section id="users" class="py-12 bg-white">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-2xl font-bold">Người dùng đã đăng ký</h2>
+      <span class="text-sm text-slate-500">{{ users | length }} người dùng</span>
+    </div>
+
+    {% if users %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="users-grid">
+      {% for u in users %}
+      <div class="user-card relative bg-slate-50 border rounded-xl p-5 cursor-pointer
+                  hover:border-emerald-400 hover:shadow-md transition-all duration-150"
+           data-uid="{{ u.user_id }}" data-name="{{ u.name }}">
+        <button class="card-trash-btn absolute top-3 right-3 text-slate-300 hover:text-rose-500
+                       transition p-1 rounded"
+                title="Xóa người dùng"
+                data-uid="{{ u.user_id }}" data-name="{{ u.name }}">🗑</button>
+        <div class="pr-6">
+          <div class="text-lg font-semibold truncate">{{ u.name }}</div>
+          <div class="text-sm text-slate-400 mt-0.5">
+            <code class="bg-slate-100 px-1 rounded text-xs">{{ u.user_id }}</code>
+          </div>
+        </div>
+        <div class="mt-3 text-xs text-slate-400">Nhấn để xem chi tiết</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div id="users-grid" class="py-16 text-center text-slate-400">
+      <div class="text-4xl mb-3">👤</div>
+      <p class="text-lg font-medium">Chưa có người dùng nào.</p>
+      <p class="text-sm mt-1">Cuộn xuống để đăng ký người dùng mới.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{# ─────────────────────────────────────────────────────────
+   SECTION 3 — ENROLL
+   ───────────────────────────────────────────────────────── #}
+<section id="enroll" class="py-12 bg-slate-50">
+  <div class="max-w-5xl mx-auto px-6">
+    <h2 class="text-2xl font-bold mb-2">Đăng ký người dùng mới</h2>
+    <p class="text-slate-500 mb-6 text-sm">
+      Hệ thống sẽ thu <strong>{{ num_samples }}</strong> mẫu giọng nói (~{{ duration }}s/mẫu)
+      để tạo speaker embedding đại diện cho bạn.
+    </p>
+
+    <div class="bg-white border rounded-lg p-6 space-y-6">
+
+      <!-- Step 1: Info -->
+      <section>
+        <h3 class="font-semibold mb-3">1. Thông tin</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <label class="block">
+            <span class="text-sm text-slate-600">User ID <span class="text-rose-500">*</span></span>
+            <input id="enroll-user_id" type="text"
+                   class="w-full border rounded px-3 py-2 mt-1"
+                   placeholder="vd: minh, lan_nguyen"/>
+          </label>
+          <label class="block">
+            <span class="text-sm text-slate-600">Tên hiển thị <span class="text-rose-500">*</span></span>
+            <input id="enroll-name" type="text"
+                   class="w-full border rounded px-3 py-2 mt-1"
+                   placeholder="vd: Nguyễn Văn Minh"/>
+          </label>
+          <label class="block">
+            <span class="text-sm text-slate-600">Mật khẩu <span class="text-rose-500">*</span></span>
+            <div class="relative mt-1">
+              <input id="enroll-password" type="password"
+                     class="w-full border rounded px-3 py-2 pr-9"
+                     placeholder="Nhập mật khẩu"/>
+              <button type="button" id="enroll-pw-eye"
+                      class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
+                👁
+              </button>
+            </div>
+          </label>
+        </div>
+
+        <details class="mt-4" open>
+          <summary class="cursor-pointer text-sm text-emerald-700 font-medium mb-3">
+            Tùy chỉnh cá nhân (preferences)
+          </summary>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+            <label class="block">
+              <span class="text-sm text-slate-600">Thể loại nhạc yêu thích</span>
+              <input id="enroll-pref_genre" type="text"
+                     class="w-full border rounded px-3 py-2 mt-1 text-sm"
+                     placeholder="vd: rock, pop, ballad, jazz"/>
+            </label>
+            <label class="block">
+              <span class="text-sm text-slate-600">Ca sĩ yêu thích</span>
+              <input id="enroll-pref_artist" type="text"
+                     class="w-full border rounded px-3 py-2 mt-1 text-sm"
+                     placeholder="vd: Sơn Tùng, BTS"/>
+            </label>
+            <label class="block">
+              <span class="text-sm text-slate-600">Số dư tài khoản (đồng)</span>
+              <input id="enroll-pref_balance" type="number"
+                     class="w-full border rounded px-3 py-2 mt-1 text-sm"
+                     placeholder="vd: 15000000"/>
+            </label>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+            <label class="block">
+              <span class="text-sm text-slate-600">Ghi chú <span class="text-slate-400">(mỗi dòng 1 ghi chú)</span></span>
+              <textarea id="enroll-pref_notes" rows="3"
+                        class="w-full mt-1 border rounded px-3 py-2 text-sm"
+                        placeholder="Họp 9h&#10;Mua sữa&#10;Sinh nhật Lan ngày 15"></textarea>
+            </label>
+            <label class="block">
+              <span class="text-sm text-slate-600">Lịch hôm nay <span class="text-slate-400">(mỗi dòng 1 mục)</span></span>
+              <textarea id="enroll-pref_schedule" rows="3"
+                        class="w-full mt-1 border rounded px-3 py-2 text-sm"
+                        placeholder="9:00 - Họp nhóm&#10;12:00 - Ăn trưa&#10;15:00 - Review code"></textarea>
+            </label>
+          </div>
+        </details>
+      </section>
+
+      <!-- Step 2: Record -->
+      <section>
+        <h3 class="font-semibold mb-3">2. Thu mẫu giọng nói</h3>
+        <div class="mb-4 p-3 bg-slate-50 border rounded text-sm">
+          <strong>Câu mẫu:</strong>
+          <span id="enroll-prompt-text" class="italic">Trợ lý ơi, hôm nay thời tiết thế nào?</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="enroll-record-btn"
+                  class="px-5 py-3 bg-rose-600 text-white rounded hover:bg-rose-700 disabled:bg-slate-300">
+            🎙 Bắt đầu thu mẫu <span id="enroll-sample-counter">1</span>/{{ num_samples }}
+          </button>
+          <span id="enroll-status" class="text-sm text-slate-500"></span>
+        </div>
+        <div id="enroll-samples-list" class="mt-4 space-y-2"></div>
+      </section>
+
+      <!-- Step 3: Submit -->
+      <section>
+        <h3 class="font-semibold mb-3">3. Hoàn tất</h3>
+        <button id="enroll-submit-btn" disabled
+                class="px-5 py-3 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:bg-slate-300">
+          Lưu và tạo speaker profile
+        </button>
+        <div id="enroll-result" class="mt-3 text-sm"></div>
+      </section>
+    </div>
+  </div>
+</section>
+
+{# ─────────────────────────────────────────────────────────
+   USER DETAIL MODAL
+   ───────────────────────────────────────────────────────── #}
+<div id="user-modal"
+     class="hidden fixed inset-0 bg-black/50 z-50 flex items-start justify-center py-8 overflow-y-auto">
+  <div class="max-w-lg w-full mx-4 bg-white rounded-xl shadow-2xl">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between px-6 py-4 border-b">
+      <div>
+        <h3 id="modal-user-name" class="text-lg font-bold"></h3>
+        <p  id="modal-user-id"   class="text-sm text-slate-400"></p>
+      </div>
+      <button id="modal-close"
+              class="text-slate-400 hover:text-slate-700 text-2xl leading-none px-1">✕</button>
+    </div>
+
+    <!-- Password lock -->
+    <div id="modal-lock" class="px-6 py-5">
+      <p class="text-sm text-slate-600 mb-3">🔒 Nhập mật khẩu để chỉnh sửa</p>
+      <div class="flex gap-2">
+        <div class="relative flex-1">
+          <input id="modal-pw" type="password" placeholder="Mật khẩu"
+                 class="w-full border rounded px-3 py-2 pr-9 text-sm"/>
+          <button type="button" id="modal-pw-eye"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
+            👁
+          </button>
+        </div>
+        <button id="modal-unlock-btn"
+                class="px-4 py-2 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700">
+          Mở khóa
+        </button>
+      </div>
+      <div id="modal-lock-error" class="mt-2 text-sm text-rose-600 hidden"></div>
+    </div>
+
+    <!-- Editor (hidden until unlocked) -->
+    <div id="modal-editor" class="hidden">
+
+      <!-- Tabs -->
+      <div class="flex border-b px-6">
+        <button id="modal-tab-info-btn"
+                class="modal-tab-btn py-2 px-4 text-sm border-b-2 border-emerald-500 font-medium text-emerald-700 -mb-px">
+          Thông tin
+        </button>
+        <button id="modal-tab-files-btn"
+                class="modal-tab-btn py-2 px-4 text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">
+          Files
+        </button>
+      </div>
+
+      <!-- Info tab -->
+      <div id="modal-tab-info" class="px-6 py-4 space-y-4">
+
+        <label class="block">
+          <span class="text-sm text-slate-600">Tên hiển thị</span>
+          <input id="modal-name" type="text"
+                 class="w-full border rounded px-3 py-2 mt-1 text-sm"/>
+        </label>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label class="block">
+            <span class="text-sm text-slate-600">Thể loại nhạc yêu thích</span>
+            <input id="modal-pref-genre" type="text"
+                   class="w-full border rounded px-3 py-2 mt-1 text-sm"
+                   placeholder="vd: pop, rock"/>
+          </label>
+          <label class="block">
+            <span class="text-sm text-slate-600">Ca sĩ yêu thích</span>
+            <input id="modal-pref-artist" type="text"
+                   class="w-full border rounded px-3 py-2 mt-1 text-sm"
+                   placeholder="vd: Sơn Tùng"/>
+          </label>
+          <label class="block">
+            <span class="text-sm text-slate-600">Số dư tài khoản (đồng)</span>
+            <input id="modal-pref-balance" type="number"
+                   class="w-full border rounded px-3 py-2 mt-1 text-sm"/>
+          </label>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label class="block">
+            <span class="text-sm text-slate-600">Ghi chú <span class="text-slate-400">(mỗi dòng)</span></span>
+            <textarea id="modal-pref-notes" rows="3"
+                      class="w-full mt-1 border rounded px-3 py-2 text-sm"></textarea>
+          </label>
+          <label class="block">
+            <span class="text-sm text-slate-600">Lịch hôm nay <span class="text-slate-400">(mỗi dòng)</span></span>
+            <textarea id="modal-pref-schedule" rows="3"
+                      class="w-full mt-1 border rounded px-3 py-2 text-sm"></textarea>
+          </label>
+        </div>
+
+        <button id="modal-save-btn"
+                class="w-full py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-sm font-medium">
+          Lưu thay đổi
+        </button>
+        <div id="modal-save-msg" class="text-sm hidden"></div>
+
+        <!-- Change password -->
+        <div class="border-t pt-4">
+          <p class="text-sm font-medium text-slate-700 mb-2">Đổi mật khẩu</p>
+          <div class="flex gap-2">
+            <div class="relative flex-1">
+              <input id="modal-new-pw" type="password" placeholder="Mật khẩu mới"
+                     class="w-full border rounded px-3 py-2 pr-9 text-sm"/>
+              <button type="button" id="modal-new-pw-eye"
+                      class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
+                👁
+              </button>
+            </div>
+            <button id="modal-change-pw-btn"
+                    class="px-3 py-2 bg-slate-700 text-white rounded text-sm hover:bg-slate-800">
+              Đổi
+            </button>
+          </div>
+          <div id="modal-pw-msg" class="mt-1 text-sm hidden"></div>
+        </div>
+
+        <!-- Delete -->
+        <div class="border-t pt-4">
+          <button id="modal-delete-btn"
+                  class="w-full py-2 bg-rose-600 text-white rounded hover:bg-rose-700 text-sm font-medium">
+            🗑 Xóa người dùng này
+          </button>
+          <div id="modal-delete-msg" class="mt-1 text-sm hidden"></div>
+        </div>
+      </div><!-- end modal-tab-info -->
+
+      <!-- Files tab -->
+      <div id="modal-tab-files" class="hidden px-6 py-4 space-y-3">
+
+        <!-- Pw-based file session trigger -->
+        <div id="modal-files-pw-section">
+          <p class="text-sm text-slate-500 mb-2">Mật khẩu đã xác nhận, nhấn để tải file.</p>
+          <button id="modal-files-open-btn"
+                  class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+            📁 Mở File Manager
+          </button>
+          <div id="modal-files-open-msg" class="mt-1 text-sm hidden"></div>
+        </div>
+
+        <!-- File manager (shown after session set) -->
+        <div id="modal-files-manager" class="hidden space-y-3">
+          <div class="flex gap-2 items-center">
+            <input id="modal-files-input" type="file" multiple
+                   class="flex-1 text-xs file:py-1 file:px-2 file:rounded file:border-0
+                          file:bg-slate-100 file:text-slate-600 file:hover:bg-slate-200"/>
+            <button id="modal-files-upload-btn"
+                    class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700">
+              Tải lên
+            </button>
+          </div>
+          <div id="modal-files-upload-msg" class="text-xs hidden"></div>
+          <div class="border rounded overflow-hidden">
+            <div id="modal-files-list" class="divide-y text-sm max-h-64 overflow-y-auto"></div>
+            <div id="modal-files-empty" class="hidden p-8 text-center text-slate-400 text-sm">
+              Chưa có file nào.
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end modal-tab-files -->
+    </div><!-- end modal-editor -->
+  </div><!-- end card -->
+</div><!-- end user-modal -->
+
+<!-- Toast -->
+<div id="toast"
+     class="hidden fixed bottom-16 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50"></div>
+
+{# ─────────────────────────────────────────────────────────
+   JAVASCRIPT
+   ───────────────────────────────────────────────────────── #}
+<script>
+// ════════════════════════════════════════════════════════════
+// UTILITIES
+// ════════════════════════════════════════════════════════════
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+                  .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function fmtSz(b) {
+  if (b < 1024) return b + "B";
+  if (b < 1048576) return (b/1024).toFixed(1) + "KB";
+  return (b/1048576).toFixed(1) + "MB";
+}
+function fileIcon(n) {
+  const e = n.split(".").pop().toLowerCase();
+  return {pdf:"📄",doc:"📝",docx:"📝",txt:"📃",md:"📃",
+          jpg:"🖼",jpeg:"🖼",png:"🖼",gif:"🖼",svg:"🖼",
+          mp3:"🎵",wav:"🎵",flac:"🎵",mp4:"🎬",mov:"🎬",
+          zip:"🗜",rar:"🗜","7z":"🗜",
+          xls:"📊",xlsx:"📊",csv:"📊",
+          py:"🐍",js:"📜",html:"🌐",json:"📋"}[e] || "📄";
+}
+function fmt(s) {
+  return Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0");
+}
+function showToast(msg, isErr=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = `fixed bottom-16 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50
+    ${isErr ? "bg-rose-600" : "bg-emerald-600"}`;
+  t.classList.remove("hidden");
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => t.classList.add("hidden"), 3000);
+}
+function togglePwEye(inputId, btnEl) {
+  const inp = document.getElementById(inputId);
+  if (inp.type === "password") { inp.type = "text"; btnEl.textContent = "🙈"; }
+  else { inp.type = "password"; btnEl.textContent = "👁"; }
+}
+
+// ════════════════════════════════════════════════════════════
+// SCROLLSPY
+// ════════════════════════════════════════════════════════════
+(function initScrollspy() {
+  const links    = document.querySelectorAll(".spy-link");
+  const sections = document.querySelectorAll("section[id]");
+
+  function setActive(id) {
+    links.forEach(a => {
+      const active = a.dataset.section === id;
+      ["bg-slate-700","text-white"].forEach(c => a.classList.toggle(c, active));
+    });
+  }
+
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) setActive(e.target.id); });
+  }, { rootMargin: "-40% 0px -55% 0px" });
+
+  sections.forEach(s => obs.observe(s));
+
+  links.forEach(a => {
+    a.addEventListener("click", e => {
+      e.preventDefault();
+      const target = document.getElementById(a.dataset.section);
+      if (target) target.scrollIntoView({ behavior: "smooth" });
+    });
+  });
+})();
+
+// ════════════════════════════════════════════════════════════
+// PTT  (Push-to-talk)
+// ════════════════════════════════════════════════════════════
+let _mr = null, _chunks = [], _stream = null;
+let _starting = false, _pendingStop = false;
+
+const $chat   = document.getElementById("chat");
+const $pttBtn = document.getElementById("ptt-btn");
+const $pttLbl = document.getElementById("ptt-label");
+const $pttSts = document.getElementById("ptt-status");
+const $tts    = document.getElementById("tts-player");
+
+if (!navigator.mediaDevices?.getUserMedia) {
+  $pttBtn.disabled = true;
+  $pttBtn.classList.replace("bg-rose-600","bg-slate-400");
+  $pttBtn.classList.remove("hover:bg-rose-700","active:bg-rose-800");
+  $pttLbl.textContent = "Không hỗ trợ";
+  const isIP = !["localhost","127.0.0.1"].includes(location.hostname);
+  $pttSts.textContent = isIP
+    ? "⚠ Cần HTTPS — python -m web.app --ssl"
+    : "⚠ Trình duyệt không hỗ trợ mic";
+  $pttSts.classList.add("text-rose-600");
+}
+
+function setPttRec(on) {
+  if (on) {
+    $pttBtn.classList.replace("bg-rose-600","bg-emerald-500");
+    ["scale-110","ring-4","ring-emerald-300","animate-pulse"].forEach(c => $pttBtn.classList.add(c));
+    $pttLbl.textContent = "Đang nghe...";
+  } else {
+    $pttBtn.classList.replace("bg-emerald-500","bg-rose-600");
+    ["scale-110","ring-4","ring-emerald-300","animate-pulse"].forEach(c => $pttBtn.classList.remove(c));
+    $pttLbl.textContent = "Bấm & giữ";
+  }
+}
+
+async function startRec() {
+  if (_starting) return;
+  _starting = true; _pendingStop = false;
+  try {
+    _stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    if (_pendingStop) {
+      _stream.getTracks().forEach(t => t.stop());
+      _starting = false; _pendingStop = false;
+      $pttSts.textContent = "Sẵn sàng"; return;
+    }
+    _mr = new MediaRecorder(_stream); _chunks = [];
+    _mr.ondataavailable = e => { if (e.data.size > 0) _chunks.push(e.data); };
+    _mr.onstop = async () => {
+      _stream.getTracks().forEach(t => t.stop());
+      await sendAudio(new Blob(_chunks, {type: _mr.mimeType}));
+    };
+    _mr.start(); _starting = false;
+    setPttRec(true); $pttSts.textContent = "Đang nghe… thả tay để gửi";
+  } catch(e) {
+    _starting = false;
+    $pttSts.textContent = e.name === "NotAllowedError"
+      ? "Bị từ chối mic — kiểm tra quyền trình duyệt"
+      : "Lỗi mic: " + e.message;
+  }
+}
+
+function stopRec() {
+  if (_starting) { _pendingStop = true; return; }
+  if (_mr?.state === "recording") {
+    _mr.stop(); setPttRec(false); $pttSts.textContent = "Đang xử lý...";
+  }
+}
+
+$pttBtn.addEventListener("mousedown",  startRec);
+$pttBtn.addEventListener("mouseup",    stopRec);
+$pttBtn.addEventListener("mouseleave", stopRec);
+$pttBtn.addEventListener("touchstart", e => { e.preventDefault(); startRec(); });
+$pttBtn.addEventListener("touchend",   e => { e.preventDefault(); stopRec(); });
+
+let _spaceDown = false;
+window.addEventListener("keydown", e => {
+  const tag = document.activeElement.tagName;
+  if (e.code === "Space" && !_spaceDown && tag !== "INPUT" && tag !== "TEXTAREA") {
+    e.preventDefault(); _spaceDown = true; startRec();
+  }
+});
+window.addEventListener("keyup", e => {
+  if (e.code === "Space" && _spaceDown) { _spaceDown = false; stopRec(); }
+});
+
+// ════════════════════════════════════════════════════════════
+// SEND AUDIO → PROCESS RESULT
+// ════════════════════════════════════════════════════════════
+async function sendAudio(blob) {
+  const fd = new FormData();
+  fd.append("audio", blob, "rec.webm");
+  try {
+    const r = await fetch("/api/assistant/turn", {method: "POST", body: fd});
+    const data = await r.json();
+    if (!r.ok) { addMsg("bot", "Lỗi: " + data.error); $pttSts.textContent = "Sẵn sàng"; return; }
+    addMsg("user", data.transcript);
+    addMeta(data);
+    addMsg("bot", data.response);
+    if (data.tts_url) { $tts.src = data.tts_url; $tts.play().catch(()=>{}); }
+
+    if (data.action_type === "play_music") {
+      const {query, uid} = data.action_data;
+      showPanel("music");
+      if (uid) { _musicUserId = uid; loadPlaylist(uid); }
+      doMusicSearch(query, true);
+    } else if (data.action_type === "show_files") {
+      showPanel("files");
+      onFilesVerified(data.action_data);
+    }
+    $pttSts.textContent = "Sẵn sàng";
+  } catch(e) {
+    addMsg("bot", "Lỗi mạng: " + e.message);
+    $pttSts.textContent = "Sẵn sàng";
+  }
+}
+
+function addMsg(role, content) {
+  const d = document.createElement("div");
+  d.className = role === "user" ? "flex justify-end" : "flex justify-start";
+  d.innerHTML = `<div class="${role === "user"
+    ? "bg-emerald-600 text-white"
+    : "bg-slate-100 text-slate-800"} max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap">${esc(content)}</div>`;
+  $chat.appendChild(d);
+  $chat.scrollTop = $chat.scrollHeight;
+}
+
+function addMeta(r) {
+  const m = document.createElement("div");
+  m.className = "text-xs text-slate-400 pl-1 mb-1";
+  const sv = r.sv_required
+    ? ` · SV ${r.sv_passed ? "✓" : "✗"}(${r.sv_score?.toFixed(2)})`
+    : "";
+  m.innerHTML = `<span class="bg-slate-100 rounded px-1">${esc(r.intent)}</span>
+    [${esc(r.auth_level)}] · 👤 <b>${esc(r.identified_user_name)}</b>(${r.sid_score.toFixed(2)})${sv}
+    ${r.blocked ? "<span class='text-rose-500 font-bold'>⛔</span>" : ""}`;
+  $chat.appendChild(m);
+}
+
+// ════════════════════════════════════════════════════════════
+// SIDE PANEL MANAGEMENT
+// ════════════════════════════════════════════════════════════
+const $panel        = document.getElementById("side-panel");
+const $contentMusic = document.getElementById("content-music");
+const $contentFiles = document.getElementById("content-files");
+
+function showPanel(tab) {
+  $panel.classList.remove("hidden");
+  $panel.classList.add("flex");
+  switchTab(tab);
+  if (!document.getElementById("player-bar").classList.contains("hidden")) setPbPad(true);
+}
+
+function hidePanel() {
+  $panel.classList.add("hidden");
+  $panel.classList.remove("flex");
+}
+
+function switchTab(tab) {
+  const tabMusic = document.getElementById("tab-music");
+  const tabFiles = document.getElementById("tab-files");
+  ["bg-white","font-semibold","shadow-sm"].forEach(c => {
+    tabMusic.classList.toggle(c, tab === "music");
+    tabFiles.classList.toggle(c, tab === "files");
+  });
+  $contentMusic.classList.toggle("hidden", tab !== "music");
+  $contentFiles.classList.toggle("hidden", tab !== "files");
+  $contentMusic.classList.toggle("flex",   tab === "music");
+  $contentFiles.classList.toggle("flex",   tab === "files");
+}
+
+document.getElementById("tab-music").onclick   = () => switchTab("music");
+document.getElementById("tab-files").onclick   = () => switchTab("files");
+document.getElementById("panel-close").onclick = hidePanel;
+
+// ════════════════════════════════════════════════════════════
+// MUSIC PLAYER  (Deezer)
+// ════════════════════════════════════════════════════════════
+const $audio     = document.getElementById("audio-el");
+const $playerBar = document.getElementById("player-bar");
+
+let _musicUserId  = null;
+let userPlaylist  = [];
+let searchResults = [];
+let queue = [], queueIdx = -1;
+
+$audio.volume = 0.8;
+document.getElementById("vol-slider").oninput = e => { $audio.volume = e.target.value; };
+
+$audio.addEventListener("timeupdate", () => {
+  if (!$audio.duration) return;
+  const pct = ($audio.currentTime / $audio.duration) * 100;
+  document.getElementById("prog-fill").style.width = pct + "%";
+  document.getElementById("time-cur").textContent = fmt($audio.currentTime);
+  document.getElementById("time-tot").textContent = fmt($audio.duration);
+});
+$audio.addEventListener("ended",  () => { playNext(); });
+$audio.addEventListener("play",   () => { document.getElementById("play-btn").textContent = "⏸"; });
+$audio.addEventListener("pause",  () => { document.getElementById("play-btn").textContent = "▶"; });
+$audio.addEventListener("error",  () => { showToast("Không tải được bài này", true); playNext(); });
+
+document.getElementById("prog-track").addEventListener("click", e => {
+  if ($audio.duration)
+    $audio.currentTime = (e.offsetX / e.currentTarget.offsetWidth) * $audio.duration;
+});
+document.getElementById("play-btn").onclick = () => {
+  if ($audio.src) { $audio.paused ? $audio.play().catch(()=>{}) : $audio.pause(); }
+  else if (queue.length) playAt(0);
+};
+document.getElementById("prev-btn").onclick = () => { if (queueIdx > 0) playAt(queueIdx - 1); };
+document.getElementById("next-btn").onclick = () => playNext();
+document.getElementById("player-bar-close").onclick = () => {
+  $audio.pause(); $audio.src = "";
+  $playerBar.classList.add("hidden"); setPbPad(false);
+};
+
+function playNext() { if (queueIdx < queue.length - 1) playAt(queueIdx + 1); }
+
+function playAt(idx) {
+  if (idx < 0 || idx >= queue.length) return;
+  queueIdx = idx;
+  const t = queue[idx];
+  $audio.src = t.preview; $audio.play().catch(() => {});
+  document.getElementById("np-title").textContent  = t.title;
+  document.getElementById("np-artist").textContent = t.artist;
+  const $cov = document.getElementById("np-cover");
+  if (t.cover) { $cov.src = t.cover; $cov.classList.remove("hidden"); }
+  $playerBar.classList.remove("hidden"); setPbPad(true);
+  highlightActive();
+}
+
+function highlightActive() {
+  document.querySelectorAll(".track-card").forEach(el => {
+    const isSrc = (el.dataset.trackSrc === "playlist" && queue === userPlaylist)
+               || (el.dataset.trackSrc === "result"   && queue === searchResults);
+    const active = isSrc && Number(el.dataset.idx) === queueIdx;
+    el.classList.toggle("bg-emerald-50", active);
+    el.classList.toggle("border-emerald-300", active);
+  });
+}
+
+function setPbPad(on) { document.body.style.paddingBottom = on ? "64px" : ""; }
+
+document.getElementById("music-search-btn").onclick = () => {
+  const q = document.getElementById("music-q").value.trim();
+  if (q) doMusicSearch(q, false);
+};
+document.getElementById("music-q").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    const q = document.getElementById("music-q").value.trim();
+    if (q) doMusicSearch(q, false);
+  }
+});
+document.getElementById("music-random-btn").onclick = async () => {
+  const gs = ["pop","rock","ballad","edm","jazz","r&b","indie"];
+  const g = gs[Math.floor(Math.random() * gs.length)];
+  document.getElementById("music-q").value = g;
+  await doMusicSearch(g, true);
+  if (searchResults.length) showToast("🎲 " + g);
+};
+
+async function doMusicSearch(q, autoplay=false) {
+  const $sb = document.getElementById("music-search-btn");
+  $sb.textContent = "⏳"; $sb.disabled = true;
+  const r = await fetch("/api/music/search?q=" + encodeURIComponent(q));
+  const d = await r.json();
+  searchResults = d.tracks || [];
+  renderResults();
+  $sb.textContent = "🔍"; $sb.disabled = false;
+  if (autoplay && searchResults.length) { queue = [...searchResults]; playAt(0); }
+}
+
+function renderResults() {
+  const $c = document.getElementById("music-results");
+  const $e = document.getElementById("results-empty");
+  $c.innerHTML = "";
+  document.getElementById("results-count").textContent =
+    searchResults.length ? `(${searchResults.length})` : "";
+  if (!searchResults.length) { $c.appendChild($e); $e.style.display = "block"; return; }
+  $e.style.display = "none";
+  searchResults.forEach((t,i) => $c.appendChild(makeTrackCard(t, i, "result")));
+}
+
+async function loadPlaylist(uid) {
+  const r = await fetch(`/api/music/playlist/${uid}`);
+  const d = await r.json();
+  userPlaylist = r.ok ? (d.playlist || []) : [];
+  document.getElementById("music-user-name").textContent = uid;
+  document.getElementById("music-user-row").classList.remove("hidden");
+  renderPlaylist();
+}
+
+function renderPlaylist() {
+  const $c = document.getElementById("music-playlist");
+  const $e = document.getElementById("playlist-empty");
+  $c.innerHTML = "";
+  document.getElementById("playlist-count").textContent =
+    userPlaylist.length ? `(${userPlaylist.length})` : "";
+  if (!userPlaylist.length) { $c.appendChild($e); $e.style.display = "block"; return; }
+  $e.style.display = "none";
+  userPlaylist.forEach((t,i) => $c.appendChild(makeTrackCard(t, i, "playlist")));
+}
+
+function makeTrackCard(t, idx, src) {
+  const card = document.createElement("div");
+  card.className = "track-card flex items-center gap-1.5 p-1.5 bg-white border rounded text-xs hover:border-slate-300 transition";
+  card.dataset.idx      = idx;
+  card.dataset.trackSrc = src;
+
+  const coverHtml = t.cover
+    ? `<img src="${esc(t.cover)}" class="w-8 h-8 rounded object-cover flex-shrink-0">`
+    : `<div class="w-8 h-8 rounded bg-slate-200 flex-shrink-0 text-center leading-8 text-slate-400">♪</div>`;
+
+  const addBtn = src === "result" && _musicUserId
+    ? `<button class="btn-add px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded hover:bg-emerald-100 hover:text-emerald-700 flex-shrink-0">+</button>` : "";
+  const delBtn = src === "playlist"
+    ? `<button class="btn-del px-1.5 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100 flex-shrink-0">✕</button>` : "";
+
+  card.innerHTML = `
+    ${coverHtml}
+    <div class="flex-1 min-w-0">
+      <div class="font-medium truncate">${esc(t.title)}</div>
+      <div class="text-slate-500 truncate">${esc(t.artist)}</div>
+    </div>
+    <button class="btn-play px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex-shrink-0">▶</button>
+    ${addBtn}${delBtn}
+  `;
+  card.querySelector(".btn-play").onclick = () => {
+    queue = src === "playlist" ? [...userPlaylist] : [...searchResults];
+    playAt(idx);
+  };
+  if (src === "result" && _musicUserId)
+    card.querySelector(".btn-add").onclick = () => addToPlaylist(t);
+  if (src === "playlist")
+    card.querySelector(".btn-del").onclick = () => removeFromPlaylist(t.id, t.title);
+  return card;
+}
+
+async function addToPlaylist(track) {
+  const r = await fetch(`/api/music/playlist/${_musicUserId}/add`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(track)});
+  if (r.ok) { await loadPlaylist(_musicUserId); showToast(`✅ Thêm "${track.title}"`); renderResults(); }
+  else showToast("Lỗi thêm playlist", true);
+}
+
+async function removeFromPlaylist(id, title) {
+  const r = await fetch(`/api/music/playlist/${_musicUserId}/remove`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({id})});
+  if (r.ok) { await loadPlaylist(_musicUserId); showToast(`Xóa "${title}"`); }
+  else showToast("Lỗi xóa", true);
+}
+
+document.getElementById("music-suggest-btn").onclick = async () => {
+  if (!_musicUserId) return;
+  const r = await fetch(`/api/music/playlist/${_musicUserId}`);
+  const d = await r.json();
+  const q = ((d.favorite_artist || "") + " " + (d.favorite_genre || "pop")).trim();
+  document.getElementById("music-q").value = q;
+  doMusicSearch(q);
+};
+
+// ════════════════════════════════════════════════════════════
+// FILES PANEL  (voice verify inline)
+// ════════════════════════════════════════════════════════════
+let _fvMr=null, _fvChunks=[], _fvStream=null;
+let _fvStarting=false, _fvPending=false;
+
+const $fvBtn    = document.getElementById("files-verify-btn");
+const $fvLabel  = document.getElementById("files-verify-label");
+const $fvStatus = document.getElementById("files-verify-status");
+
+function setFvRec(on) {
+  if (on) {
+    $fvBtn.classList.replace("bg-blue-600","bg-emerald-500");
+    ["scale-110","ring-4","ring-emerald-300","animate-pulse"].forEach(c => $fvBtn.classList.add(c));
+    $fvLabel.textContent = "Nghe...";
+  } else {
+    $fvBtn.classList.replace("bg-emerald-500","bg-blue-600");
+    ["scale-110","ring-4","ring-emerald-300","animate-pulse"].forEach(c => $fvBtn.classList.remove(c));
+    $fvLabel.textContent = "Giữ";
+  }
+}
+
+async function startFv() {
+  if (_fvStarting) return;
+  _fvStarting = true; _fvPending = false;
+  try {
+    _fvStream = await navigator.mediaDevices.getUserMedia({audio: true});
+    if (_fvPending) {
+      _fvStream.getTracks().forEach(t => t.stop());
+      _fvStarting = false; _fvPending = false;
+      $fvStatus.textContent = "Giữ nút để xác thực"; return;
+    }
+    _fvMr = new MediaRecorder(_fvStream); _fvChunks = [];
+    _fvMr.ondataavailable = e => { if (e.data.size > 0) _fvChunks.push(e.data); };
+    _fvMr.onstop = async () => {
+      _fvStream.getTracks().forEach(t => t.stop());
+      $fvStatus.textContent = "Đang xác thực...";
+      const blob = new Blob(_fvChunks, {type: _fvMr.mimeType});
+      const fd = new FormData(); fd.append("audio", blob, "fv.webm");
+      const r = await fetch("/api/files/verify", {method:"POST", body:fd});
+      const d = await r.json();
+      if (!r.ok) {
+        $fvStatus.textContent = "✗ " + d.error;
+        $fvStatus.classList.add("text-rose-600"); return;
+      }
+      onFilesVerified(d);
+    };
+    _fvMr.start(); _fvStarting = false;
+    setFvRec(true); $fvStatus.textContent = "Đang nghe...";
+  } catch(e) {
+    _fvStarting = false;
+    $fvStatus.textContent = "Lỗi mic: " + e.message;
+  }
+}
+
+function stopFv() {
+  if (_fvStarting) { _fvPending = true; return; }
+  if (_fvMr?.state === "recording") { _fvMr.stop(); setFvRec(false); }
+}
+
+$fvBtn.addEventListener("mousedown",  startFv);
+$fvBtn.addEventListener("mouseup",    stopFv);
+$fvBtn.addEventListener("mouseleave", stopFv);
+$fvBtn.addEventListener("touchstart", e => { e.preventDefault(); startFv(); });
+$fvBtn.addEventListener("touchend",   e => { e.preventDefault(); stopFv(); });
+
+function onFilesVerified(data) {
+  document.getElementById("files-verify-widget").classList.add("hidden");
+  const $mgr = document.getElementById("files-manager");
+  $mgr.classList.remove("hidden"); $mgr.classList.add("flex");
+  document.getElementById("files-user-name").textContent = data.user_name || data.user_id;
+  renderFileList(data.files || []);
+}
+
+function renderFileList(files) {
+  const $list  = document.getElementById("files-list");
+  const $empty = document.getElementById("files-empty");
+  $list.innerHTML = "";
+  if (!files.length) { $empty.classList.remove("hidden"); return; }
+  $empty.classList.add("hidden");
+  files.forEach(f => {
+    const row = document.createElement("div");
+    row.className = "flex items-center gap-1.5 px-2 py-2 hover:bg-slate-50";
+    row.innerHTML = `
+      <span class="text-base">${fileIcon(f.name)}</span>
+      <div class="flex-1 min-w-0">
+        <div class="font-medium truncate">${esc(f.name)}</div>
+        <div class="text-slate-400">${fmtSz(f.size)} · ${esc(f.modified)}</div>
+      </div>
+      <a href="/api/files/download/${encodeURIComponent(f.name)}"
+         download="${esc(f.name)}"
+         class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇</a>
+      <button data-name="${esc(f.name)}"
+              class="btn-fdel px-2 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100">🗑</button>
+    `;
+    row.querySelector(".btn-fdel").onclick = () => deletePanelFile(f.name);
+    $list.appendChild(row);
+  });
+}
+
+async function reloadFiles() {
+  const r = await fetch("/api/files/list");
+  if (!r.ok) { showToast("Phiên hết hạn — xác thực lại", true); resetFilesPanel(); return; }
+  renderFileList((await r.json()).files);
+}
+
+async function deletePanelFile(name) {
+  if (!confirm(`Xóa "${name}"?`)) return;
+  const r = await fetch(`/api/files/delete/${encodeURIComponent(name)}`, {method:"POST"});
+  r.ok ? (showToast(`Đã xóa "${name}"`), reloadFiles()) : showToast("Lỗi xóa", true);
+}
+
+document.getElementById("files-upload-btn").onclick = async () => {
+  const files = document.getElementById("files-input").files;
+  if (!files.length) { showToast("Chọn file trước", true); return; }
+  const $msg = document.getElementById("files-upload-msg");
+  $msg.textContent = "Đang tải..."; $msg.classList.remove("hidden");
+  const fd = new FormData();
+  for (const f of files) fd.append(f.name, f);
+  const r = await fetch("/api/files/upload", {method:"POST", body:fd});
+  const d = await r.json();
+  if (r.ok) {
+    $msg.textContent = "✅ Đã tải: " + d.uploaded.join(", ");
+    $msg.className = "text-xs px-1 text-emerald-600";
+    document.getElementById("files-input").value = "";
+    reloadFiles();
+  } else {
+    $msg.textContent = "✗ " + d.error;
+    $msg.className = "text-xs px-1 text-rose-600";
+  }
+  $msg.classList.remove("hidden");
+};
+
+document.getElementById("files-logout-btn").onclick = async () => {
+  await fetch("/api/files/logout", {method:"POST"});
+  resetFilesPanel();
+};
+
+function resetFilesPanel() {
+  document.getElementById("files-verify-widget").classList.remove("hidden");
+  const $mgr = document.getElementById("files-manager");
+  $mgr.classList.add("hidden"); $mgr.classList.remove("flex");
+  $fvStatus.textContent = "Giữ nút để xác thực giọng nói";
+  $fvStatus.classList.remove("text-rose-600");
+}
+
+// ════════════════════════════════════════════════════════════
+// ENROLLMENT
+// ════════════════════════════════════════════════════════════
+const NUM_SAMPLES = {{ num_samples }};
+const DURATION_MS = {{ duration }} * 1000;
+const PROMPTS = [
+  "Trợ lý ơi, hôm nay thời tiết thế nào?",
+  "Phát một bản nhạc tôi yêu thích đi.",
+  "Cho tôi xem lịch làm việc hôm nay.",
+  "Đọc cho tôi ghi chú cuối tuần.",
+  "Một hai ba bốn năm sáu bảy tám chín mười.",
+];
+
+let enrollSamples = [], enrollRecording = false, enrollMR = null, enrollChunks = [];
+
+const $eBtn     = document.getElementById("enroll-record-btn");
+const $eStatus  = document.getElementById("enroll-status");
+const $eCounter = document.getElementById("enroll-sample-counter");
+const $ePrompt  = document.getElementById("enroll-prompt-text");
+const $eList    = document.getElementById("enroll-samples-list");
+const $eSubmit  = document.getElementById("enroll-submit-btn");
+const $eResult  = document.getElementById("enroll-result");
+
+function enrollUpdatePrompt() {
+  $ePrompt.textContent = PROMPTS[enrollSamples.length % PROMPTS.length];
+  $eCounter.textContent = enrollSamples.length + 1;
+}
+
+function enrollRenderSamples() {
+  $eList.innerHTML = "";
+  enrollSamples.forEach((s, i) => {
+    const div = document.createElement("div");
+    div.className = "flex items-center gap-3 p-2 bg-slate-50 border rounded";
+    div.innerHTML = `
+      <span class="text-sm font-medium">Mẫu ${i+1}</span>
+      <audio controls src="${s.url}" class="h-8"></audio>
+      <button data-i="${i}" class="text-xs text-rose-600 hover:underline">Xóa</button>
+    `;
+    div.querySelector("button").onclick = e => {
+      const idx = +e.target.dataset.i;
+      enrollSamples.splice(idx, 1);
+      enrollRenderSamples(); enrollUpdatePrompt();
+      $eBtn.disabled = false;
+      $eSubmit.disabled = enrollSamples.length < 2;
+    };
+    $eList.appendChild(div);
+  });
+  enrollCheckReady();
+}
+
+async function enrollStartRecording() {
+  if (enrollSamples.length >= NUM_SAMPLES) { $eStatus.textContent = "Đã đủ số mẫu yêu cầu."; return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    enrollMR = new MediaRecorder(stream); enrollChunks = [];
+    enrollMR.ondataavailable = e => { if (e.data.size > 0) enrollChunks.push(e.data); };
+    enrollMR.onstop = () => {
+      const blob = new Blob(enrollChunks, {type: enrollMR.mimeType});
+      enrollSamples.push({blob, url: URL.createObjectURL(blob)});
+      stream.getTracks().forEach(t => t.stop());
+      enrollRenderSamples(); enrollUpdatePrompt();
+      enrollRecording = false;
+      $eBtn.textContent = `🎙 Bắt đầu thu mẫu ${enrollSamples.length + 1}/${NUM_SAMPLES}`;
+      $eBtn.disabled = enrollSamples.length >= NUM_SAMPLES;
+      $eStatus.textContent = enrollSamples.length >= NUM_SAMPLES
+        ? "Đã đủ mẫu. Bấm Lưu bên dưới." : "Sẵn sàng thu mẫu tiếp theo.";
+    };
+    enrollMR.start(); enrollRecording = true;
+    $eBtn.textContent = `⏺ Đang thu... (tự dừng sau ${DURATION_MS/1000}s)`;
+    $eStatus.textContent = "Đọc câu mẫu rõ ràng vào microphone.";
+    setTimeout(() => { if (enrollRecording && enrollMR.state === "recording") enrollMR.stop(); }, DURATION_MS);
+  } catch(err) {
+    $eStatus.textContent = "Lỗi mic: " + err.message;
+  }
+}
+
+$eBtn.onclick = enrollStartRecording;
+
+function buildEnrollPreferences() {
+  const prefs = {};
+  const genre   = document.getElementById("enroll-pref_genre").value.trim();
+  const artist  = document.getElementById("enroll-pref_artist").value.trim();
+  const balance = document.getElementById("enroll-pref_balance").value.trim();
+  const notes   = document.getElementById("enroll-pref_notes").value.trim();
+  const sched   = document.getElementById("enroll-pref_schedule").value.trim();
+  if (genre)   prefs.favorite_genre  = genre;
+  if (artist)  prefs.favorite_artist = artist;
+  if (balance) prefs.balance         = Number(balance);
+  if (notes)   prefs.notes    = notes.split("\n").map(s=>s.trim()).filter(Boolean);
+  if (sched)   prefs.schedule = sched.split("\n").map(s=>s.trim()).filter(Boolean);
+  return prefs;
+}
+
+function enrollCheckReady() {
+  const uid  = document.getElementById("enroll-user_id").value.trim();
+  const name = document.getElementById("enroll-name").value.trim();
+  const pw   = document.getElementById("enroll-password").value.trim();
+  $eSubmit.disabled = !(uid && name && pw && enrollSamples.length >= 2);
+}
+
+["enroll-user_id","enroll-name","enroll-password"].forEach(id =>
+  document.getElementById(id).addEventListener("input", enrollCheckReady));
+
+$eSubmit.onclick = async () => {
+  const user_id = document.getElementById("enroll-user_id").value.trim();
+  const name    = document.getElementById("enroll-name").value.trim();
+  const pw      = document.getElementById("enroll-password").value.trim();
+  if (!user_id || !name || !pw) {
+    $eResult.innerHTML = '<span class="text-rose-600">Cần nhập đầy đủ user_id, name và password.</span>';
+    return;
+  }
+  $eSubmit.disabled = true;
+  $eResult.innerHTML = '<span class="text-slate-600">Đang upload và xử lý...</span>';
+  const fd = new FormData();
+  fd.append("user_id", user_id); fd.append("name", name); fd.append("password", pw);
+  fd.append("preferences", JSON.stringify(buildEnrollPreferences()));
+  enrollSamples.forEach((s,i) => fd.append(`sample_${i}`, s.blob, `sample_${i}.webm`));
+  try {
+    const r = await fetch("/api/enroll", {method:"POST", body:fd});
+    const data = await r.json();
+    if (!r.ok) {
+      $eResult.innerHTML = `<span class="text-rose-600">Lỗi: ${esc(data.error)}</span>`;
+      $eSubmit.disabled = false; return;
+    }
+    $eResult.innerHTML = `
+      <div class="p-3 bg-emerald-50 border border-emerald-200 rounded">
+        ✅ Đã đăng ký <strong>${esc(data.name)}</strong>
+        với ${data.n_samples} mẫu (centroid norm = ${data.centroid_norm.toFixed(4)}).
+      </div>`;
+    // Append new card to grid
+    addUserCard(data.user_id, data.name);
+    // Reset form fields
+    ["enroll-user_id","enroll-name","enroll-password"].forEach(id =>
+      document.getElementById(id).value = "");
+    enrollSamples = []; enrollRenderSamples(); enrollUpdatePrompt();
+    $eBtn.disabled = false; $eBtn.textContent = `🎙 Bắt đầu thu mẫu 1/${NUM_SAMPLES}`;
+  } catch(e) {
+    $eResult.innerHTML = `<span class="text-rose-600">Lỗi mạng: ${esc(e.message)}</span>`;
+    $eSubmit.disabled = false;
+  }
+};
+
+function addUserCard(uid, name) {
+  const grid = document.getElementById("users-grid");
+  if (!grid) return;
+  // If grid was the empty-state div, clear it and make it a grid
+  if (grid.tagName !== "DIV" || grid.classList.contains("py-16")) {
+    grid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4";
+    grid.innerHTML = "";
+  }
+  const div = document.createElement("div");
+  div.className = "user-card relative bg-slate-50 border rounded-xl p-5 cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all duration-150";
+  div.dataset.uid  = uid;
+  div.dataset.name = name;
+  div.innerHTML = `
+    <button class="card-trash-btn absolute top-3 right-3 text-slate-300 hover:text-rose-500 transition p-1 rounded"
+            title="Xóa người dùng" data-uid="${esc(uid)}" data-name="${esc(name)}">🗑</button>
+    <div class="pr-6">
+      <div class="text-lg font-semibold truncate">${esc(name)}</div>
+      <div class="text-sm text-slate-400 mt-0.5">
+        <code class="bg-slate-100 px-1 rounded text-xs">${esc(uid)}</code>
+      </div>
+    </div>
+    <div class="mt-3 text-xs text-slate-400">Nhấn để xem chi tiết</div>
+  `;
+  div.addEventListener("click", e => {
+    if (e.target.closest(".card-trash-btn")) return;
+    openModal(uid, name);
+  });
+  div.querySelector(".card-trash-btn").addEventListener("click", e => {
+    e.stopPropagation(); openModal(uid, name);
+  });
+  grid.appendChild(div);
+}
+
+// Password eye toggle for enroll form
+document.getElementById("enroll-pw-eye").onclick = function() { togglePwEye("enroll-password", this); };
+
+enrollUpdatePrompt();
+
+// ════════════════════════════════════════════════════════════
+// USER CARDS  (initial binding)
+// ════════════════════════════════════════════════════════════
+document.querySelectorAll(".user-card").forEach(card => {
+  card.addEventListener("click", e => {
+    if (e.target.closest(".card-trash-btn")) return;
+    openModal(card.dataset.uid, card.dataset.name);
+  });
+});
+document.querySelectorAll(".card-trash-btn").forEach(btn => {
+  btn.addEventListener("click", e => {
+    e.stopPropagation(); openModal(btn.dataset.uid, btn.dataset.name);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// USER DETAIL MODAL
+// ════════════════════════════════════════════════════════════
+let _modalUid        = null;
+let _modalPw         = "";
+let _modalFilesReady = false;
+
+async function openModal(uid, name) {
+  _modalUid = uid; _modalPw = ""; _modalFilesReady = false;
+
+  document.getElementById("modal-user-name").textContent = name;
+  document.getElementById("modal-user-id").textContent   = "ID: " + uid;
+  document.getElementById("modal-pw").value = "";
+  document.getElementById("modal-lock-error").classList.add("hidden");
+  document.getElementById("modal-lock").classList.remove("hidden");
+  document.getElementById("modal-editor").classList.add("hidden");
+  document.getElementById("modal-save-msg").classList.add("hidden");
+  document.getElementById("modal-pw-msg").classList.add("hidden");
+  document.getElementById("modal-delete-msg").classList.add("hidden");
+  document.getElementById("modal-files-manager").classList.add("hidden");
+  document.getElementById("modal-files-pw-section").classList.remove("hidden");
+  document.getElementById("modal-files-open-msg").classList.add("hidden");
+  document.getElementById("modal-name").value = "";
+
+  // Pre-fill preferences (best effort, no auth needed for read)
+  try {
+    const r = await fetch(`/api/users/${uid}`);
+    if (r.ok) populateModal(await r.json());
+  } catch(_) {}
+
+  switchModalTab("info");
+  document.getElementById("user-modal").classList.remove("hidden");
+}
+
+function closeModal() {
+  document.getElementById("user-modal").classList.add("hidden");
+  _modalUid = null; _modalPw = ""; _modalFilesReady = false;
+}
+
+function populateModal(u) {
+  const prefs = u.preferences || {};
+  if (!document.getElementById("modal-name").value)
+    document.getElementById("modal-name").value = u.name || "";
+  document.getElementById("modal-pref-genre").value   = prefs.favorite_genre  || "";
+  document.getElementById("modal-pref-artist").value  = prefs.favorite_artist || "";
+  document.getElementById("modal-pref-balance").value = prefs.balance != null ? prefs.balance : "";
+  document.getElementById("modal-pref-notes").value =
+    Array.isArray(prefs.notes) ? prefs.notes.join("\n") : (prefs.notes || "");
+  document.getElementById("modal-pref-schedule").value =
+    Array.isArray(prefs.schedule) ? prefs.schedule.join("\n") : (prefs.schedule || "");
+}
+
+function switchModalTab(tab) {
+  const btnInfo  = document.getElementById("modal-tab-info-btn");
+  const btnFiles = document.getElementById("modal-tab-files-btn");
+  const tabInfo  = document.getElementById("modal-tab-info");
+  const tabFiles = document.getElementById("modal-tab-files");
+
+  ["border-emerald-500","font-medium","text-emerald-700"].forEach(c => {
+    btnInfo.classList.toggle(c,  tab === "info");
+    btnFiles.classList.toggle(c, tab === "files");
+  });
+  ["border-transparent","text-slate-500"].forEach(c => {
+    btnInfo.classList.toggle(c,  tab !== "info");
+    btnFiles.classList.toggle(c, tab !== "files");
+  });
+  tabInfo.classList.toggle("hidden",  tab !== "info");
+  tabFiles.classList.toggle("hidden", tab !== "files");
+}
+
+// Unlock button
+document.getElementById("modal-unlock-btn").onclick = async () => {
+  const pw   = document.getElementById("modal-pw").value;
+  const $err = document.getElementById("modal-lock-error");
+  // Validate password with a lightweight no-op update-info call
+  const r = await fetch(`/api/users/${_modalUid}/update-info`, {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({password: pw})
+  });
+  if (!r.ok) {
+    const d = await r.json();
+    $err.textContent = d.error || "Sai mật khẩu";
+    $err.classList.remove("hidden"); return;
+  }
+  _modalPw = pw;
+  $err.classList.add("hidden");
+  document.getElementById("modal-lock").classList.add("hidden");
+  if (!document.getElementById("modal-name").value)
+    document.getElementById("modal-name").value = document.getElementById("modal-user-name").textContent;
+  document.getElementById("modal-editor").classList.remove("hidden");
+};
+document.getElementById("modal-pw").addEventListener("keydown", e => {
+  if (e.key === "Enter") document.getElementById("modal-unlock-btn").click();
+});
+
+// Password eye toggles
+document.getElementById("modal-pw-eye").onclick     = function() { togglePwEye("modal-pw", this); };
+document.getElementById("modal-new-pw-eye").onclick = function() { togglePwEye("modal-new-pw", this); };
+
+// Modal tab buttons
+document.getElementById("modal-tab-info-btn").onclick  = () => switchModalTab("info");
+document.getElementById("modal-tab-files-btn").onclick = () => {
+  switchModalTab("files");
+  if (!_modalFilesReady) {
+    document.getElementById("modal-files-pw-section").classList.remove("hidden");
+    document.getElementById("modal-files-manager").classList.add("hidden");
+  }
+};
+
+// Save info + preferences
+document.getElementById("modal-save-btn").onclick = async () => {
+  const $msg    = document.getElementById("modal-save-msg");
+  const name    = document.getElementById("modal-name").value.trim();
+  const genre   = document.getElementById("modal-pref-genre").value.trim();
+  const artist  = document.getElementById("modal-pref-artist").value.trim();
+  const balance = document.getElementById("modal-pref-balance").value.trim();
+  const notesRaw = document.getElementById("modal-pref-notes").value.trim();
+  const schedRaw = document.getElementById("modal-pref-schedule").value.trim();
+
+  const preferences = {};
+  if (genre)   preferences.favorite_genre  = genre;
+  if (artist)  preferences.favorite_artist = artist;
+  if (balance) preferences.balance         = Number(balance);
+  if (notesRaw) preferences.notes    = notesRaw.split("\n").map(s=>s.trim()).filter(Boolean);
+  if (schedRaw) preferences.schedule = schedRaw.split("\n").map(s=>s.trim()).filter(Boolean);
+
+  $msg.textContent = "Đang lưu..."; $msg.className = "text-sm text-slate-500"; $msg.classList.remove("hidden");
+
+  const rInfo = await fetch(`/api/users/${_modalUid}/update-info`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({password: _modalPw, name})
+  });
+  if (!rInfo.ok) {
+    const d = await rInfo.json();
+    $msg.textContent = "Lỗi: " + (d.error || "Không rõ");
+    $msg.className = "text-sm text-rose-600"; return;
+  }
+
+  const rPrefs = await fetch(`/api/users/${_modalUid}/update`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({password: _modalPw, preferences})
+  });
+  if (!rPrefs.ok) {
+    const d = await rPrefs.json();
+    $msg.textContent = "Lỗi preferences: " + (d.error || "Không rõ");
+    $msg.className = "text-sm text-rose-600"; return;
+  }
+
+  $msg.textContent = "✓ Đã lưu"; $msg.className = "text-sm text-emerald-600";
+
+  // Update card in DOM
+  const card = document.querySelector(`.user-card[data-uid="${_modalUid}"]`);
+  if (card && name) {
+    card.dataset.name = name;
+    const nameEl = card.querySelector(".text-lg.font-semibold");
+    if (nameEl) nameEl.textContent = name;
+    document.getElementById("modal-user-name").textContent = name;
+    const trashBtn = card.querySelector(".card-trash-btn");
+    if (trashBtn) trashBtn.dataset.name = name;
+  }
+};
+
+// Change password
+document.getElementById("modal-change-pw-btn").onclick = async () => {
+  const newPw = document.getElementById("modal-new-pw").value.trim();
+  const $msg  = document.getElementById("modal-pw-msg");
+  if (!newPw) {
+    $msg.textContent = "Nhập mật khẩu mới"; $msg.className = "text-sm text-rose-600";
+    $msg.classList.remove("hidden"); return;
+  }
+  const r = await fetch(`/api/users/${_modalUid}/update-info`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({password: _modalPw, new_password: newPw})
+  });
+  const d = await r.json();
+  if (!r.ok) {
+    $msg.textContent = "Lỗi: " + (d.error || "Không rõ");
+    $msg.className = "text-sm text-rose-600";
+  } else {
+    _modalPw = newPw;
+    document.getElementById("modal-new-pw").value = "";
+    $msg.textContent = "✓ Đã đổi mật khẩu"; $msg.className = "text-sm text-emerald-600";
+  }
+  $msg.classList.remove("hidden");
+};
+
+// Delete user
+document.getElementById("modal-delete-btn").onclick = async () => {
+  const uname = document.getElementById("modal-user-name").textContent;
+  if (!confirm(`Xóa người dùng "${uname}"? Embedding sẽ mất, không khôi phục được.`)) return;
+  const $msg = document.getElementById("modal-delete-msg");
+  const r = await fetch(`/api/users/${_modalUid}/delete`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({password: _modalPw})
+  });
+  if (!r.ok) {
+    const d = await r.json();
+    $msg.textContent = "Lỗi: " + (d.error || "Không rõ");
+    $msg.className = "text-sm text-rose-600"; $msg.classList.remove("hidden"); return;
+  }
+  const card = document.querySelector(`.user-card[data-uid="${_modalUid}"]`);
+  if (card) card.remove();
+  closeModal();
+  showToast(`Đã xóa người dùng "${uname}"`);
+};
+
+// Close modal
+document.getElementById("modal-close").onclick = closeModal;
+document.getElementById("user-modal").addEventListener("click", e => {
+  if (e.target === document.getElementById("user-modal")) closeModal();
+});
+window.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+// ── Modal Files tab ───────────────────────────────────────
+document.getElementById("modal-files-open-btn").onclick = async () => {
+  const $msg = document.getElementById("modal-files-open-msg");
+  $msg.textContent = "Đang mở..."; $msg.className = "text-sm text-slate-500"; $msg.classList.remove("hidden");
+  const r = await fetch("/api/files/verify-password", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({user_id: _modalUid, password: _modalPw})
+  });
+  const d = await r.json();
+  if (!r.ok) {
+    $msg.textContent = "Lỗi: " + (d.error || "Không rõ");
+    $msg.className = "text-sm text-rose-600"; return;
+  }
+  $msg.classList.add("hidden");
+  _modalFilesReady = true;
+  document.getElementById("modal-files-pw-section").classList.add("hidden");
+  document.getElementById("modal-files-manager").classList.remove("hidden");
+  await loadModalFiles();
+};
+
+async function loadModalFiles() {
+  const r = await fetch("/api/files/list");
+  if (!r.ok) { showToast("Phiên file hết hạn", true); return; }
+  renderModalFileList((await r.json()).files || []);
+}
+
+function renderModalFileList(files) {
+  const $list  = document.getElementById("modal-files-list");
+  const $empty = document.getElementById("modal-files-empty");
+  $list.innerHTML = "";
+  if (!files.length) { $empty.classList.remove("hidden"); return; }
+  $empty.classList.add("hidden");
+  files.forEach(f => {
+    const row = document.createElement("div");
+    row.className = "flex items-center gap-2 px-3 py-2.5 hover:bg-slate-50";
+    row.innerHTML = `
+      <span class="text-lg">${fileIcon(f.name)}</span>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-medium truncate">${esc(f.name)}</div>
+        <div class="text-xs text-slate-400">${fmtSz(f.size)} · ${esc(f.modified)}</div>
+      </div>
+      <a href="/api/files/download/${encodeURIComponent(f.name)}"
+         download="${esc(f.name)}"
+         class="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇ Tải</a>
+      <button data-name="${esc(f.name)}"
+              class="btn-mfdel text-xs px-2 py-1 bg-rose-50 text-rose-600 rounded hover:bg-rose-100">🗑 Xóa</button>
+    `;
+    row.querySelector(".btn-mfdel").onclick = () => deleteModalFile(f.name);
+    $list.appendChild(row);
+  });
+}
+
+async function deleteModalFile(name) {
+  if (!confirm(`Xóa "${name}"?`)) return;
+  const r = await fetch(`/api/files/delete/${encodeURIComponent(name)}`, {method:"POST"});
+  r.ok ? (showToast(`Đã xóa "${name}"`), loadModalFiles()) : showToast("Lỗi xóa", true);
+}
+
+document.getElementById("modal-files-upload-btn").onclick = async () => {
+  const files = document.getElementById("modal-files-input").files;
+  if (!files.length) { showToast("Chọn file trước", true); return; }
+  const $msg = document.getElementById("modal-files-upload-msg");
+  $msg.textContent = "Đang tải..."; $msg.className = "text-xs text-slate-500"; $msg.classList.remove("hidden");
+  const fd = new FormData();
+  for (const f of files) fd.append(f.name, f);
+  const r = await fetch("/api/files/upload", {method:"POST", body:fd});
+  const d = await r.json();
+  if (r.ok) {
+    $msg.textContent = "✅ Đã tải: " + d.uploaded.join(", ");
+    $msg.className = "text-xs text-emerald-600";
+    document.getElementById("modal-files-input").value = "";
+    loadModalFiles();
+  } else {
+    $msg.textContent = "✗ " + d.error;
+    $msg.className = "text-xs text-rose-600";
+  }
+  $msg.classList.remove("hidden");
+};
+</script>
+
 {% endblock %}

@@ -7,8 +7,9 @@ Flow chính:
         └─ PERSONAL  → handler chạy với user info để cá nhân hóa
                        (nếu guest thì handler tự xử lý)
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
+from urllib.parse import quote
 import numpy as np
 
 from . import handlers
@@ -31,6 +32,7 @@ class TurnResult:
     sv_score: Optional[float]
     response: str
     blocked: bool                # True nếu SV fail
+    action_url: Optional[str] = None  # URL browser tự mở (vd: YouTube search)
 
 
 class Router:
@@ -76,12 +78,15 @@ class Router:
                     blocked = True
 
         # ----- Bước 3: dispatch handler nếu chưa bị block -----
+        action_url = None
         if not blocked:
             handler = handlers.HANDLERS.get(intent, handlers.handle_unknown)
             # PERSONAL: pass user (có thể None → handler xử lý guest case)
             # NORMAL: pass user vẫn được, handler thường ignore
             # IMPORTANT: chắc chắn user != None vì đã verify
             response = handler(entities, user)
+
+            # action_url không dùng nữa — xử lý ở app.py qua action_type/action_data
 
         return TurnResult(
             transcript=transcript,
@@ -96,4 +101,5 @@ class Router:
             sv_score=sv_score,
             response=response,
             blocked=blocked,
+            action_url=action_url,
         )
