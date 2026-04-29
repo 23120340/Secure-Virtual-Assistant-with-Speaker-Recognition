@@ -40,13 +40,14 @@ class Router:
         self.spk = speaker_manager
 
     def handle_turn(self, audio: np.ndarray, transcript: str,
-                    nlu_result: dict) -> TurnResult:
+                    nlu_result: dict, extra_context: Optional[dict] = None) -> TurnResult:
         """Xử lý 1 turn hoàn chỉnh.
 
         Args:
             audio: raw audio đã trim VAD (dùng cho SID + SV)
             transcript: text từ ASR
             nlu_result: {intent, entities} từ NLU
+            extra_context: kwargs forwarded to handlers (db, smtp_config, ...)
         """
         intent = nlu_result["intent"]
         entities = nlu_result["entities"]
@@ -81,10 +82,8 @@ class Router:
         action_url = None
         if not blocked:
             handler = handlers.HANDLERS.get(intent, handlers.handle_unknown)
-            # PERSONAL: pass user (có thể None → handler xử lý guest case)
-            # NORMAL: pass user vẫn được, handler thường ignore
-            # IMPORTANT: chắc chắn user != None vì đã verify
-            response = handler(entities, user)
+            ctx = extra_context or {}
+            response = handler(entities, user, **ctx)
 
             # action_url không dùng nữa — xử lý ở app.py qua action_type/action_data
 

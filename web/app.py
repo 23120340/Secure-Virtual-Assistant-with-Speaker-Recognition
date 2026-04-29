@@ -282,8 +282,9 @@ def register_routes(app):
             return jsonify({"error": "Audio quá ngắn / không có speech"}), 400
 
         # ASR → NLU → Router
-        asr = app.config["asr"]
-        nlu = app.config["nlu"]
+        db     = app.config["db"]
+        asr    = app.config["asr"]
+        nlu    = app.config["nlu"]
         router = app.config["router"]
 
         transcript = asr.transcribe(audio)
@@ -291,7 +292,14 @@ def register_routes(app):
             return jsonify({"error": "ASR không nhận diện được"}), 400
 
         nlu_result = nlu.parse(transcript)
-        result = router.handle_turn(audio, transcript, nlu_result)
+        smtp_cfg = {
+            "host":     config.SMTP_HOST,
+            "port":     config.SMTP_PORT,
+            "user":     config.SMTP_USER,
+            "password": config.SMTP_PASS,
+        }
+        result = router.handle_turn(audio, transcript, nlu_result,
+                                    extra_context={"db": db, "smtp_config": smtp_cfg})
 
         payload = asdict(result)
         from urllib.parse import quote as _quote
@@ -410,7 +418,13 @@ def register_routes(app):
 
         if not blocked:
             handler  = _h.HANDLERS.get(intent, _h.handle_unknown)
-            response = handler(entities, user)
+            smtp_cfg = {
+                "host":     config.SMTP_HOST,
+                "port":     config.SMTP_PORT,
+                "user":     config.SMTP_USER,
+                "password": config.SMTP_PASS,
+            }
+            response = handler(entities, user, db=db, smtp_config=smtp_cfg)
 
         from urllib.parse import quote as _q
         payload = {

@@ -17,7 +17,7 @@
   --txt:      #16102a;
   --txt-2:    #6b7280;
   /* Typography */
-  --font-head: 'Monument Extended', 'Barlow Condensed', 'Oswald', sans-serif;
+  --font-head: 'Monument Extended', 'Montserrat', sans-serif;
   --font-body: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
@@ -108,9 +108,10 @@ button, input, select, textarea {
 
 /* Section headings */
 .s-title {
-  font-family: var(--font-body);
+  font-family: var(--font-head);
   font-size: clamp(1.5rem, 3vw, 2.2rem);
-  font-weight: 800; letter-spacing: -.02em; line-height: 1.15;
+  font-weight: 700; letter-spacing: .04em; line-height: 1.15;
+  text-transform: uppercase;
   color: var(--txt);
 }
 .s-title em {
@@ -225,6 +226,10 @@ button, input, select, textarea {
   from { transform: rotate(0deg) scale(1.02); }
   to   { transform: rotate(360deg) scale(1.02); }
 }
+@keyframes spin-icon {
+  to { transform: rotate(360deg); }
+}
+.spin-icon { animation: spin-icon .7s linear infinite; transform-origin: center; transform-box: fill-box; display: block; }
 
 /* PTT button */
 #ptt-btn {
@@ -487,6 +492,35 @@ select.glass-input { cursor: pointer; }
 .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 .btn-sm {
   padding: .35rem .85rem !important; font-size: .75rem !important;
+}
+.btn-danger {
+  background: transparent; color: #ef4444; border: 1.5px solid #fca5a5;
+  border-radius: var(--r-btn); padding: .55rem 1.4rem;
+  font-weight: 600; font-size: .83rem; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s, box-shadow .15s;
+}
+.btn-danger:hover {
+  background: #ef4444; color: white; border-color: #ef4444;
+  box-shadow: 0 4px 14px rgba(239,68,68,.32);
+}
+
+/* ── Modal sections ───────────────────────────────────────── */
+.modal-section {
+  background: rgba(124,58,237,.03);
+  border: 1px solid rgba(124,58,237,.08);
+  border-radius: .85rem;
+  padding: .85rem 1rem;
+}
+.modal-section-label {
+  font-size: .72rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--c-violet);
+  margin: 0 0 .65rem;
+}
+.modal-danger-zone {
+  border: 1.5px solid #fca5a5;
+  border-radius: .85rem;
+  padding: .85rem 1rem;
+  background: rgba(239,68,68,.03);
 }
 
 /* ── Fade-in on scroll ────────────────────────────────────── */

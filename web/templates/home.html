@@ -4,7 +4,7 @@
 {% block nav %}
 <nav id="main-nav">
   <div class="nav-inner">
-    <span class="nav-logo select-none">🎙 Secure VA</span>
+    <span class="nav-logo select-none"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg> Secure VA</span>
     <div class="nav-links" id="nav-links-wrap">
       <div id="nav-pill"></div>
       <a href="#hero"      class="spy-link" data-section="hero">Trang chủ</a>
@@ -76,7 +76,7 @@
 
         <!-- Mode toggle + status bar -->
         <div class="flex items-center justify-between mt-3 gap-2 flex-wrap">
-          <button id="mode-toggle-btn">💬 Chuyển sang văn bản</button>
+          <button id="mode-toggle-btn">Chuyển sang văn bản</button>
           <span id="ptt-status">Sẵn sàng</span>
         </div>
 
@@ -88,7 +88,7 @@
             <div class="v-ring v-ring-2"></div>
             <div class="v-ring v-ring-1"></div>
             <button id="ptt-btn" class="touch-none select-none">
-              <span class="mic-icon">🎙</span>
+              <span class="mic-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg></span>
               <span id="ptt-label" style="font-size:.68rem">Bấm &amp; giữ</span>
             </button>
           </div>
@@ -140,8 +140,8 @@
           <!-- Panel tabs -->
           <div class="flex items-center px-2 py-2 gap-1"
                style="border-bottom:1px solid rgba(0,0,0,.06);background:rgba(255,255,255,.5)">
-            <button id="tab-music" class="tab-btn flex-1">🎵 Nhạc</button>
-            <button id="tab-files" class="tab-btn flex-1">📁 Files</button>
+            <button id="tab-music" class="tab-btn flex-1">Nhạc</button>
+            <button id="tab-files" class="tab-btn flex-1">Files</button>
             <button id="panel-close"
                     class="ml-1 px-2 py-1 text-lg leading-none"
                     style="color:#9ca3af;background:none;border:none;cursor:pointer">✕</button>
@@ -151,13 +151,11 @@
           <div id="content-music" class="hidden flex-col flex-1 overflow-hidden p-2 gap-2">
             <div class="flex gap-1">
               <input id="music-q" type="text" placeholder="Tìm bài hát, ca sĩ...">
-              <button id="music-search-btn">🔍</button>
+              <button id="music-search-btn" style="display:flex;align-items:center;justify-content:center"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></button>
             </div>
-            <div id="music-user-row" class="hidden flex items-center justify-between text-xs px-1"
+            <div id="music-user-row" class="hidden flex items-center text-xs px-1"
                  style="color:#6b7280">
               <span>Playlist của <strong id="music-user-name"></strong></span>
-              <button id="music-suggest-btn"
-                      style="color:#7c3aed;background:none;border:none;cursor:pointer;font-size:.75rem">✨ Gợi ý</button>
             </div>
             <div class="flex-shrink-0">
               <p class="text-xs font-semibold px-1 mb-1" style="color:#6b7280">
@@ -181,7 +179,7 @@
           <div id="content-files" class="hidden flex-col flex-1 overflow-hidden p-2 gap-2">
             <div id="files-verify-widget" class="flex flex-col items-center gap-3 py-5">
               <button id="files-verify-btn" class="touch-none select-none">
-                🎙<br><span id="files-verify-label" class="text-xs">Giữ</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg><br><span id="files-verify-label" class="text-xs">Giữ</span>
               </button>
               <p id="files-verify-status" class="text-xs text-center" style="color:#6b7280">
                 Giữ nút để xác thực giọng nói
@@ -231,9 +229,9 @@
       <div id="np-title"  class="text-sm font-semibold truncate">—</div>
       <div id="np-artist" class="text-xs truncate" style="color:#9ca3af"></div>
     </div>
-    <button id="prev-btn" class="px-1" style="color:#9ca3af;background:none;border:none;cursor:pointer;font-size:1.1rem">⏮</button>
-    <button id="play-btn" class="flex items-center justify-center font-bold">▶</button>
-    <button id="next-btn" class="px-1" style="color:#9ca3af;background:none;border:none;cursor:pointer;font-size:1.1rem">⏭</button>
+    <button id="prev-btn" class="px-1" style="color:#9ca3af;background:none;border:none;cursor:pointer;display:flex;align-items:center"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg></button>
+    <button id="play-btn" class="flex items-center justify-center font-bold"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+    <button id="next-btn" class="px-1" style="color:#9ca3af;background:none;border:none;cursor:pointer;display:flex;align-items:center"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"/></svg></button>
     <div class="flex items-center gap-1.5 flex-1 min-w-0">
       <span id="time-cur" class="text-xs w-7 text-right flex-shrink-0" style="color:#9ca3af">0:00</span>
       <div id="prog-track" class="flex-1 rounded-full cursor-pointer" style="height:4px">
@@ -269,13 +267,8 @@
       {% for u in users %}
       <div class="user-card relative p-5 fade-up"
            data-uid="{{ u.user_id }}" data-name="{{ u.name }}">
-        <button class="card-trash-btn absolute top-3 right-3 p-1"
-                style="color:rgba(0,0,0,.18);background:none;border:none;cursor:pointer;font-size:1.1rem"
-                onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='rgba(0,0,0,.18)'"
-                title="Xóa người dùng"
-                data-uid="{{ u.user_id }}" data-name="{{ u.name }}">🗑</button>
-        <div style="padding-right:2rem">
-          <div style="font-size:1.1rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ u.name }}</div>
+        <div>
+          <div data-user-name style="font-size:1.1rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ u.name }}</div>
           <div style="font-size:.78rem;color:var(--txt-2);margin-top:.25rem">
             <code style="background:rgba(124,58,237,.08);color:var(--c-violet);padding:2px 6px;border-radius:4px;font-size:.72rem">{{ u.user_id }}</code>
           </div>
@@ -286,7 +279,7 @@
     </div>
     {% else %}
     <div id="users-grid" class="fade-up" style="padding:4rem 0;text-align:center;color:var(--txt-2)">
-      <div style="font-size:3rem;margin-bottom:.75rem">👤</div>
+      <div style="margin-bottom:.75rem;color:#d1d5db"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
       <p style="font-size:1.1rem;font-weight:600">Chưa có người dùng nào.</p>
       <p style="font-size:.85rem;margin-top:.35rem">Cuộn xuống để đăng ký người dùng mới.</p>
     </div>
@@ -312,7 +305,7 @@
       <!-- Step 1: Info -->
       <section style="margin-bottom:1.5rem">
         <h3 style="font-weight:700;font-size:1rem;margin:0 0 1rem;color:var(--txt)">1. Thông tin</h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="block">
             <span style="font-size:.8rem;color:var(--txt-2)">User ID <span style="color:#f43f5e">*</span></span>
             <input id="enroll-user_id" type="text" class="glass-input" style="margin-top:.35rem"
@@ -324,13 +317,18 @@
                    placeholder="vd: Nguyễn Văn Minh"/>
           </label>
           <label class="block">
+            <span style="font-size:.8rem;color:var(--txt-2)">Email</span>
+            <input id="enroll-pref_email" type="email" class="glass-input" style="margin-top:.35rem"
+                   placeholder="vd: ten@gmail.com"/>
+          </label>
+          <label class="block">
             <span style="font-size:.8rem;color:var(--txt-2)">Mật khẩu <span style="color:#f43f5e">*</span></span>
             <div style="position:relative;margin-top:.35rem">
               <input id="enroll-password" type="password" class="glass-input" style="padding-right:2.5rem"
                      placeholder="Nhập mật khẩu"/>
               <button type="button" id="enroll-pw-eye"
-                      style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;font-size:.85rem">
-                👁
+                      style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;display:flex;align-items:center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
             </div>
           </label>
@@ -380,8 +378,9 @@
           <span id="enroll-prompt-text" style="font-style:italic;margin-left:.35rem">Trợ lý ơi, hôm nay thời tiết thế nào?</span>
         </div>
         <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
-          <button id="enroll-record-btn">
-            🎙 Bắt đầu thu mẫu <span id="enroll-sample-counter">1</span>/{{ num_samples }}
+          <button id="enroll-record-btn" style="display:inline-flex;align-items:center;gap:.4rem">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+            Bắt đầu thu mẫu <span id="enroll-sample-counter">1</span>/{{ num_samples }}
           </button>
           <span id="enroll-status" style="font-size:.82rem;color:var(--txt-2)"></span>
         </div>
@@ -420,13 +419,13 @@
 
     <!-- Password lock -->
     <div id="modal-lock" style="padding:1.25rem 1.5rem">
-      <p style="font-size:.85rem;color:var(--txt-2);margin-bottom:.75rem">🔒 Nhập mật khẩu để chỉnh sửa</p>
+      <p style="font-size:.85rem;color:var(--txt-2);margin-bottom:.75rem">Nhập mật khẩu để chỉnh sửa</p>
       <div class="flex gap-2">
         <div class="relative flex-1">
           <input id="modal-pw" type="password" placeholder="Mật khẩu" class="glass-input" style="padding-right:2.5rem"/>
           <button type="button" id="modal-pw-eye"
-                  style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;font-size:.85rem">
-            👁
+                  style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;display:flex;align-items:center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
         </div>
         <button id="modal-unlock-btn" class="btn-primary">Mở khóa</button>
@@ -449,69 +448,98 @@
         </button>
         <button id="modal-tab-music-btn" class="modal-tab-btn"
                 style="padding:.6rem 1rem;font-size:.83rem;font-weight:500;border:none;border-bottom:2px solid transparent;color:var(--txt-2);background:none;cursor:pointer;margin-bottom:-1px">
-          🎵 Nhạc
+          Nhạc
         </button>
       </div>
 
       <!-- Info tab -->
       <div id="modal-tab-info" style="padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:1rem">
 
-        <label class="block">
-          <span style="font-size:.8rem;color:var(--txt-2)">Tên hiển thị</span>
-          <input id="modal-name" type="text" class="glass-input" style="margin-top:.35rem"/>
-        </label>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label class="block">
-            <span style="font-size:.8rem;color:var(--txt-2)">Thể loại nhạc yêu thích</span>
-            <input id="modal-pref-genre" type="text" class="glass-input" style="margin-top:.35rem"
-                   placeholder="vd: pop, rock"/>
-          </label>
-          <label class="block">
-            <span style="font-size:.8rem;color:var(--txt-2)">Ca sĩ yêu thích</span>
-            <input id="modal-pref-artist" type="text" class="glass-input" style="margin-top:.35rem"
-                   placeholder="vd: Sơn Tùng"/>
-          </label>
-          <label class="block">
-            <span style="font-size:.8rem;color:var(--txt-2)">Số dư tài khoản (đồng)</span>
-            <input id="modal-pref-balance" type="number" class="glass-input" style="margin-top:.35rem"/>
-          </label>
+        <!-- Identity section -->
+        <div class="modal-section">
+          <p class="modal-section-label">Thông tin cá nhân</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="block">
+              <span style="font-size:.8rem;color:var(--txt-2)">Tên hiển thị</span>
+              <input id="modal-name" type="text" class="glass-input" style="margin-top:.35rem"/>
+            </label>
+            <label class="block">
+              <span style="font-size:.8rem;color:var(--txt-2)">Email</span>
+              <input id="modal-pref-email" type="email" class="glass-input" style="margin-top:.35rem"
+                     placeholder="vd: ten@gmail.com"/>
+            </label>
+          </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label class="block">
-            <span style="font-size:.8rem;color:var(--txt-2)">Ghi chú <span style="font-weight:400">(mỗi dòng)</span></span>
-            <textarea id="modal-pref-notes" rows="3" class="glass-input" style="margin-top:.35rem;resize:vertical"></textarea>
-          </label>
-          <label class="block">
-            <span style="font-size:.8rem;color:var(--txt-2)">Lịch hôm nay <span style="font-weight:400">(mỗi dòng)</span></span>
-            <textarea id="modal-pref-schedule" rows="3" class="glass-input" style="margin-top:.35rem;resize:vertical"></textarea>
-          </label>
+
+        <!-- Music preferences -->
+        <div class="modal-section">
+          <p class="modal-section-label">Sở thích nhạc</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="block">
+              <span style="font-size:.8rem;color:var(--txt-2)">Thể loại yêu thích</span>
+              <input id="modal-pref-genre" type="text" class="glass-input" style="margin-top:.35rem"
+                     placeholder="vd: pop, rock"/>
+            </label>
+            <label class="block">
+              <span style="font-size:.8rem;color:var(--txt-2)">Ca sĩ yêu thích</span>
+              <input id="modal-pref-artist" type="text" class="glass-input" style="margin-top:.35rem"
+                     placeholder="vd: Sơn Tùng"/>
+            </label>
+          </div>
+        </div>
+
+        <!-- Finance & notes -->
+        <div class="modal-section">
+          <p class="modal-section-label">Tài chính & lịch</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="block">
+              <span style="font-size:.8rem;color:var(--txt-2)">Số dư tài khoản (đồng)</span>
+              <input id="modal-pref-balance" type="number" class="glass-input" style="margin-top:.35rem"/>
+            </label>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3" style="margin-top:.75rem">
+            <label class="block">
+              <span style="font-size:.8rem;color:var(--txt-2)">Ghi chú <span style="font-weight:400">(mỗi dòng)</span></span>
+              <textarea id="modal-pref-notes" rows="3" class="glass-input" style="margin-top:.35rem;resize:vertical"></textarea>
+            </label>
+            <label class="block">
+              <span style="font-size:.8rem;color:var(--txt-2)">Lịch hôm nay <span style="font-weight:400">(mỗi dòng)</span></span>
+              <textarea id="modal-pref-schedule" rows="3" class="glass-input" style="margin-top:.35rem;resize:vertical"></textarea>
+            </label>
+          </div>
         </div>
 
         <button id="modal-save-btn" class="btn-primary" style="width:100%;padding:.65rem">Lưu thay đổi</button>
         <div id="modal-save-msg" style="font-size:.82rem;display:none"></div>
 
         <!-- Change password -->
-        <div style="border-top:1px solid rgba(0,0,0,.06);padding-top:1rem">
-          <p style="font-size:.85rem;font-weight:600;color:var(--txt);margin-bottom:.5rem">Đổi mật khẩu</p>
+        <div class="modal-section" style="margin-top:.25rem">
+          <p class="modal-section-label">Đổi mật khẩu</p>
           <div class="flex gap-2">
             <div class="relative flex-1">
               <input id="modal-new-pw" type="password" placeholder="Mật khẩu mới"
                      class="glass-input" style="padding-right:2.5rem"/>
               <button type="button" id="modal-new-pw-eye"
-                      style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;font-size:.85rem">
-                👁
+                      style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;display:flex;align-items:center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
             </div>
-            <button id="modal-change-pw-btn" style="white-space:nowrap">Đổi</button>
+            <button id="modal-change-pw-btn" class="btn-primary" style="white-space:nowrap">Đổi</button>
           </div>
           <div id="modal-pw-msg" style="margin-top:.35rem;font-size:.82rem;display:none"></div>
         </div>
 
-        <!-- Delete -->
-        <div style="border-top:1px solid rgba(0,0,0,.06);padding-top:1rem">
-          <button id="modal-delete-btn" style="width:100%;padding:.65rem">🗑 Xóa người dùng này</button>
-          <div id="modal-delete-msg" style="margin-top:.35rem;font-size:.82rem;display:none"></div>
+        <!-- Danger zone -->
+        <div class="modal-danger-zone">
+          <div style="display:flex;align-items:flex-start;gap:.75rem;margin-bottom:.85rem">
+            <div style="flex-shrink:0;width:2rem;height:2rem;border-radius:50%;background:rgba(239,68,68,.12);display:flex;align-items:center;justify-content:center;font-size:.9rem">⚠</div>
+            <div>
+              <p style="font-size:.82rem;font-weight:600;color:#b91c1c;margin-bottom:.2rem">Vùng nguy hiểm</p>
+              <p style="font-size:.78rem;color:#6b7280;line-height:1.5">Xóa người dùng sẽ xóa vĩnh viễn toàn bộ dữ liệu giọng nói, playlist và thông tin cá nhân. Hành động này không thể hoàn tác.</p>
+            </div>
+          </div>
+          <button id="modal-delete-btn" class="btn-danger" style="width:100%">Xóa người dùng này</button>
+          <div id="modal-delete-msg" style="margin-top:.5rem;font-size:.82rem;display:none"></div>
         </div>
       </div><!-- end modal-tab-info -->
 
@@ -521,7 +549,7 @@
         <!-- Pw-based file session trigger -->
         <div id="modal-files-pw-section">
           <p style="font-size:.83rem;color:var(--txt-2);margin-bottom:.5rem">Mật khẩu đã xác nhận, nhấn để tải file.</p>
-          <button id="modal-files-open-btn" class="btn-primary btn-sm">📁 Mở File Manager</button>
+          <button id="modal-files-open-btn" class="btn-primary btn-sm">Mở File Manager</button>
           <div id="modal-files-open-msg" style="margin-top:.35rem;font-size:.82rem;display:none"></div>
         </div>
 
@@ -568,16 +596,7 @@
           </div>
         </div>
 
-        <!-- Mini player (dùng chung audio-el của trang) -->
-        <div id="modal-mini-player" class="hidden items-center gap-2 p-2 text-white rounded-lg text-xs">
-          <button id="modal-prev-btn" style="background:none;border:none;cursor:pointer;color:rgba(255,255,255,.6);padding:0 4px">⏮</button>
-          <button id="modal-play-btn" style="width:28px;height:28px;border-radius:50%;background:var(--grad-btn);border:none;cursor:pointer;color:white;font-size:.85rem;display:flex;align-items:center;justify-content:center">▶</button>
-          <button id="modal-next-btn" style="background:none;border:none;cursor:pointer;color:rgba(255,255,255,.6);padding:0 4px">⏭</button>
-          <div class="flex-1 min-w-0">
-            <div id="modal-np-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500"></div>
-            <div id="modal-np-info" style="color:rgba(255,255,255,.5)"></div>
-          </div>
-        </div>
+        <!-- mini-player removed; playback uses shared player bar -->
 
       </div><!-- end modal-tab-music -->
 
@@ -640,8 +659,8 @@ function showToast(msg, isErr=false) {
 }
 function togglePwEye(inputId, btnEl) {
   const inp = document.getElementById(inputId);
-  if (inp.type === "password") { inp.type = "text"; btnEl.textContent = "🙈"; }
-  else { inp.type = "password"; btnEl.textContent = "👁"; }
+  if (inp.type === "password") { inp.type = "text"; btnEl.innerHTML = ICON_EYE_OFF; }
+  else { inp.type = "password"; btnEl.innerHTML = ICON_EYE; }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -925,19 +944,31 @@ document.getElementById("panel-close").onclick = hidePanel;
 function handleTurnAction(data) {
   if (data.action_type === "play_music") {
     const ad = data.action_data;
+    _modalMode = false;
+    resetMusicPanel();
     if (ad.mode === "user_tracks") {
+      const uid = ad.user_id || "";
       const tracks = ad.tracks.map(name => ({
-        title: name, artist: ad.user_id,
-        preview: `/api/music/user-tracks/${ad.user_id}/stream/${encodeURIComponent(name)}`,
+        title: name, artist: data.identified_user_name || uid,
+        preview: `/api/music/user-tracks/${uid}/stream/${encodeURIComponent(name)}`,
         cover: "", id: name,
       }));
-      queue = tracks; playAt(0);
+      if (uid) {
+        _musicUserId = uid;
+        userPlaylist = tracks;
+        document.getElementById("music-user-name").textContent = data.identified_user_name || uid;
+        document.getElementById("music-user-row").classList.remove("hidden");
+        renderPlaylist();
+      }
+      queue = [...tracks]; _queueFromUserData = true; playAt(0);
       showPanel("music");
     } else {
       // YouTube mode: artist → 5 songs, then genre → fill up to 10
       const artist = ad.artist || "";
       const genre  = ad.genre  || "v-pop";
+      _lastArtist = artist; _lastGenre = genre;
       if (ad.uid) { _musicUserId = ad.uid; loadPlaylist(ad.uid, data.identified_user_name); }
+      showPanel("music");
       buildYtQueue(artist, genre);
     }
   } else if (data.action_type === "show_files") {
@@ -950,8 +981,9 @@ function handleTurnAction(data) {
 // BUILD YOUTUBE QUEUE  (artist → 5 songs, then genre → fill 10)
 // ════════════════════════════════════════════════════════════
 async function buildYtQueue(artist, genre) {
+  _queueFromUserData = false;
   const $sb = document.getElementById("music-search-btn");
-  $sb.textContent = "⏳"; $sb.disabled = true;
+  $sb.innerHTML = ICON_LOADING; $sb.disabled = true;
 
   const ytTrack = v => ({
     title: v.title, artist: v.channel, cover: v.thumbnail,
@@ -991,14 +1023,13 @@ async function buildYtQueue(artist, genre) {
     } catch (_) {}
   }
 
-  $sb.textContent = "🔍"; $sb.disabled = false;
+  $sb.innerHTML = ICON_SEARCH; $sb.disabled = false;
 
   if (tracks.length) {
     searchResults = tracks;
     renderResults();
     queue = [...tracks];
     playAt(0);
-    showPanel("music");
   }
 }
 
@@ -1008,10 +1039,38 @@ async function buildYtQueue(artist, genre) {
 const $audio     = document.getElementById("audio-el");
 const $playerBar = document.getElementById("player-bar");
 
-let _musicUserId  = null;
-let userPlaylist  = [];
-let searchResults = [];
+let _musicUserId      = null;
+let userPlaylist      = [];
+let searchResults     = [];
 let queue = [], queueIdx = -1;
+let _queueFromUserData = false;   // true when playing from user's local playlist
+let _lastArtist = "", _lastGenre = "v-pop";
+let _modalMode = false;           // true when audio is driven by modal music tab
+
+const ICON_SEARCH  = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`;
+const ICON_LOADING = `<svg class="spin-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10" stroke-dasharray="30 40"/></svg>`;
+const ICON_MIC     = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>`;
+const ICON_MIC_SM  = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>`;
+const ICON_EYE     = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const ICON_EYE_OFF = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+const ICON_PLAY    = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+const ICON_PAUSE   = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+const ICON_PREV    = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg>`;
+const ICON_NEXT    = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"/></svg>`;
+const ICON_TRASH   = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+const ICON_MUSIC   = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+const ICON_DL      = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+
+function resetMusicPanel() {
+  _musicUserId = null;
+  userPlaylist = [];
+  searchResults = [];
+  queue = []; queueIdx = -1;
+  _queueFromUserData = false;
+  document.getElementById("music-user-row").classList.add("hidden");
+  renderPlaylist();
+  renderResults();
+}
 
 $audio.volume = 0.8;
 document.getElementById("vol-slider").oninput = e => { $audio.volume = e.target.value; };
@@ -1024,8 +1083,8 @@ $audio.addEventListener("timeupdate", () => {
   document.getElementById("time-tot").textContent = fmt($audio.duration);
 });
 $audio.addEventListener("ended",  () => { playNext(); });
-$audio.addEventListener("play",   () => { document.getElementById("play-btn").textContent = "⏸"; });
-$audio.addEventListener("pause",  () => { document.getElementById("play-btn").textContent = "▶"; });
+$audio.addEventListener("play",   () => { document.getElementById("play-btn").innerHTML = ICON_PAUSE; });
+$audio.addEventListener("pause",  () => { document.getElementById("play-btn").innerHTML = ICON_PLAY; });
 $audio.addEventListener("error",  () => { showToast("Không tải được bài này", true); playNext(); });
 
 document.getElementById("prog-track").addEventListener("click", e => {
@@ -1043,18 +1102,33 @@ document.getElementById("player-bar-close").onclick = () => {
   $playerBar.classList.add("hidden"); setPbPad(false);
 };
 
-function playNext() { if (queueIdx < queue.length - 1) playAt(queueIdx + 1); }
+function playNext() {
+  if (queueIdx < queue.length - 1) {
+    playAt(queueIdx + 1);
+  } else if (_queueFromUserData && _musicUserId) {
+    // User's local tracks exhausted → fall back to YouTube suggestions
+    _queueFromUserData = false;
+    fetch(`/api/music/playlist/${_musicUserId}`)
+      .then(r => r.json())
+      .then(d => buildYtQueue(d.favorite_artist || _lastArtist, d.favorite_genre || _lastGenre))
+      .catch(() => buildYtQueue(_lastArtist, _lastGenre));
+  }
+}
 
 function playAt(idx) {
   if (idx < 0 || idx >= queue.length) return;
   queueIdx = idx;
   const t = queue[idx];
   $audio.src = t.preview; $audio.play().catch(() => {});
-  document.getElementById("np-title").textContent  = t.title;
-  document.getElementById("np-artist").textContent = t.artist;
-  const $cov = document.getElementById("np-cover");
-  if (t.cover) { $cov.src = t.cover; $cov.classList.remove("hidden"); }
-  $playerBar.classList.remove("hidden"); setPbPad(true);
+  if (false) {
+    // modal-mini-player removed; all playback uses shared player bar
+  } else {
+    document.getElementById("np-title").textContent  = t.title;
+    document.getElementById("np-artist").textContent = t.artist;
+    const $cov = document.getElementById("np-cover");
+    if (t.cover) { $cov.src = t.cover; $cov.classList.remove("hidden"); }
+    $playerBar.classList.remove("hidden"); setPbPad(true);
+  }
   highlightActive();
 }
 
@@ -1083,7 +1157,7 @@ document.getElementById("music-q").addEventListener("keydown", e => {
 
 async function doMusicSearch(q, autoplay=false) {
   const $sb = document.getElementById("music-search-btn");
-  $sb.textContent = "⏳"; $sb.disabled = true;
+  $sb.innerHTML = ICON_LOADING; $sb.disabled = true;
   try {
     const r = await fetch("/api/music/youtube-search?q=" + encodeURIComponent(q));
     const d = await r.json();
@@ -1093,17 +1167,17 @@ async function doMusicSearch(q, autoplay=false) {
     }));
   } catch(_) { searchResults = []; }
   renderResults();
-  $sb.textContent = "🔍"; $sb.disabled = false;
-  if (autoplay && searchResults.length) { queue = [...searchResults]; playAt(0); }
+  $sb.innerHTML = ICON_SEARCH; $sb.disabled = false;
+  if (autoplay && searchResults.length) { queue = [...searchResults]; _queueFromUserData = false; playAt(0); }
 }
 
 function renderResults() {
   const $c = document.getElementById("music-results");
   const $e = document.getElementById("results-empty");
-  $c.innerHTML = "";
+  $c.querySelectorAll(".track-card").forEach(el => el.remove());
   document.getElementById("results-count").textContent =
     searchResults.length ? `(${searchResults.length})` : "";
-  if (!searchResults.length) { $c.appendChild($e); $e.style.display = "block"; return; }
+  if (!searchResults.length) { $e.style.display = "block"; return; }
   $e.style.display = "none";
   searchResults.forEach((t,i) => $c.appendChild(makeTrackCard(t, i, "result")));
 }
@@ -1120,10 +1194,10 @@ async function loadPlaylist(uid, name) {
 function renderPlaylist() {
   const $c = document.getElementById("music-playlist");
   const $e = document.getElementById("playlist-empty");
-  $c.innerHTML = "";
+  $c.querySelectorAll(".track-card").forEach(el => el.remove());
   document.getElementById("playlist-count").textContent =
     userPlaylist.length ? `(${userPlaylist.length})` : "";
-  if (!userPlaylist.length) { $c.appendChild($e); $e.style.display = "block"; return; }
+  if (!userPlaylist.length) { $e.style.display = "block"; return; }
   $e.style.display = "none";
   userPlaylist.forEach((t,i) => $c.appendChild(makeTrackCard(t, i, "playlist")));
 }
@@ -1149,10 +1223,11 @@ function makeTrackCard(t, idx, src) {
       <div class="font-medium truncate">${esc(t.title)}</div>
       <div class="text-slate-500 truncate">${esc(t.artist)}</div>
     </div>
-    <button class="btn-play px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex-shrink-0">▶</button>
+    <button class="btn-play px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex-shrink-0 flex items-center">${ICON_PLAY}</button>
     ${addBtn}${delBtn}
   `;
   card.querySelector(".btn-play").onclick = () => {
+    _queueFromUserData = (src === "playlist");
     queue = src === "playlist" ? [...userPlaylist] : [...searchResults];
     playAt(idx);
   };
@@ -1178,15 +1253,6 @@ async function removeFromPlaylist(id, title) {
   if (r.ok) { await loadPlaylist(_musicUserId); showToast(`Xóa "${title}"`); }
   else showToast("Lỗi xóa", true);
 }
-
-document.getElementById("music-suggest-btn").onclick = async () => {
-  if (!_musicUserId) return;
-  const r = await fetch(`/api/music/playlist/${_musicUserId}`);
-  const d = await r.json();
-  const q = ((d.favorite_artist || "") + " " + (d.favorite_genre || "pop")).trim();
-  document.getElementById("music-q").value = q;
-  doMusicSearch(q);
-};
 
 // ════════════════════════════════════════════════════════════
 // FILES PANEL  (voice verify inline)
@@ -1280,9 +1346,9 @@ function renderFileList(files) {
         <div class="text-slate-400">${fmtSz(f.size)} · ${esc(f.modified)}</div>
       </div>
       <button onclick="downloadFile('/api/files/download/${encodeURIComponent(f.name)}','${esc(f.name)}')"
-              class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇</button>
+              class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex items-center gap-1">${ICON_DL}</button>
       <button data-name="${esc(f.name)}"
-              class="btn-fdel px-2 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100">🗑</button>
+              class="btn-fdel px-2 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100 flex items-center">${ICON_TRASH}</button>
     `;
     row.querySelector(".btn-fdel").onclick = () => deletePanelFile(f.name);
     $list.appendChild(row);
@@ -1327,11 +1393,12 @@ document.getElementById("files-logout-btn").onclick = async () => {
 };
 
 function resetFilesPanel() {
-  document.getElementById("files-verify-widget").classList.remove("hidden");
+  document.getElementById("files-verify-widget").classList.add("hidden");
   const $mgr = document.getElementById("files-manager");
   $mgr.classList.add("hidden"); $mgr.classList.remove("flex");
   $fvStatus.textContent = "Giữ nút để xác thực giọng nói";
   $fvStatus.style.color = "";
+  hidePanel();
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1396,13 +1463,13 @@ async function enrollStartRecording() {
       stream.getTracks().forEach(t => t.stop());
       enrollRenderSamples(); enrollUpdatePrompt();
       enrollRecording = false;
-      $eBtn.textContent = `🎙 Bắt đầu thu mẫu ${enrollSamples.length + 1}/${NUM_SAMPLES}`;
+      $eBtn.innerHTML = `${ICON_MIC_SM} Bắt đầu thu mẫu ${enrollSamples.length + 1}/${NUM_SAMPLES}`;
       $eBtn.disabled = enrollSamples.length >= NUM_SAMPLES;
       $eStatus.textContent = enrollSamples.length >= NUM_SAMPLES
         ? "Đã đủ mẫu. Bấm Lưu bên dưới." : "Sẵn sàng thu mẫu tiếp theo.";
     };
     enrollMR.start(); enrollRecording = true;
-    $eBtn.textContent = `⏺ Đang thu... (tự dừng sau ${DURATION_MS/1000}s)`;
+    $eBtn.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-right:.35rem;vertical-align:middle"></span> Đang thu... (tự dừng sau ${DURATION_MS/1000}s)`;
     $eStatus.textContent = "Đọc câu mẫu rõ ràng vào microphone.";
     setTimeout(() => { if (enrollRecording && enrollMR.state === "recording") enrollMR.stop(); }, DURATION_MS);
   } catch(err) {
@@ -1414,11 +1481,13 @@ $eBtn.onclick = enrollStartRecording;
 
 function buildEnrollPreferences() {
   const prefs = {};
+  const email   = document.getElementById("enroll-pref_email").value.trim();
   const genre   = document.getElementById("enroll-pref_genre").value.trim();
   const artist  = document.getElementById("enroll-pref_artist").value.trim();
   const balance = document.getElementById("enroll-pref_balance").value.trim();
   const notes   = document.getElementById("enroll-pref_notes").value.trim();
   const sched   = document.getElementById("enroll-pref_schedule").value.trim();
+  if (email)   prefs.email           = email;
   if (genre)   prefs.favorite_genre  = genre;
   if (artist)  prefs.favorite_artist = artist;
   if (balance) prefs.balance         = Number(balance);
@@ -1466,10 +1535,10 @@ $eSubmit.onclick = async () => {
     // Append new card to grid
     addUserCard(data.user_id, data.name);
     // Reset form fields
-    ["enroll-user_id","enroll-name","enroll-password"].forEach(id =>
+    ["enroll-user_id","enroll-name","enroll-password","enroll-pref_email"].forEach(id =>
       document.getElementById(id).value = "");
     enrollSamples = []; enrollRenderSamples(); enrollUpdatePrompt();
-    $eBtn.disabled = false; $eBtn.textContent = `🎙 Bắt đầu thu mẫu 1/${NUM_SAMPLES}`;
+    $eBtn.disabled = false; $eBtn.innerHTML = `${ICON_MIC_SM} Bắt đầu thu mẫu 1/${NUM_SAMPLES}`;
   } catch(e) {
     $eResult.innerHTML = `<span style="color:#ef4444">Lỗi mạng: ${esc(e.message)}</span>`;
     $eSubmit.disabled = false;
@@ -1489,25 +1558,15 @@ function addUserCard(uid, name) {
   div.dataset.uid  = uid;
   div.dataset.name = name;
   div.innerHTML = `
-    <button class="card-trash-btn absolute top-3 right-3 p-1"
-            style="color:rgba(0,0,0,.18);background:none;border:none;cursor:pointer;font-size:1.1rem"
-            onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='rgba(0,0,0,.18)'"
-            title="Xóa người dùng" data-uid="${esc(uid)}" data-name="${esc(name)}">🗑</button>
-    <div style="padding-right:2rem">
-      <div style="font-size:1.1rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
+    <div>
+      <div data-user-name style="font-size:1.1rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
       <div style="font-size:.78rem;color:var(--txt-2);margin-top:.25rem">
         <code style="background:rgba(124,58,237,.08);color:var(--c-violet);padding:2px 6px;border-radius:4px;font-size:.72rem">${esc(uid)}</code>
       </div>
     </div>
     <div style="margin-top:.75rem;font-size:.75rem;color:var(--txt-2)">Nhấn để xem chi tiết</div>
   `;
-  div.addEventListener("click", e => {
-    if (e.target.closest(".card-trash-btn")) return;
-    openModal(uid, name);
-  });
-  div.querySelector(".card-trash-btn").addEventListener("click", e => {
-    e.stopPropagation(); openModal(uid, name);
-  });
+  div.addEventListener("click", () => openModal(uid, name));
   grid.appendChild(div);
 }
 
@@ -1520,15 +1579,7 @@ enrollUpdatePrompt();
 // USER CARDS  (initial binding)
 // ════════════════════════════════════════════════════════════
 document.querySelectorAll(".user-card").forEach(card => {
-  card.addEventListener("click", e => {
-    if (e.target.closest(".card-trash-btn")) return;
-    openModal(card.dataset.uid, card.dataset.name);
-  });
-});
-document.querySelectorAll(".card-trash-btn").forEach(btn => {
-  btn.addEventListener("click", e => {
-    e.stopPropagation(); openModal(btn.dataset.uid, btn.dataset.name);
-  });
+  card.addEventListener("click", () => openModal(card.dataset.uid, card.dataset.name));
 });
 
 // ════════════════════════════════════════════════════════════
@@ -1568,12 +1619,14 @@ async function openModal(uid, name) {
 function closeModal() {
   document.getElementById("user-modal").classList.add("hidden");
   _modalUid = null; _modalPw = ""; _modalFilesReady = false;
+  _modalMode = false;
 }
 
 function populateModal(u) {
   const prefs = u.preferences || {};
   if (!document.getElementById("modal-name").value)
     document.getElementById("modal-name").value = u.name || "";
+  document.getElementById("modal-pref-email").value   = prefs.email           || "";
   document.getElementById("modal-pref-genre").value   = prefs.favorite_genre  || "";
   document.getElementById("modal-pref-artist").value  = prefs.favorite_artist || "";
   document.getElementById("modal-pref-balance").value = prefs.balance != null ? prefs.balance : "";
@@ -1648,6 +1701,7 @@ document.getElementById("modal-tab-music-btn").onclick = () => switchModalTab("m
 document.getElementById("modal-save-btn").onclick = async () => {
   const $msg    = document.getElementById("modal-save-msg");
   const name    = document.getElementById("modal-name").value.trim();
+  const email   = document.getElementById("modal-pref-email").value.trim();
   const genre   = document.getElementById("modal-pref-genre").value.trim();
   const artist  = document.getElementById("modal-pref-artist").value.trim();
   const balance = document.getElementById("modal-pref-balance").value.trim();
@@ -1656,6 +1710,7 @@ document.getElementById("modal-save-btn").onclick = async () => {
   const newPw   = document.getElementById("modal-new-pw").value.trim();
 
   const preferences = {};
+  if (email)   preferences.email           = email;
   if (genre)   preferences.favorite_genre  = genre;
   if (artist)  preferences.favorite_artist = artist;
   if (balance) preferences.balance         = Number(balance);
@@ -1702,11 +1757,9 @@ document.getElementById("modal-save-btn").onclick = async () => {
   const card = document.querySelector(`.user-card[data-uid="${_modalUid}"]`);
   if (card && name) {
     card.dataset.name = name;
-    const nameEl = card.querySelector(".text-lg.font-semibold");
+    const nameEl = card.querySelector("[data-user-name]");
     if (nameEl) nameEl.textContent = name;
     document.getElementById("modal-user-name").textContent = name;
-    const trashBtn = card.querySelector(".card-trash-btn");
-    if (trashBtn) trashBtn.dataset.name = name;
   }
 };
 
@@ -1804,9 +1857,9 @@ function renderModalFileList(files) {
         <div class="text-xs text-slate-400">${fmtSz(f.size)} · ${esc(f.modified)}</div>
       </div>
       <button onclick="downloadFile('/api/files/download/${encodeURIComponent(f.name)}','${esc(f.name)}')"
-              class="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇ Tải</button>
+              class="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex items-center gap-1">${ICON_DL} Tải</button>
       <button data-name="${esc(f.name)}"
-              class="btn-mfdel text-xs px-2 py-1 bg-rose-50 text-rose-600 rounded hover:bg-rose-100">🗑 Xóa</button>
+              class="btn-mfdel text-xs px-2 py-1 bg-rose-50 text-rose-600 rounded hover:bg-rose-100 flex items-center gap-1">${ICON_TRASH} Xóa</button>
     `;
     row.querySelector(".btn-mfdel").onclick = () => deleteModalFile(f.name);
     $list.appendChild(row);
@@ -1856,27 +1909,26 @@ function renderModalTracks(tracks, uid) {
   const $list  = document.getElementById("modal-music-list");
   const $empty = document.getElementById("modal-music-empty");
   const $count = document.getElementById("modal-music-count");
-  $list.innerHTML = "";
+  $list.querySelectorAll(".modal-track-row").forEach(el => el.remove());
   $count.textContent = tracks.length ? `(${tracks.length})` : "";
-  if (!tracks.length) { $list.appendChild($empty); $empty.style.display = "block"; return; }
+  if (!tracks.length) { $empty.style.display = "block"; return; }
   $empty.style.display = "none";
   _modalMusicQueue = tracks;
   tracks.forEach((t, i) => {
     const row = document.createElement("div");
-    row.className = "flex items-center gap-2 px-2 py-1.5 bg-white border rounded text-xs hover:border-slate-300 transition";
+    row.className = "modal-track-row flex items-center gap-2 px-2 py-1.5 bg-white border rounded text-xs hover:border-slate-300 transition";
     row.innerHTML = `
-      <span class="text-base">🎵</span>
+      <span class="flex-shrink-0" style="color:#9ca3af">${ICON_MUSIC}</span>
       <span class="flex-1 min-w-0 truncate font-medium">${esc(t.name)}</span>
-      <button class="btn-mtrack-play px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">▶</button>
-      <button class="btn-mtrack-del px-1.5 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100">🗑</button>
+      <button class="btn-mtrack-play px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex items-center">${ICON_PLAY}</button>
+      <button class="btn-mtrack-del px-1.5 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100 flex items-center">${ICON_TRASH}</button>
     `;
     row.querySelector(".btn-mtrack-play").onclick = () => {
-      // Dùng main player bar
+      _modalMode = false;
       queue = tracks.map(tr => ({
         title: tr.name, artist: uid, preview: tr.url, cover: "", id: tr.name
       }));
       queueIdx = -1;
-      showPanel("music"); switchTab("music");
       playAt(i);
     };
     row.querySelector(".btn-mtrack-del").onclick = async () => {
@@ -1887,19 +1939,7 @@ function renderModalTracks(tracks, uid) {
     };
     $list.appendChild(row);
   });
-  // Show mini player if playing
-  const $mp = document.getElementById("modal-mini-player");
-  if (_modalMusicQueue.length) $mp.classList.remove("hidden"), $mp.classList.add("flex");
 }
-
-// Modal mini player reflects main player state
-document.getElementById("modal-play-btn").onclick = () => {
-  if ($audio.src) { $audio.paused ? $audio.play().catch(()=>{}) : $audio.pause(); }
-};
-document.getElementById("modal-prev-btn").onclick = () => { if (queueIdx > 0) playAt(queueIdx-1); };
-document.getElementById("modal-next-btn").onclick = () => playNext();
-$audio.addEventListener("play",  () => { document.getElementById("modal-play-btn").textContent = "⏸"; });
-$audio.addEventListener("pause", () => { document.getElementById("modal-play-btn").textContent = "▶"; });
 
 // Music upload
 document.getElementById("modal-music-upload-btn").onclick = async () => {
@@ -2011,8 +2051,8 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     $voiceMode.classList.toggle("hidden", goingText);
     $textMode.classList.toggle("hidden", !goingText);
     $toggleBtn.textContent = goingText
-      ? "🎙 Chuyển sang giọng nói"
-      : "💬 Chuyển sang văn bản";
+      ? "Chuyển sang giọng nói"
+      : "Chuyển sang văn bản";
   };
 })();
 
