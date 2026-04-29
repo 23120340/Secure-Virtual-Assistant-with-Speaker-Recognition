@@ -13,16 +13,27 @@
   <!-- Step 1: Thông tin user -->
   <section>
     <h2 class="font-semibold mb-3">1. Thông tin</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <label class="block">
-        <span class="text-sm text-slate-600">User ID (không dấu, không space)</span>
+        <span class="text-sm text-slate-600">User ID (không dấu, không space) <span class="text-rose-500">*</span></span>
         <input id="user_id" type="text" class="w-full border rounded px-3 py-2 mt-1"
                placeholder="vd: minh, lan_nguyen"/>
       </label>
       <label class="block">
-        <span class="text-sm text-slate-600">Tên hiển thị</span>
+        <span class="text-sm text-slate-600">Tên hiển thị <span class="text-rose-500">*</span></span>
         <input id="name" type="text" class="w-full border rounded px-3 py-2 mt-1"
                placeholder="vd: Nguyễn Văn Minh"/>
+      </label>
+      <label class="block">
+        <span class="text-sm text-slate-600">Mật khẩu <span class="text-rose-500">*</span></span>
+        <div class="relative mt-1">
+          <input id="password" type="password" class="w-full border rounded px-3 py-2 pr-9"
+                 placeholder="Nhập mật khẩu"/>
+          <button type="button" id="pw-eye"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
+            👁
+          </button>
+        </div>
       </label>
     </div>
 
@@ -124,6 +135,13 @@ function updatePrompt() {
   $counter.textContent = samples.length + 1;
 }
 
+function checkReady() {
+  const uid = document.getElementById("user_id").value.trim();
+  const nm  = document.getElementById("name").value.trim();
+  const pw  = document.getElementById("password").value.trim();
+  $submit.disabled = !(uid && nm && pw && samples.length >= 2);
+}
+
 function renderSamples() {
   $list.innerHTML = "";
   samples.forEach((s, i) => {
@@ -140,12 +158,14 @@ function renderSamples() {
       renderSamples();
       updatePrompt();
       $btn.disabled = false;
-      $submit.disabled = samples.length < 2;
     };
     $list.appendChild(div);
   });
-  $submit.disabled = samples.length < 2;
+  checkReady();
 }
+
+["user_id","name","password"].forEach(id =>
+  document.getElementById(id).addEventListener("input", checkReady));
 
 async function startRecording() {
   if (samples.length >= NUM_SAMPLES) {
@@ -210,12 +230,19 @@ function buildPreferences() {
   return prefs;
 }
 
-$submit.onclick = async () => {
-  const user_id = document.getElementById("user_id").value.trim();
-  const name    = document.getElementById("name").value.trim();
+document.getElementById("pw-eye").onclick = function() {
+  const inp = document.getElementById("password");
+  if (inp.type === "password") { inp.type = "text"; this.textContent = "🙈"; }
+  else { inp.type = "password"; this.textContent = "👁"; }
+};
 
-  if (!user_id || !name) {
-    $result.innerHTML = '<span class="text-rose-600">Cần nhập user_id và name.</span>';
+$submit.onclick = async () => {
+  const user_id  = document.getElementById("user_id").value.trim();
+  const name     = document.getElementById("name").value.trim();
+  const password = document.getElementById("password").value.trim();
+
+  if (!user_id || !name || !password) {
+    $result.innerHTML = '<span class="text-rose-600">Cần nhập đầy đủ user_id, tên và mật khẩu.</span>';
     return;
   }
 
@@ -225,6 +252,7 @@ $submit.onclick = async () => {
   const fd = new FormData();
   fd.append("user_id", user_id);
   fd.append("name", name);
+  fd.append("password", password);
   fd.append("preferences", JSON.stringify(buildPreferences()));
   samples.forEach((s, i) => fd.append(`sample_${i}`, s.blob, `sample_${i}.webm`));
 

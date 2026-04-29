@@ -40,7 +40,7 @@ SID_MIN_THRESHOLD = 0.35     # nhỏ hơn → coi là "guest"
 # ==========================================================================
 # ASR
 # ==========================================================================
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")  # tiny/base/small/medium
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")  # tiny/base/small/medium/large-v3
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 WHISPER_COMPUTE = os.getenv("WHISPER_COMPUTE", "int8")  # int8 cho CPU, float16 cho GPU
 ASR_LANGUAGE = "vi"

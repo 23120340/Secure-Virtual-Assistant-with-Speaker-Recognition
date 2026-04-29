@@ -20,6 +20,7 @@ Chạy:
 """
 import io
 import json
+import re
 import sys
 import uuid
 from dataclasses import asdict
@@ -28,7 +29,19 @@ from pathlib import Path
 
 from flask import (Flask, render_template, request, jsonify, send_file,
                    redirect, url_for, flash, session)
-from werkzeug.utils import secure_filename
+
+
+def _safe_filename(filename: str) -> str:
+    """Unicode-safe sanitizer — giữ ký tự tiếng Việt, loại bỏ path traversal."""
+    filename = filename.strip()
+    # Xóa ký tự nguy hiểm (path sep, shell special, null)
+    filename = re.sub(r'[/\\:*?"<>|\x00-\x1f\x7f]', '_', filename)
+    # Thu gọn dấu cách/gạch dưới liên tiếp
+    filename = re.sub(r'[_\s]+', '_', filename).strip('_')
+    return filename or "file"
+
+
+AUDIO_EXTS = {'.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac', '.wma', '.opus'}
 
 # Thêm project root vào path để import được core/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -286,14 +299,41 @@ def register_routes(app):
 
         # action_type + action_data cho frontend mở panel tương ứng
         if result.intent == "play_music" and not result.blocked:
-            uid = result.identified_user_id
+            uid   = result.identified_user_id
             _user = app.config["db"].get_user(uid) if uid else None
             _prefs = _user["preferences"] if _user else {}
-            genre  = result.entities.get("genre") or _prefs.get("favorite_genre", "pop")
-            artist = _prefs.get("favorite_artist", "")
-            query  = f"{artist} {genre}".strip() if artist else genre
-            payload["action_type"] = "play_music"
-            payload["action_data"] = {"query": query, "uid": uid or ""}
+
+            # Kiểm tra user có nhạc upload chưa
+            user_tracks: list = []
+            if uid:
+                music_dir = config.USER_FILES_DIR / uid / "music"
+                if music_dir.exists():
+                    user_tracks = [
+                        f.name for f in music_dir.iterdir()
+                        if f.is_file() and f.suffix.lower() in AUDIO_EXTS
+                    ]
+
+            if user_tracks:
+                # User có nhạc tải lên → đặt session rồi play
+                session["file_uid"]  = uid
+                session["file_name"] = _user["name"] if _user else uid
+                payload["action_type"] = "play_music"
+                payload["action_data"] = {
+                    "mode": "user_tracks",
+                    "user_id": uid,
+                    "tracks": sorted(user_tracks),
+                }
+            else:
+                # Guest hoặc user chưa upload → YouTube theo artist/genre
+                genre  = result.entities.get("genre") or _prefs.get("favorite_genre", "") or "v-pop"
+                artist = _prefs.get("favorite_artist", "")
+                payload["action_type"] = "play_music"
+                payload["action_data"] = {
+                    "mode": "youtube",
+                    "artist": artist,
+                    "genre": genre,
+                    "uid": uid or "",
+                }
 
         elif result.intent == "open_files" and not result.blocked:
             uid = result.identified_user_id
@@ -316,6 +356,120 @@ def register_routes(app):
                 "files": files,
                 "user_name": result.identified_user_name,
                 "user_id": uid,
+            }
+
+        return jsonify(payload)
+
+    # ----- API: Text mode (không cần micro) -----
+    @app.route("/api/assistant/text", methods=["POST"])
+    def api_assistant_text():
+        """Chế độ nhập văn bản thay vì giọng nói.
+        Body JSON: { text, user_id (optional), password (optional) }
+        - NORMAL/PERSONAL: không cần password
+        - IMPORTANT: cần user_id + password (thay thế SV)
+        """
+        data     = request.get_json() or {}
+        text     = data.get("text", "").strip()
+        user_id  = data.get("user_id", "").strip()
+        password = data.get("password", "")
+
+        if not text:
+            return jsonify({"error": "Thiếu nội dung lệnh"}), 400
+
+        from core.intents import INTENTS, AuthLevel
+        from core import handlers as _h
+
+        db  = app.config["db"]
+        nlu = app.config["nlu"]
+
+        nlu_result = nlu.parse(text)
+        intent   = nlu_result["intent"]
+        entities = nlu_result["entities"]
+        spec     = INTENTS.get(intent, INTENTS["unknown"])
+        level    = spec["level"]
+
+        user = db.get_user(user_id) if user_id else None
+        uid  = user["user_id"] if user else None
+        name = user["name"] if user else "Khách"
+
+        sv_required = (level == AuthLevel.IMPORTANT)
+        sv_passed   = None
+        blocked     = False
+        response    = ""
+
+        if sv_required:
+            if not uid:
+                blocked  = True
+                response = ("Tác vụ này yêu cầu xác thực. "
+                            "Vui lòng chọn người dùng và nhập mật khẩu.")
+            elif not db.check_password(uid, password):
+                blocked  = True
+                response = "Sai mật khẩu. Không thể thực hiện tác vụ này."
+            else:
+                sv_passed = True
+
+        if not blocked:
+            handler  = _h.HANDLERS.get(intent, _h.handle_unknown)
+            response = handler(entities, user)
+
+        from urllib.parse import quote as _q
+        payload = {
+            "transcript":           text,
+            "intent":               intent,
+            "auth_level":           level.value,
+            "entities":             entities,
+            "identified_user_id":   uid,
+            "identified_user_name": name,
+            "sid_score":            1.0 if uid else 0.0,
+            "sv_required":          sv_required,
+            "sv_passed":            sv_passed,
+            "sv_score":             None,
+            "response":             response,
+            "blocked":              blocked,
+            "tts_url":              f"/api/tts?text={_q(response)}",
+        }
+
+        if intent == "play_music" and not blocked:
+            _prefs = user["preferences"] if user else {}
+            user_tracks: list = []
+            if uid:
+                music_dir = config.USER_FILES_DIR / uid / "music"
+                if music_dir.exists():
+                    user_tracks = [f.name for f in music_dir.iterdir()
+                                   if f.is_file() and f.suffix.lower() in AUDIO_EXTS]
+            if user_tracks:
+                session["file_uid"]  = uid
+                session["file_name"] = name
+                payload["action_type"] = "play_music"
+                payload["action_data"] = {
+                    "mode": "user_tracks", "user_id": uid,
+                    "tracks": sorted(user_tracks),
+                }
+            else:
+                genre  = entities.get("genre") or _prefs.get("favorite_genre", "") or "v-pop"
+                artist = _prefs.get("favorite_artist", "")
+                payload["action_type"] = "play_music"
+                payload["action_data"] = {
+                    "mode": "youtube", "artist": artist, "genre": genre, "uid": uid or "",
+                }
+
+        elif intent == "open_files" and not blocked:
+            user_dir = config.USER_FILES_DIR / uid
+            files = []
+            if user_dir.exists():
+                for _f in sorted(user_dir.iterdir()):
+                    if _f.is_file():
+                        files.append({
+                            "name": _f.name,
+                            "size": _f.stat().st_size,
+                            "modified": datetime.fromtimestamp(
+                                _f.stat().st_mtime).strftime("%d/%m/%Y %H:%M"),
+                        })
+            session["file_uid"]  = uid
+            session["file_name"] = name
+            payload["action_type"] = "show_files"
+            payload["action_data"] = {
+                "files": files, "user_name": name, "user_id": uid,
             }
 
         return jsonify(payload)
@@ -401,6 +555,148 @@ def register_routes(app):
         return jsonify({"ok": True, "count": len(playlist)})
 
     # ==========================================================================
+    # User music tracks (file-based personal playlist)
+    # ==========================================================================
+    def _music_dir(uid: str) -> Path:
+        d = config.USER_FILES_DIR / uid / "music"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _list_tracks(uid: str) -> list:
+        d = _music_dir(uid)
+        return sorted(
+            [{"name": f.name,
+              "size": f.stat().st_size,
+              "url": f"/api/music/user-tracks/{uid}/stream/{f.name}"}
+             for f in d.iterdir()
+             if f.is_file() and f.suffix.lower() in AUDIO_EXTS],
+            key=lambda x: x["name"]
+        )
+
+    @app.route("/api/music/user-tracks/<user_id>")
+    def api_user_tracks_list(user_id):
+        if session.get("file_uid") != user_id:
+            return jsonify({"error": "Chưa xác thực"}), 403
+        return jsonify({"tracks": _list_tracks(user_id)})
+
+    @app.route("/api/music/user-tracks/<user_id>/upload", methods=["POST"])
+    def api_user_tracks_upload(user_id):
+        if session.get("file_uid") != user_id:
+            return jsonify({"error": "Chưa xác thực"}), 403
+        uploaded = []
+        for key in request.files:
+            f = request.files[key]
+            if not f.filename:
+                continue
+            if Path(f.filename).suffix.lower() not in AUDIO_EXTS:
+                continue
+            fname = _safe_filename(f.filename)
+            f.save(_music_dir(user_id) / fname)
+            uploaded.append(fname)
+        if not uploaded:
+            return jsonify({"error": "Không có file audio hợp lệ"}), 400
+        return jsonify({"ok": True, "uploaded": uploaded,
+                        "tracks": _list_tracks(user_id)})
+
+    @app.route("/api/music/user-tracks/<user_id>/delete/<path:filename>",
+               methods=["POST"])
+    def api_user_tracks_delete(user_id, filename):
+        if session.get("file_uid") != user_id:
+            return jsonify({"error": "Chưa xác thực"}), 403
+        base = _music_dir(user_id).resolve()
+        fpath = (base / filename).resolve()
+        if not str(fpath).startswith(str(base)):
+            return jsonify({"error": "Không hợp lệ"}), 400
+        if not fpath.exists():
+            return jsonify({"error": "File không tồn tại"}), 404
+        fpath.unlink()
+        return jsonify({"ok": True, "tracks": _list_tracks(user_id)})
+
+    @app.route("/api/music/user-tracks/<user_id>/stream/<path:filename>")
+    def api_user_tracks_stream(user_id, filename):
+        """Stream audio file — yêu cầu file session hoặc query token."""
+        if session.get("file_uid") != user_id:
+            return jsonify({"error": "Chưa xác thực"}), 403
+        base = _music_dir(user_id).resolve()
+        fpath = (base / filename).resolve()
+        if not str(fpath).startswith(str(base)) or not fpath.exists():
+            return jsonify({"error": "File không tồn tại"}), 404
+        return send_file(fpath, conditional=True)
+
+    # YouTube search proxy (yt-dlp, không cần API key)
+    @app.route("/api/music/youtube-search")
+    def api_youtube_search():
+        q = request.args.get("q", "").strip()
+        if not q:
+            return jsonify({"videos": []})
+        try:
+            import yt_dlp
+            ydl_opts = {
+                "quiet": True,
+                "extract_flat": True,
+                "skip_download": True,
+                "no_warnings": True,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"ytsearch10:{q}", download=False)
+            videos = []
+            for e in (info.get("entries") or []):
+                if not e or not e.get("id"):
+                    continue
+                # thumbnail: lấy ảnh nhỏ nhất có sẵn
+                thumbs = e.get("thumbnails") or []
+                thumb = thumbs[0]["url"] if thumbs else (
+                    e.get("thumbnail") or
+                    f"https://i.ytimg.com/vi/{e['id']}/default.jpg"
+                )
+                videos.append({
+                    "id":       e["id"],
+                    "title":    e.get("title", ""),
+                    "channel":  e.get("uploader") or e.get("channel", ""),
+                    "thumbnail": thumb,
+                    "duration": e.get("duration", 0),
+                    "url":      f"https://www.youtube.com/watch?v={e['id']}",
+                })
+        except Exception as ex:
+            return jsonify({"error": str(ex), "videos": []})
+        return jsonify({"videos": videos})
+
+    @app.route("/api/music/yt-audio")
+    def api_yt_audio():
+        """Extract YouTube audio stream URL via yt-dlp and redirect to it.
+        The browser <audio> element follows the redirect and plays directly."""
+        import yt_dlp
+        video_id = request.args.get("v", "").strip()
+        if not video_id or not re.match(r'^[a-zA-Z0-9_-]{1,20}$', video_id):
+            return jsonify({"error": "Invalid video id"}), 400
+        try:
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
+                "skip_download": True,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(
+                    f"https://www.youtube.com/watch?v={video_id}",
+                    download=False
+                )
+            # Prefer audio-only formats; fallback to info["url"]
+            url = None
+            for fmt in sorted(info.get("formats", []),
+                               key=lambda f: f.get("tbr") or 0, reverse=True):
+                if fmt.get("vcodec") in (None, "none") and fmt.get("url"):
+                    url = fmt["url"]
+                    break
+            if not url:
+                url = info.get("url")
+            if not url:
+                return jsonify({"error": "No audio stream found"}), 404
+            return redirect(url)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    # ==========================================================================
     # File manager routes (SV-protected via Flask session)
     # ==========================================================================
     @app.route("/files")
@@ -451,6 +747,24 @@ def register_routes(app):
         session["file_name"] = user.get("name", user_id)
         return jsonify({"ok": True, "user_name": user.get("name", user_id)})
 
+    @app.route("/api/users/<user_id>/unlock", methods=["POST"])
+    def api_user_unlock(user_id):
+        """Xác thực mật khẩu, set file session, trả về user info.
+        Dùng thay cho update-info khi chỉ cần mở khóa modal."""
+        db = app.config["db"]
+        user = db.get_user(user_id)
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        data = request.get_json() or {}
+        password = data.get("password", "")
+        if not db.check_password(user_id, password):
+            return jsonify({"error": "Sai mật khẩu"}), 403
+        session["file_uid"]  = user_id
+        session["file_name"] = user["name"]
+        result = dict(user)
+        result["has_password"] = db.has_password(user_id)
+        return jsonify({"ok": True, "user": result})
+
     @app.route("/api/files/logout", methods=["POST"])
     def api_files_logout():
         session.pop("file_uid", None)
@@ -487,7 +801,7 @@ def register_routes(app):
             f = request.files[key]
             if not f.filename:
                 continue
-            fname = secure_filename(f.filename)
+            fname = _safe_filename(f.filename)
             user_dir = config.USER_FILES_DIR / uid
             user_dir.mkdir(parents=True, exist_ok=True)
             f.save(user_dir / fname)

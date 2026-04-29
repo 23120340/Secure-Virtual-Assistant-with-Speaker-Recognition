@@ -26,8 +26,17 @@
       </div>
     </div>
 
-    <!-- PTT button -->
-    <div class="mt-3 flex flex-col items-center gap-2">
+    <!-- Mode toggle -->
+    <div class="mt-3 flex justify-center">
+      <button id="mode-toggle-btn"
+              class="px-4 py-1.5 text-xs rounded-full border border-slate-300
+                     text-slate-600 hover:bg-slate-100 transition select-none">
+        💬 Chuyển sang văn bản
+      </button>
+    </div>
+
+    <!-- Voice mode (default shown) -->
+    <div id="voice-mode" class="flex flex-col items-center gap-2 mt-2">
       <button id="ptt-btn"
               class="w-24 h-24 rounded-full bg-rose-600 text-white text-base font-semibold
                      hover:bg-rose-700 active:bg-rose-800 select-none touch-none
@@ -35,6 +44,38 @@
         🎙<br><span id="ptt-label">Bấm & giữ</span>
       </button>
       <span id="ptt-status" class="text-sm text-slate-500">Sẵn sàng</span>
+    </div>
+
+    <!-- Text mode (hidden by default) -->
+    <div id="text-mode" class="hidden mt-2 w-full space-y-2">
+      <select id="text-user-sel"
+              class="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
+        <option value="">Khách (không xác thực)</option>
+        {% for u in users %}
+        <option value="{{ u.user_id }}">{{ u.name }}</option>
+        {% endfor %}
+      </select>
+      <div class="flex gap-2">
+        <input id="text-input" type="text"
+               placeholder="Nhập lệnh: Mấy giờ rồi, Phát nhạc, Đọc ghi chú..."
+               class="flex-1 border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400"/>
+        <button id="text-send-btn"
+                class="px-4 py-1.5 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700 whitespace-nowrap">
+          Gửi
+        </button>
+      </div>
+      <!-- Password section — shown only when IMPORTANT intent is detected -->
+      <div id="text-pw-row" class="hidden rounded-lg bg-amber-50 border border-amber-200 p-2 space-y-1.5">
+        <p class="text-xs text-amber-700 font-medium">🔐 Lệnh này yêu cầu xác thực mật khẩu</p>
+        <div class="flex gap-2">
+          <input id="text-pw" type="password" placeholder="Nhập mật khẩu..."
+                 class="flex-1 border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-400"/>
+          <button id="text-confirm-btn"
+                  class="px-3 py-1.5 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 whitespace-nowrap">
+            Xác nhận
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -62,8 +103,6 @@
                class="flex-1 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
         <button id="music-search-btn"
                 class="px-2 py-1 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700">🔍</button>
-        <button id="music-random-btn"
-                class="px-2 py-1 bg-amber-500 text-white rounded text-sm hover:bg-amber-600">🎲</button>
       </div>
 
       <!-- User label + suggest -->
@@ -286,17 +325,7 @@ async function sendAudio(blob) {
       $tts.play().catch(()=>{});
     }
 
-    // ── Panel actions ──────────────────────────
-    if (data.action_type === "play_music") {
-      const {query, uid} = data.action_data;
-      showPanel("music");
-      if (uid) { _musicUserId = uid; loadPlaylist(uid); }
-      doMusicSearch(query, true);
-    } else if (data.action_type === "show_files") {
-      showPanel("files");
-      onFilesVerified(data.action_data);
-    }
-
+    handleTurnAction(data);
     $status.textContent = "Sẵn sàng";
   } catch(e) {
     addMsg("bot","Lỗi mạng: "+e.message);
@@ -335,10 +364,13 @@ const $contentFiles = document.getElementById("content-files");
 let _activeTab = null;
 
 function showPanel(tab) {
+  // Chỉ hiện tab liên quan, ẩn tab kia
+  document.getElementById("tab-music").classList.toggle("hidden", tab !== "music");
+  document.getElementById("tab-files").classList.toggle("hidden", tab !== "files");
+
   $panel.classList.remove("hidden");
   $panel.classList.add("flex");
   switchTab(tab);
-  // Add bottom padding for player bar
   document.getElementById("player-bar").classList.contains("hidden") || setPbPad(true);
 }
 
@@ -363,6 +395,82 @@ function switchTab(tab) {
 document.getElementById("tab-music").onclick = () => switchTab("music");
 document.getElementById("tab-files").onclick = () => switchTab("files");
 document.getElementById("panel-close").onclick = hidePanel;
+
+// ════════════════════════════════════════════════════════════
+// SHARED ACTION HANDLER  (voice + text mode)
+// ════════════════════════════════════════════════════════════
+function handleTurnAction(data) {
+  if (data.action_type === "play_music") {
+    const ad = data.action_data;
+    if (ad.mode === "user_tracks") {
+      const tracks = ad.tracks.map(name => ({
+        title: name, artist: ad.user_id,
+        preview: `/api/music/user-tracks/${ad.user_id}/stream/${encodeURIComponent(name)}`,
+        cover: "", id: name,
+      }));
+      queue = tracks; playAt(0);
+      showPanel("music");
+    } else {
+      const artist = ad.artist || "";
+      const genre  = ad.genre  || "v-pop";
+      if (ad.uid) { _musicUserId = ad.uid; loadPlaylist(ad.uid, data.identified_user_name); }
+      buildYtQueue(artist, genre);
+    }
+  } else if (data.action_type === "show_files") {
+    showPanel("files");
+    onFilesVerified(data.action_data);
+  }
+}
+
+async function buildYtQueue(artist, genre) {
+  const $sb = document.getElementById("music-search-btn");
+  $sb.textContent = "⏳"; $sb.disabled = true;
+
+  const ytTrack = v => ({
+    title: v.title, artist: v.channel, cover: v.thumbnail,
+    preview: `/api/music/yt-audio?v=${v.id}`, id: v.id,
+  });
+
+  let tracks = [];
+
+  if (artist) {
+    try {
+      const r = await fetch("/api/music/youtube-search?q=" + encodeURIComponent(artist + " songs"));
+      const d = await r.json();
+      tracks = (d.videos || []).slice(0, 5).map(ytTrack);
+    } catch (_) {}
+  }
+
+  const needed = 10 - tracks.length;
+  if (needed > 0) {
+    const q = genre || "v-pop";
+    try {
+      const r = await fetch("/api/music/youtube-search?q=" + encodeURIComponent(q));
+      const d = await r.json();
+      const ids = new Set(tracks.map(t => t.id));
+      const more = (d.videos || []).filter(v => !ids.has(v.id)).slice(0, needed).map(ytTrack);
+      tracks.push(...more);
+    } catch (_) {}
+  }
+
+  if (!tracks.length) {
+    try {
+      const r = await fetch("/api/music/youtube-search?q=v-pop+nh%E1%BA%A1c+tr%E1%BA%BB");
+      const d = await r.json();
+      tracks = (d.videos || []).map(ytTrack);
+    } catch (_) {}
+  }
+
+  $sb.textContent = "🔍"; $sb.disabled = false;
+
+  if (tracks.length) {
+    searchResults = tracks;
+    renderResults();
+    queue = [...tracks];
+    playAt(0);
+    showPanel("music");
+  }
+}
 
 // ════════════════════════════════════════════════════════════
 // Music player
@@ -452,13 +560,6 @@ document.getElementById("music-q").addEventListener("keydown", e=>{
     if (q) doMusicSearch(q, false);
   }
 });
-document.getElementById("music-random-btn").onclick = async () => {
-  const gs = ["pop","rock","ballad","edm","jazz","r&b","indie"];
-  const g = gs[Math.floor(Math.random()*gs.length)];
-  document.getElementById("music-q").value = g;
-  await doMusicSearch(g, true);
-  if (searchResults.length) showToast("🎲 "+g);
-};
 
 async function doMusicSearch(q, autoplay=false) {
   const $btn = document.getElementById("music-search-btn");
@@ -485,12 +586,11 @@ function renderResults() {
 }
 
 // Playlist
-async function loadPlaylist(uid) {
+async function loadPlaylist(uid, name) {
   const r = await fetch(`/api/music/playlist/${uid}`);
   const d = await r.json();
   userPlaylist = r.ok ? (d.playlist||[]) : [];
-  const uName = document.querySelector(`#user-select option[value="${uid}"]`)?.textContent||uid;
-  document.getElementById("music-user-name").textContent = uName;
+  document.getElementById("music-user-name").textContent = name || uid;
   document.getElementById("music-user-row").classList.remove("hidden");
   renderPlaylist();
 }
@@ -651,9 +751,8 @@ function renderFileList(files) {
         <div class="font-medium truncate">${esc(f.name)}</div>
         <div class="text-slate-400">${fmtSz(f.size)} · ${f.modified}</div>
       </div>
-      <a href="/api/files/download/${encodeURIComponent(f.name)}"
-         download="${esc(f.name)}"
-         class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇</a>
+      <button onclick="downloadFile('/api/files/download/${encodeURIComponent(f.name)}','${esc(f.name)}')"
+              class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇</button>
       <button data-name="${esc(f.name)}"
               class="btn-fdel px-2 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100">🗑</button>
     `;
@@ -730,6 +829,17 @@ function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
                   .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
+async function downloadFile(url, filename) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) { showToast("Tải về thất bại — kiểm tra xác thực", true); return; }
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch(e) { showToast("Lỗi tải về: " + e.message, true); }
+}
 
 function showToast(msg, isErr=false) {
   const t=document.getElementById("toast");
@@ -740,5 +850,97 @@ function showToast(msg, isErr=false) {
   clearTimeout(t._tid);
   t._tid=setTimeout(()=>t.classList.add("hidden"),3000);
 }
+
+// ════════════════════════════════════════════════════════════
+// TEXT MODE  (two-step: submit → if IMPORTANT → password)
+// ════════════════════════════════════════════════════════════
+(function initTextMode() {
+  const $userSel    = document.getElementById("text-user-sel");
+  const $input      = document.getElementById("text-input");
+  const $sendBtn    = document.getElementById("text-send-btn");
+  const $pwRow      = document.getElementById("text-pw-row");
+  const $pw         = document.getElementById("text-pw");
+  const $confirmBtn = document.getElementById("text-confirm-btn");
+
+  let _pendingText   = null;
+  let _pendingUserId = null;
+
+  $sendBtn.onclick = sendText;
+  $input.addEventListener("keydown", e => { if (e.key === "Enter") sendText(); });
+  $confirmBtn.onclick = confirmPassword;
+  $pw.addEventListener("keydown", e => { if (e.key === "Enter") confirmPassword(); });
+
+  async function sendText() {
+    const text = $input.value.trim();
+    if (!text) return;
+    _pendingText   = text;
+    _pendingUserId = $userSel.value;
+    $pwRow.classList.add("hidden");
+    $pw.value = "";
+    $sendBtn.disabled = true;
+    await submitText(text, _pendingUserId, "");
+    $sendBtn.disabled = false;
+  }
+
+  async function confirmPassword() {
+    const pw = $pw.value.trim();
+    if (!pw) { $pw.focus(); return; }
+    $confirmBtn.disabled = true;
+    await submitText(_pendingText, _pendingUserId, pw);
+    $confirmBtn.disabled = false;
+  }
+
+  async function submitText(text, userId, password) {
+    $status.textContent = "Đang xử lý...";
+    try {
+      const r = await fetch("/api/assistant/text", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ text, user_id: userId, password }),
+      });
+      const data = await r.json();
+      if (!r.ok) { addMsg("bot", "Lỗi: " + data.error); return; }
+
+      addMsg("user", "[Văn bản] " + data.transcript);
+      addMeta(data);
+      addMsg("bot", data.response);
+      if (data.tts_url) { $tts.src = data.tts_url; $tts.play().catch(() => {}); }
+
+      if (data.sv_required && data.blocked && data.identified_user_id) {
+        $pwRow.classList.remove("hidden");
+        $pw.focus();
+        return;
+      }
+
+      $pwRow.classList.add("hidden");
+      $pw.value = "";
+      $input.value = "";
+      _pendingText = null;
+      handleTurnAction(data);
+    } catch (e) {
+      addMsg("bot", "Lỗi mạng: " + e.message);
+    } finally {
+      $status.textContent = "Sẵn sàng";
+    }
+  }
+})();
+
+// ════════════════════════════════════════════════════════════
+// MODE TOGGLE  (voice ↔ text)
+// ════════════════════════════════════════════════════════════
+(function initModeToggle() {
+  const $voiceMode = document.getElementById("voice-mode");
+  const $textMode  = document.getElementById("text-mode");
+  const $toggleBtn = document.getElementById("mode-toggle-btn");
+
+  $toggleBtn.onclick = () => {
+    const goingText = !$voiceMode.classList.contains("hidden");
+    $voiceMode.classList.toggle("hidden", goingText);
+    $textMode.classList.toggle("hidden", !goingText);
+    $toggleBtn.textContent = goingText
+      ? "🎙 Chuyển sang giọng nói"
+      : "💬 Chuyển sang văn bản";
+  };
+})();
 </script>
 {% endblock %}

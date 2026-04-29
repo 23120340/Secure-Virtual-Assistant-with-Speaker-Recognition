@@ -12,63 +12,127 @@
   <a href="{{ url_for('home') }}" class="text-sm text-slate-600 hover:underline">← Quay lại</a>
 </div>
 
-<div class="bg-white border rounded-lg p-6">
-  <h2 class="font-semibold mb-3">Preferences</h2>
-  <textarea id="prefs" rows="10"
-            class="w-full border rounded px-3 py-2 font-mono text-sm">{{ user.preferences | tojson(indent=2) }}</textarea>
+<div class="bg-white border rounded-lg p-6 space-y-5">
 
-  <div class="mt-4 flex gap-3">
+  <!-- Password unlock -->
+  <div>
+    <label class="block text-sm text-slate-600 mb-1">🔒 Mật khẩu để xác nhận thay đổi</label>
+    <div class="flex gap-2 max-w-xs">
+      <div class="relative flex-1">
+        <input id="pw-input" type="password" placeholder="Nhập mật khẩu"
+               class="w-full border rounded px-3 py-2 pr-9 text-sm"/>
+        <button type="button" id="pw-eye"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
+          👁
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preferences (structured) -->
+  <div>
+    <h2 class="font-semibold mb-3">Thông tin cá nhân</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="block">
+        <span class="text-sm text-slate-600">Thể loại nhạc yêu thích</span>
+        <input id="pref_genre" type="text" class="w-full border rounded px-3 py-2 mt-1 text-sm"
+               value="{{ user.preferences.get('favorite_genre', '') }}"
+               placeholder="vd: pop, rock"/>
+      </label>
+      <label class="block">
+        <span class="text-sm text-slate-600">Ca sĩ yêu thích</span>
+        <input id="pref_artist" type="text" class="w-full border rounded px-3 py-2 mt-1 text-sm"
+               value="{{ user.preferences.get('favorite_artist', '') }}"
+               placeholder="vd: Sơn Tùng"/>
+      </label>
+      <label class="block">
+        <span class="text-sm text-slate-600">Số dư tài khoản (đồng)</span>
+        <input id="pref_balance" type="number" class="w-full border rounded px-3 py-2 mt-1 text-sm"
+               value="{{ user.preferences.get('balance', '') }}"/>
+      </label>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+      <label class="block">
+        <span class="text-sm text-slate-600">Ghi chú <span class="text-slate-400">(mỗi dòng)</span></span>
+        <textarea id="pref_notes" rows="4" class="w-full mt-1 border rounded px-3 py-2 text-sm">{{ '\n'.join(user.preferences.get('notes', [])) if user.preferences.get('notes') else '' }}</textarea>
+      </label>
+      <label class="block">
+        <span class="text-sm text-slate-600">Lịch hôm nay <span class="text-slate-400">(mỗi dòng)</span></span>
+        <textarea id="pref_schedule" rows="4" class="w-full mt-1 border rounded px-3 py-2 text-sm">{{ '\n'.join(user.preferences.get('schedule', [])) if user.preferences.get('schedule') else '' }}</textarea>
+      </label>
+    </div>
+  </div>
+
+  <div class="flex gap-3 items-center pt-2 border-t">
     <button id="save-btn"
-            class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">
+            class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-sm">
       Lưu thay đổi
     </button>
     <button id="delete-btn"
-            class="px-4 py-2 bg-rose-600 text-white rounded hover:bg-rose-700">
-      Xóa user này
+            class="px-4 py-2 bg-rose-600 text-white rounded hover:bg-rose-700 text-sm">
+      🗑 Xóa user
     </button>
-    <span id="msg" class="text-sm self-center"></span>
+    <span id="msg" class="text-sm"></span>
   </div>
-</div>
-
-<div class="mt-6 p-4 bg-slate-50 border rounded text-sm">
-  <strong>Cách dùng preferences:</strong>
-  <ul class="list-disc list-inside mt-2 text-slate-600 space-y-1">
-    <li><code>favorite_genre</code>, <code>favorite_artist</code> → dùng cho intent <code>play_music</code></li>
-    <li><code>balance</code> (số) → dùng cho <code>check_balance</code></li>
-    <li><code>notes</code> (array) → dùng cho <code>read_notes</code></li>
-    <li><code>schedule</code> (array) → dùng cho <code>show_schedule</code></li>
-  </ul>
 </div>
 
 <script>
 const userId = {{ user.user_id | tojson }};
 
+document.getElementById("pw-eye").onclick = function() {
+  const inp = document.getElementById("pw-input");
+  if (inp.type === "password") { inp.type = "text"; this.textContent = "🙈"; }
+  else { inp.type = "password"; this.textContent = "👁"; }
+};
+
+function buildPreferences() {
+  const prefs = {};
+  const genre   = document.getElementById("pref_genre").value.trim();
+  const artist  = document.getElementById("pref_artist").value.trim();
+  const balance = document.getElementById("pref_balance").value.trim();
+  const notes   = document.getElementById("pref_notes").value.trim();
+  const sched   = document.getElementById("pref_schedule").value.trim();
+  if (genre)   prefs.favorite_genre  = genre;
+  if (artist)  prefs.favorite_artist = artist;
+  if (balance) prefs.balance         = Number(balance);
+  if (notes)   prefs.notes    = notes.split("\n").map(s => s.trim()).filter(Boolean);
+  if (sched)   prefs.schedule = sched.split("\n").map(s => s.trim()).filter(Boolean);
+  return prefs;
+}
+
 document.getElementById("save-btn").onclick = async () => {
   const $msg = document.getElementById("msg");
-  let prefs;
-  try {
-    prefs = JSON.parse(document.getElementById("prefs").value);
-  } catch (e) {
-    $msg.innerHTML = '<span class="text-rose-600">JSON không hợp lệ</span>';
-    return;
-  }
-  $msg.textContent = "Đang lưu...";
+  const pw   = document.getElementById("pw-input").value;
+  $msg.textContent = "Đang lưu..."; $msg.className = "text-sm text-slate-500";
   const r = await fetch(`/api/users/${userId}/update`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({preferences: prefs}),
+    body: JSON.stringify({preferences: buildPreferences(), password: pw}),
   });
   const data = await r.json();
-  $msg.innerHTML = r.ok
-    ? '<span class="text-emerald-600">✓ Đã lưu</span>'
-    : `<span class="text-rose-600">Lỗi: ${data.error}</span>`;
+  if (r.ok) {
+    $msg.textContent = "✓ Đã lưu"; $msg.className = "text-sm text-emerald-600";
+  } else {
+    $msg.textContent = "Lỗi: " + (data.error || "Không rõ");
+    $msg.className = "text-sm text-rose-600";
+  }
 };
 
 document.getElementById("delete-btn").onclick = async () => {
   if (!confirm("Xóa user này? Embedding sẽ mất, không khôi phục được.")) return;
-  const r = await fetch(`/api/users/${userId}/delete`, {method: "POST"});
-  if (r.ok) location.href = "/";
-  else alert("Xóa thất bại");
+  const pw = document.getElementById("pw-input").value;
+  const r  = await fetch(`/api/users/${userId}/delete`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({password: pw}),
+  });
+  if (r.ok) {
+    location.href = "/";
+  } else {
+    const d = await r.json();
+    document.getElementById("msg").textContent = "Lỗi: " + (d.error || "Xóa thất bại");
+    document.getElementById("msg").className = "text-sm text-rose-600";
+  }
 };
 </script>
 {% endblock %}

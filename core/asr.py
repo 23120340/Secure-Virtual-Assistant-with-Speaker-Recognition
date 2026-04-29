@@ -1,11 +1,38 @@
 """ASR module dùng faster-whisper."""
+import re
 from pathlib import Path
-import tempfile
 import numpy as np
 from faster_whisper import WhisperModel
 
 from . import config
 from . import audio_io
+
+
+def _is_hallucinated(text: str, n_samples: int,
+                     sample_rate: int = 16000) -> bool:
+    """Phát hiện Whisper hallucination: lặp câu hoặc quá dài so với audio.
+
+    Whisper dễ sinh ra văn bản lặp lại (repetition loop) khi audio ngắn/im lặng.
+    VD: 'Xin chào tất cả các bạn...' nhân lên 9 lần mặc dù chỉ nói 2 chữ.
+    """
+    if not text:
+        return False
+
+    duration_s = n_samples / sample_rate
+
+    # Quá dài so với thời gian audio (~8 ký tự/giây là rất hào phóng)
+    if len(text) > max(60, duration_s * 8):
+        return True
+
+    # Phát hiện câu lặp lại
+    clauses = [c.strip() for c in re.split(r'[.!?。\n]', text)
+               if len(c.strip()) > 8]
+    if len(clauses) >= 3:
+        unique_ratio = len(set(clauses)) / len(clauses)
+        if unique_ratio < 0.5:
+            return True
+
+    return False
 
 
 class ASR:
@@ -27,11 +54,34 @@ class ASR:
         if sample_rate != 16000:
             raise ValueError("Whisper expect 16kHz")
 
-        segments, info = self.model.transcribe(
-            audio, language=self.language,
-            beam_size=5, vad_filter=False,  # ta đã VAD trước đó
+        segments, _info = self.model.transcribe(
+            audio,
+            language=self.language,
+            beam_size=10,
+            best_of=5,
+            temperature=0.0,            # deterministic, tránh hallucination
+            vad_filter=False,           # đã VAD trước rồi
+            condition_on_previous_text=False,
+            no_speech_threshold=0.6,
+            log_prob_threshold=-1.0,    # lọc segment xác suất thấp
+            compression_ratio_threshold=1.8,  # thấp hơn = bắt lặp câu sớm hơn
         )
-        text = " ".join(seg.text.strip() for seg in segments).strip()
+
+        # Lọc từng segment: bỏ qua segment có khả năng cao là không có speech
+        parts = []
+        for seg in segments:
+            if getattr(seg, "no_speech_prob", 0) > 0.7:
+                continue
+            if getattr(seg, "avg_logprob", 0) < -1.2:
+                continue
+            parts.append(seg.text.strip())
+
+        text = " ".join(parts).strip()
+
+        # Post-process: phát hiện hallucination tổng thể
+        if _is_hallucinated(text, len(audio)):
+            return ""
+
         return text
 
     def transcribe_file(self, wav_path: Path) -> str:

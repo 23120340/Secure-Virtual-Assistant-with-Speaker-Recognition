@@ -20,13 +20,15 @@ pydub>=0.25.1
 gTTS>=2.5.0
 
 # NLU
-google-generativeai>=0.8.0
+google-genai>=1.0.0
 
 # Web
 flask>=3.0.0
 flask-cors>=4.0.0
 pyopenssl>=24.0.0  # HTTPS ad-hoc cho getUserMedia qua IP
+cryptography>=42.0.0  # self-signed cert generation (gen_cert.py)
 
 # Misc
 python-dotenv>=1.0.0
 requests
+yt-dlp>=2024.1.0

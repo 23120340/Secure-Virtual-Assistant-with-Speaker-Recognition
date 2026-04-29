@@ -1,20 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Secure Virtual Assistant{% endblock %}
 
-{# ══════════════════════════════════════════════════════════
-   SCROLLSPY NAV
-   ══════════════════════════════════════════════════════════ #}
 {% block nav %}
-<nav id="main-nav" class="sticky top-0 z-30 bg-slate-900 text-slate-100 shadow-md">
-  <div class="px-6 py-3 flex items-center justify-between">
-    <span class="text-base font-semibold select-none">🎙 Secure Virtual Assistant</span>
-    <div class="flex items-center gap-1">
-      <a href="#assistant" class="spy-link px-3 py-1.5 rounded text-sm text-slate-300 hover:text-white transition"
-         data-section="assistant">Trợ lý</a>
-      <a href="#users"     class="spy-link px-3 py-1.5 rounded text-sm text-slate-300 hover:text-white transition"
-         data-section="users">Người dùng</a>
-      <a href="#enroll"    class="spy-link px-3 py-1.5 rounded text-sm text-slate-300 hover:text-white transition"
-         data-section="enroll">Đăng ký</a>
+<nav id="main-nav">
+  <div class="nav-inner">
+    <span class="nav-logo select-none">🎙 Secure VA</span>
+    <div class="nav-links" id="nav-links-wrap">
+      <div id="nav-pill"></div>
+      <a href="#hero"      class="spy-link" data-section="hero">Trang chủ</a>
+      <a href="#assistant" class="spy-link" data-section="assistant">Trợ lý</a>
+      <a href="#users"     class="spy-link" data-section="users">Người dùng</a>
+      <a href="#enroll"    class="spy-link" data-section="enroll">Đăng ký</a>
     </div>
   </div>
 </nav>
@@ -25,211 +21,274 @@
    ══════════════════════════════════════════════════════════ #}
 {% block fullcontent %}
 
-{# ─────────────────────────────────────────────────────────
-   SECTION 1 — VIRTUAL ASSISTANT
-   ───────────────────────────────────────────────────────── #}
-<section id="assistant" class="py-12 bg-slate-50">
-  <div class="max-w-5xl mx-auto px-6">
-    <div class="flex items-center justify-between mb-4">
-      <h1 class="text-2xl font-bold">Trợ lý ảo</h1>
-      <span class="text-slate-400 text-xs">{{ users | length }} người dùng đăng ký</span>
+{# ─── HERO / INTRO ────────────────────────────────────────── #}
+<section id="hero" class="va-hero">
+  <div class="hero-bg-deco" aria-hidden="true"></div>
+  <div class="hero-bg-mid"  aria-hidden="true"></div>
+
+  <div class="hero-content">
+    <p class="hero-eyebrow">AI · Speaker Recognition · Smart Personalization</p>
+    <h1 class="hero-headline">Secure<br>Virtual<br>Assistant</h1>
+    <p class="hero-sub">
+      Trợ lý giọng nói thông minh với nhận dạng người dùng,<br>
+      bảo mật đa lớp và cá nhân hóa theo sở thích của bạn.
+    </p>
+    <div class="hero-actions">
+      <a href="#assistant" class="hero-cta">Khám phá ngay →</a>
+      <a href="#enroll"    class="hero-cta-ghost">Đăng ký ngay</a>
     </div>
+  </div>
 
-    <!-- Main layout: chat + side panel -->
-    <div class="flex gap-4" style="min-height:520px">
+  <div class="hero-scroll-hint" aria-hidden="true">
+    Cuộn xuống <span>↓</span>
+  </div>
+</section>
 
-      <!-- ── LEFT: Chat ─────────────────────────────────── -->
-      <div class="flex flex-col flex-1 min-w-0">
-        <div id="chat"
-             class="flex-1 bg-white border rounded-lg p-4 space-y-2 overflow-y-auto"
-             style="min-height:320px;max-height:420px">
-          <div class="text-sm text-slate-400 italic">
-            Giữ nút hoặc phím <kbd class="px-1 border rounded text-xs">Space</kbd> để nói.
-            <ul class="list-disc list-inside mt-1 space-y-0.5">
+{# ─── Section 1: Trợ lý ──────────────────────────────────── #}
+<section id="assistant" class="va-section">
+  <div class="s-container">
+
+    <div class="hero-grid">
+
+      <!-- ╔══ LEFT: chat + controls ══════════════════════════╗ -->
+      <div class="chat-wrap fade-up">
+
+        <!-- Heading -->
+        <div class="mb-4">
+          <h1 class="s-title">Trợ lý ảo <em>thông minh</em></h1>
+          <p class="s-subtitle">
+            Nhận dạng giọng nói · Xác thực danh tính · <span class="font-medium" style="color:#7c3aed">{{ users|length }} người dùng</span>
+          </p>
+        </div>
+
+        <!-- Chat box -->
+        <div id="chat" class="space-y-2">
+          <div class="text-sm italic" style="color:#9ca3af">
+            Giữ nút hoặc phím <kbd>Space</kbd> để nói.
+            <ul class="list-disc list-inside mt-1 space-y-0.5 not-italic">
               <li>"Mấy giờ rồi?" — không cần xác thực</li>
-              <li>"Phát nhạc đi" → mở Music Player tích hợp</li>
-              <li>"Mở file của tôi" → xác thực giọng → mở Files</li>
+              <li>"Phát nhạc đi" → YouTube Music</li>
+              <li>"Mở file của tôi" → xác thực giọng → Files</li>
               <li>"Đọc ghi chú" → Speaker Verification</li>
             </ul>
           </div>
         </div>
 
-        <!-- PTT button -->
-        <div class="mt-3 flex flex-col items-center gap-2">
-          <button id="ptt-btn"
-                  class="w-24 h-24 rounded-full bg-rose-600 text-white text-base font-semibold
-                         hover:bg-rose-700 active:bg-rose-800 select-none touch-none
-                         transition-all duration-150">
-            🎙<br><span id="ptt-label">Bấm &amp; giữ</span>
-          </button>
-          <span id="ptt-status" class="text-sm text-slate-500">Sẵn sàng</span>
-        </div>
-      </div>
-
-      <!-- ── RIGHT: Side Panel ──────────────────────────── -->
-      <div id="side-panel"
-           class="hidden flex-col w-80 flex-shrink-0 bg-white border rounded-lg overflow-hidden"
-           style="min-height:520px">
-
-        <!-- Panel tabs -->
-        <div class="flex items-center border-b bg-slate-50 px-2 py-1.5 gap-1">
-          <button id="tab-music"
-                  class="tab-btn flex-1 py-1 text-sm rounded hover:bg-slate-100">🎵 Nhạc</button>
-          <button id="tab-files"
-                  class="tab-btn flex-1 py-1 text-sm rounded hover:bg-slate-100">📁 Files</button>
-          <button id="panel-close"
-                  class="ml-1 px-2 py-1 text-slate-400 hover:text-slate-700 text-lg leading-none">✕</button>
+        <!-- Mode toggle + status bar -->
+        <div class="flex items-center justify-between mt-3 gap-2 flex-wrap">
+          <button id="mode-toggle-btn">💬 Chuyển sang văn bản</button>
+          <span id="ptt-status">Sẵn sàng</span>
         </div>
 
-        <!-- ── MUSIC CONTENT ─────────────────────────────── -->
-        <div id="content-music" class="hidden flex-col flex-1 overflow-hidden p-2 gap-2">
-          <!-- Search row -->
-          <div class="flex gap-1">
-            <input id="music-q" type="text" placeholder="Tìm bài hát, ca sĩ..."
-                   class="flex-1 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400">
-            <button id="music-search-btn"
-                    class="px-2 py-1 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700">🔍</button>
-            <button id="music-random-btn"
-                    class="px-2 py-1 bg-amber-500 text-white rounded text-sm hover:bg-amber-600">🎲</button>
-          </div>
-          <!-- User label + suggest -->
-          <div id="music-user-row" class="hidden flex items-center justify-between text-xs text-slate-500 px-1">
-            <span>Playlist của <strong id="music-user-name"></strong></span>
-            <button id="music-suggest-btn" class="text-violet-600 hover:underline">✨ Gợi ý</button>
-          </div>
-          <!-- Playlist -->
-          <div class="flex-shrink-0">
-            <p class="text-xs font-medium text-slate-500 px-1 mb-1">
-              Playlist <span id="playlist-count" class="text-slate-400"></span>
-            </p>
-            <div id="music-playlist" class="space-y-1 max-h-44 overflow-y-auto">
-              <p id="playlist-empty" class="text-xs text-slate-400 px-1">Chưa có bài nào trong playlist.</p>
-            </div>
-          </div>
-          <!-- Search results -->
-          <div class="flex-1 overflow-y-auto">
-            <p class="text-xs font-medium text-slate-500 px-1 mb-1">
-              Kết quả <span id="results-count" class="text-slate-400"></span>
-            </p>
-            <div id="music-results" class="space-y-1">
-              <p id="results-empty" class="text-xs text-slate-400 px-1">Nhập từ khóa để tìm nhạc.</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- ── FILES CONTENT ─────────────────────────────── -->
-        <div id="content-files" class="hidden flex-col flex-1 overflow-hidden p-2 gap-2">
-          <!-- Verify widget -->
-          <div id="files-verify-widget" class="flex flex-col items-center gap-2 py-4">
-            <button id="files-verify-btn"
-                    class="w-16 h-16 rounded-full bg-blue-600 text-white text-sm font-semibold
-                           hover:bg-blue-700 select-none touch-none transition-all">
-              🎙<br><span id="files-verify-label" class="text-xs">Giữ</span>
+        <!-- ── Voice mode ─────────────────────────────────── -->
+        <div id="voice-mode" class="voice-ui-wrap mt-2">
+          <!-- Rings + PTT button -->
+          <div id="voice-rings" class="voice-rings idle">
+            <div class="v-ring v-ring-3"></div>
+            <div class="v-ring v-ring-2"></div>
+            <div class="v-ring v-ring-1"></div>
+            <button id="ptt-btn" class="touch-none select-none">
+              <span class="mic-icon">🎙</span>
+              <span id="ptt-label" style="font-size:.68rem">Bấm &amp; giữ</span>
             </button>
-            <p id="files-verify-status" class="text-xs text-slate-500 text-center">
-              Giữ nút để xác thực giọng nói
-            </p>
           </div>
-          <!-- File manager (shown after verification) -->
-          <div id="files-manager" class="hidden flex-col gap-2 flex-1 overflow-hidden">
-            <div class="flex items-center justify-between text-xs px-1">
-              <span class="text-slate-500">
-                File của <strong id="files-user-name" class="text-emerald-700"></strong>
-              </span>
-              <button id="files-logout-btn" class="text-slate-400 hover:text-rose-600">Đăng xuất</button>
+          <!-- VU Meter bars -->
+          <div id="vu-meter" class="vu-meter">
+            <div class="vu-bar"></div><div class="vu-bar"></div><div class="vu-bar"></div>
+            <div class="vu-bar"></div><div class="vu-bar"></div><div class="vu-bar"></div>
+            <div class="vu-bar"></div><div class="vu-bar"></div><div class="vu-bar"></div>
+            <div class="vu-bar"></div><div class="vu-bar"></div><div class="vu-bar"></div>
+            <div class="vu-bar"></div><div class="vu-bar"></div><div class="vu-bar"></div>
+            <div class="vu-bar"></div>
+          </div>
+        </div>
+
+        <!-- ── Text mode ──────────────────────────────────── -->
+        <div id="text-mode" class="hidden mt-2 w-full space-y-2">
+          <select id="text-user-sel" class="glass-input">
+            <option value="">Khách (không xác thực)</option>
+            {% for u in users %}
+            <option value="{{ u.user_id }}">{{ u.name }}</option>
+            {% endfor %}
+          </select>
+          <div class="flex gap-2">
+            <input id="text-input" type="text"
+                   placeholder="Nhập lệnh: Mấy giờ rồi, Phát nhạc, Đọc ghi chú..."
+                   class="glass-input" style="border-radius:.75rem"/>
+            <button id="text-send-btn" class="btn-primary btn-sm whitespace-nowrap">Gửi</button>
+          </div>
+          <div id="text-pw-row" class="hidden rounded-xl p-3 space-y-2"
+               style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3)">
+            <p class="text-xs font-semibold" style="color:#92400e">🔐 Lệnh này yêu cầu xác thực mật khẩu</p>
+            <div class="flex gap-2">
+              <input id="text-pw" type="password" placeholder="Nhập mật khẩu..."
+                     class="glass-input" style="border-radius:.75rem"/>
+              <button id="text-confirm-btn" class="btn-primary btn-sm whitespace-nowrap"
+                      style="background:linear-gradient(135deg,#f59e0b,#d97706)">Xác nhận</button>
             </div>
-            <div class="flex gap-1 items-center">
-              <input id="files-input" type="file" multiple
-                     class="flex-1 text-xs file:py-1 file:px-2 file:rounded file:border-0
-                            file:bg-slate-100 file:text-slate-600 file:hover:bg-slate-200">
-              <button id="files-upload-btn"
-                      class="px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700">
-                Tải lên
-              </button>
+          </div>
+        </div>
+
+      </div><!-- end left col -->
+
+      <!-- ╔══ RIGHT: Side panel ══════════════════════════════╗ -->
+      <div class="voice-col">
+        <div id="side-panel"
+             class="hidden flex-col flex-shrink-0 overflow-hidden"
+             style="min-height:480px;width:100%">
+
+          <!-- Panel tabs -->
+          <div class="flex items-center px-2 py-2 gap-1"
+               style="border-bottom:1px solid rgba(0,0,0,.06);background:rgba(255,255,255,.5)">
+            <button id="tab-music" class="tab-btn flex-1">🎵 Nhạc</button>
+            <button id="tab-files" class="tab-btn flex-1">📁 Files</button>
+            <button id="panel-close"
+                    class="ml-1 px-2 py-1 text-lg leading-none"
+                    style="color:#9ca3af;background:none;border:none;cursor:pointer">✕</button>
+          </div>
+
+          <!-- Music content -->
+          <div id="content-music" class="hidden flex-col flex-1 overflow-hidden p-2 gap-2">
+            <div class="flex gap-1">
+              <input id="music-q" type="text" placeholder="Tìm bài hát, ca sĩ...">
+              <button id="music-search-btn">🔍</button>
             </div>
-            <div id="files-upload-msg" class="hidden text-xs px-1"></div>
-            <div class="flex-1 overflow-y-auto border rounded">
-              <div id="files-list" class="divide-y text-xs"></div>
-              <div id="files-empty" class="hidden p-6 text-center text-slate-400 text-xs">
-                Chưa có file nào.
+            <div id="music-user-row" class="hidden flex items-center justify-between text-xs px-1"
+                 style="color:#6b7280">
+              <span>Playlist của <strong id="music-user-name"></strong></span>
+              <button id="music-suggest-btn"
+                      style="color:#7c3aed;background:none;border:none;cursor:pointer;font-size:.75rem">✨ Gợi ý</button>
+            </div>
+            <div class="flex-shrink-0">
+              <p class="text-xs font-semibold px-1 mb-1" style="color:#6b7280">
+                Playlist <span id="playlist-count" style="color:#9ca3af;font-weight:400"></span>
+              </p>
+              <div id="music-playlist" class="space-y-1 overflow-y-auto" style="max-height:140px">
+                <p id="playlist-empty" class="text-xs px-1" style="color:#9ca3af">Chưa có bài nào trong playlist.</p>
+              </div>
+            </div>
+            <div class="flex-1 overflow-y-auto">
+              <p class="text-xs font-semibold px-1 mb-1" style="color:#6b7280">
+                Kết quả <span id="results-count" style="color:#9ca3af;font-weight:400"></span>
+              </p>
+              <div id="music-results" class="space-y-1">
+                <p id="results-empty" class="text-xs px-1" style="color:#9ca3af">Nhập từ khóa để tìm nhạc.</p>
               </div>
             </div>
           </div>
-        </div>
 
-      </div><!-- end side-panel -->
-    </div><!-- end flex gap-4 -->
-
-    <!-- Fixed music player bar -->
-    <div id="player-bar"
-         class="hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-white z-40 shadow-2xl">
-      <div class="max-w-5xl mx-auto px-4 py-2.5 flex items-center gap-3">
-        <img id="np-cover" src="" alt=""
-             class="hidden w-10 h-10 rounded object-cover flex-shrink-0 bg-slate-700">
-        <div class="w-32 min-w-0 hidden sm:block">
-          <div id="np-title"  class="text-sm font-semibold truncate">—</div>
-          <div id="np-artist" class="text-xs text-slate-400 truncate"></div>
-        </div>
-        <button id="prev-btn" class="text-slate-400 hover:text-white px-1">⏮</button>
-        <button id="play-btn"
-                class="w-9 h-9 rounded-full bg-emerald-500 hover:bg-emerald-400
-                       flex items-center justify-center font-bold">▶</button>
-        <button id="next-btn" class="text-slate-400 hover:text-white px-1">⏭</button>
-        <div class="flex items-center gap-1.5 flex-1 min-w-0">
-          <span id="time-cur" class="text-xs text-slate-400 w-7 text-right flex-shrink-0">0:00</span>
-          <div id="prog-track" class="flex-1 h-1.5 bg-slate-600 rounded-full cursor-pointer">
-            <div id="prog-fill" class="h-full bg-emerald-400 rounded-full" style="width:0%"></div>
+          <!-- Files content -->
+          <div id="content-files" class="hidden flex-col flex-1 overflow-hidden p-2 gap-2">
+            <div id="files-verify-widget" class="flex flex-col items-center gap-3 py-5">
+              <button id="files-verify-btn" class="touch-none select-none">
+                🎙<br><span id="files-verify-label" class="text-xs">Giữ</span>
+              </button>
+              <p id="files-verify-status" class="text-xs text-center" style="color:#6b7280">
+                Giữ nút để xác thực giọng nói
+              </p>
+            </div>
+            <div id="files-manager" class="hidden flex-col gap-2 flex-1 overflow-hidden">
+              <div class="flex items-center justify-between text-xs px-1">
+                <span style="color:#6b7280">File của <strong id="files-user-name"
+                      style="color:#7c3aed"></strong></span>
+                <button id="files-logout-btn"
+                        style="color:#9ca3af;background:none;border:none;cursor:pointer;font-size:.75rem"
+                        onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#9ca3af'">Đăng xuất</button>
+              </div>
+              <div class="flex gap-1 items-center">
+                <input id="files-input" type="file" multiple
+                       class="flex-1 text-xs"
+                       style="font-size:.72rem">
+                <button id="files-upload-btn" class="btn-primary btn-sm">Tải lên</button>
+              </div>
+              <div id="files-upload-msg" style="font-size:.75rem;padding:0 .25rem;display:none"></div>
+              <div class="flex-1 overflow-y-auto" style="border:1px solid rgba(0,0,0,.08);border-radius:.75rem">
+                <div id="files-list" class="divide-y text-xs"></div>
+                <div id="files-empty" class="hidden p-6 text-center text-xs" style="color:#9ca3af">
+                  Chưa có file nào.
+                </div>
+              </div>
+            </div>
           </div>
-          <span id="time-tot" class="text-xs text-slate-400 w-7 flex-shrink-0">0:30</span>
-        </div>
-        <input id="vol-slider" type="range" min="0" max="1" step="0.05" value="0.8"
-               class="w-14 accent-emerald-400 flex-shrink-0">
-        <button id="player-bar-close"
-                class="text-slate-500 hover:text-white text-lg leading-none px-1 flex-shrink-0">✕</button>
-      </div>
-    </div>
 
-    <audio id="audio-el"   preload="none"></audio>
-    <audio id="tts-player" class="hidden"></audio>
+        </div><!-- end side-panel -->
+      </div><!-- end right col -->
 
-  </div><!-- end max-w-5xl -->
+    </div><!-- end hero-grid -->
+
+  </div><!-- end s-container -->
 </section>
+
+<!-- Fixed music player bar -->
+<div id="player-bar"
+     class="hidden fixed bottom-0 left-0 right-0 text-white z-40"
+     style="box-shadow:0 -4px 30px rgba(0,0,0,.25)">
+  <div style="max-width:1100px;margin:0 auto;padding:.6rem 1.25rem;display:flex;align-items:center;gap:.75rem">
+    <img id="np-cover" src="" alt=""
+         class="hidden w-10 h-10 rounded-lg object-cover flex-shrink-0"
+         style="background:rgba(255,255,255,.1)">
+    <div class="w-32 min-w-0 hidden sm:block">
+      <div id="np-title"  class="text-sm font-semibold truncate">—</div>
+      <div id="np-artist" class="text-xs truncate" style="color:#9ca3af"></div>
+    </div>
+    <button id="prev-btn" class="px-1" style="color:#9ca3af;background:none;border:none;cursor:pointer;font-size:1.1rem">⏮</button>
+    <button id="play-btn" class="flex items-center justify-center font-bold">▶</button>
+    <button id="next-btn" class="px-1" style="color:#9ca3af;background:none;border:none;cursor:pointer;font-size:1.1rem">⏭</button>
+    <div class="flex items-center gap-1.5 flex-1 min-w-0">
+      <span id="time-cur" class="text-xs w-7 text-right flex-shrink-0" style="color:#9ca3af">0:00</span>
+      <div id="prog-track" class="flex-1 rounded-full cursor-pointer" style="height:4px">
+        <div id="prog-fill" class="h-full rounded-full" style="width:0%"></div>
+      </div>
+      <span id="time-tot" class="text-xs w-7 flex-shrink-0" style="color:#9ca3af">0:30</span>
+    </div>
+    <input id="vol-slider" type="range" min="0" max="1" step="0.05" value="0.8"
+           class="w-14 flex-shrink-0" style="accent-color:#c44dff">
+    <button id="player-bar-close"
+            class="text-lg leading-none px-1 flex-shrink-0"
+            style="color:#6b7280;background:none;border:none;cursor:pointer">✕</button>
+  </div>
+</div>
+
+<audio id="audio-el"   preload="none"></audio>
+<audio id="tts-player" class="hidden"></audio>
 
 {# ─────────────────────────────────────────────────────────
    SECTION 2 — USERS
    ───────────────────────────────────────────────────────── #}
-<section id="users" class="py-12 bg-white">
-  <div class="max-w-5xl mx-auto px-6">
-    <div class="flex items-center justify-between mb-6">
-      <h2 class="text-2xl font-bold">Người dùng đã đăng ký</h2>
-      <span class="text-sm text-slate-500">{{ users | length }} người dùng</span>
+<section id="users" class="va-section">
+  <div class="s-container">
+    <div class="flex items-center justify-between fade-up" style="margin-bottom:1.5rem">
+      <div>
+        <h2 class="s-title">Người dùng <em>đã đăng ký</em></h2>
+        <p class="s-subtitle">{{ users | length }} người dùng trong hệ thống</p>
+      </div>
     </div>
 
     {% if users %}
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="users-grid">
       {% for u in users %}
-      <div class="user-card relative bg-slate-50 border rounded-xl p-5 cursor-pointer
-                  hover:border-emerald-400 hover:shadow-md transition-all duration-150"
+      <div class="user-card relative p-5 fade-up"
            data-uid="{{ u.user_id }}" data-name="{{ u.name }}">
-        <button class="card-trash-btn absolute top-3 right-3 text-slate-300 hover:text-rose-500
-                       transition p-1 rounded"
+        <button class="card-trash-btn absolute top-3 right-3 p-1"
+                style="color:rgba(0,0,0,.18);background:none;border:none;cursor:pointer;font-size:1.1rem"
+                onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='rgba(0,0,0,.18)'"
                 title="Xóa người dùng"
                 data-uid="{{ u.user_id }}" data-name="{{ u.name }}">🗑</button>
-        <div class="pr-6">
-          <div class="text-lg font-semibold truncate">{{ u.name }}</div>
-          <div class="text-sm text-slate-400 mt-0.5">
-            <code class="bg-slate-100 px-1 rounded text-xs">{{ u.user_id }}</code>
+        <div style="padding-right:2rem">
+          <div style="font-size:1.1rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ u.name }}</div>
+          <div style="font-size:.78rem;color:var(--txt-2);margin-top:.25rem">
+            <code style="background:rgba(124,58,237,.08);color:var(--c-violet);padding:2px 6px;border-radius:4px;font-size:.72rem">{{ u.user_id }}</code>
           </div>
         </div>
-        <div class="mt-3 text-xs text-slate-400">Nhấn để xem chi tiết</div>
+        <div style="margin-top:.75rem;font-size:.75rem;color:var(--txt-2)">Nhấn để xem chi tiết</div>
       </div>
       {% endfor %}
     </div>
     {% else %}
-    <div id="users-grid" class="py-16 text-center text-slate-400">
-      <div class="text-4xl mb-3">👤</div>
-      <p class="text-lg font-medium">Chưa có người dùng nào.</p>
-      <p class="text-sm mt-1">Cuộn xuống để đăng ký người dùng mới.</p>
+    <div id="users-grid" class="fade-up" style="padding:4rem 0;text-align:center;color:var(--txt-2)">
+      <div style="font-size:3rem;margin-bottom:.75rem">👤</div>
+      <p style="font-size:1.1rem;font-weight:600">Chưa có người dùng nào.</p>
+      <p style="font-size:.85rem;margin-top:.35rem">Cuộn xuống để đăng ký người dùng mới.</p>
     </div>
     {% endif %}
   </div>
@@ -238,81 +297,75 @@
 {# ─────────────────────────────────────────────────────────
    SECTION 3 — ENROLL
    ───────────────────────────────────────────────────────── #}
-<section id="enroll" class="py-12 bg-slate-50">
-  <div class="max-w-5xl mx-auto px-6">
-    <h2 class="text-2xl font-bold mb-2">Đăng ký người dùng mới</h2>
-    <p class="text-slate-500 mb-6 text-sm">
-      Hệ thống sẽ thu <strong>{{ num_samples }}</strong> mẫu giọng nói (~{{ duration }}s/mẫu)
-      để tạo speaker embedding đại diện cho bạn.
-    </p>
+<section id="enroll" class="va-section">
+  <div class="s-container">
+    <div class="fade-up" style="margin-bottom:1.5rem">
+      <h2 class="s-title">Đăng ký <em>người dùng mới</em></h2>
+      <p class="s-subtitle">
+        Hệ thống sẽ thu <strong>{{ num_samples }}</strong> mẫu giọng nói (~{{ duration }}s/mẫu)
+        để tạo speaker embedding đại diện cho bạn.
+      </p>
+    </div>
 
-    <div class="bg-white border rounded-lg p-6 space-y-6">
+    <div class="enroll-card fade-up" style="padding:1.75rem">
 
       <!-- Step 1: Info -->
-      <section>
-        <h3 class="font-semibold mb-3">1. Thông tin</h3>
+      <section style="margin-bottom:1.5rem">
+        <h3 style="font-weight:700;font-size:1rem;margin:0 0 1rem;color:var(--txt)">1. Thông tin</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <label class="block">
-            <span class="text-sm text-slate-600">User ID <span class="text-rose-500">*</span></span>
-            <input id="enroll-user_id" type="text"
-                   class="w-full border rounded px-3 py-2 mt-1"
+            <span style="font-size:.8rem;color:var(--txt-2)">User ID <span style="color:#f43f5e">*</span></span>
+            <input id="enroll-user_id" type="text" class="glass-input" style="margin-top:.35rem"
                    placeholder="vd: minh, lan_nguyen"/>
           </label>
           <label class="block">
-            <span class="text-sm text-slate-600">Tên hiển thị <span class="text-rose-500">*</span></span>
-            <input id="enroll-name" type="text"
-                   class="w-full border rounded px-3 py-2 mt-1"
+            <span style="font-size:.8rem;color:var(--txt-2)">Tên hiển thị <span style="color:#f43f5e">*</span></span>
+            <input id="enroll-name" type="text" class="glass-input" style="margin-top:.35rem"
                    placeholder="vd: Nguyễn Văn Minh"/>
           </label>
           <label class="block">
-            <span class="text-sm text-slate-600">Mật khẩu <span class="text-rose-500">*</span></span>
-            <div class="relative mt-1">
-              <input id="enroll-password" type="password"
-                     class="w-full border rounded px-3 py-2 pr-9"
+            <span style="font-size:.8rem;color:var(--txt-2)">Mật khẩu <span style="color:#f43f5e">*</span></span>
+            <div style="position:relative;margin-top:.35rem">
+              <input id="enroll-password" type="password" class="glass-input" style="padding-right:2.5rem"
                      placeholder="Nhập mật khẩu"/>
               <button type="button" id="enroll-pw-eye"
-                      class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
+                      style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;font-size:.85rem">
                 👁
               </button>
             </div>
           </label>
         </div>
 
-        <details class="mt-4" open>
-          <summary class="cursor-pointer text-sm text-emerald-700 font-medium mb-3">
+        <details style="margin-top:1rem" open>
+          <summary style="cursor:pointer;font-size:.85rem;color:var(--c-violet);font-weight:600;margin-bottom:.75rem">
             Tùy chỉnh cá nhân (preferences)
           </summary>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4" style="margin-top:.75rem">
             <label class="block">
-              <span class="text-sm text-slate-600">Thể loại nhạc yêu thích</span>
-              <input id="enroll-pref_genre" type="text"
-                     class="w-full border rounded px-3 py-2 mt-1 text-sm"
+              <span style="font-size:.8rem;color:var(--txt-2)">Thể loại nhạc yêu thích</span>
+              <input id="enroll-pref_genre" type="text" class="glass-input" style="margin-top:.35rem"
                      placeholder="vd: rock, pop, ballad, jazz"/>
             </label>
             <label class="block">
-              <span class="text-sm text-slate-600">Ca sĩ yêu thích</span>
-              <input id="enroll-pref_artist" type="text"
-                     class="w-full border rounded px-3 py-2 mt-1 text-sm"
+              <span style="font-size:.8rem;color:var(--txt-2)">Ca sĩ yêu thích</span>
+              <input id="enroll-pref_artist" type="text" class="glass-input" style="margin-top:.35rem"
                      placeholder="vd: Sơn Tùng, BTS"/>
             </label>
             <label class="block">
-              <span class="text-sm text-slate-600">Số dư tài khoản (đồng)</span>
-              <input id="enroll-pref_balance" type="number"
-                     class="w-full border rounded px-3 py-2 mt-1 text-sm"
+              <span style="font-size:.8rem;color:var(--txt-2)">Số dư tài khoản (đồng)</span>
+              <input id="enroll-pref_balance" type="number" class="glass-input" style="margin-top:.35rem"
                      placeholder="vd: 15000000"/>
             </label>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4" style="margin-top:.75rem">
             <label class="block">
-              <span class="text-sm text-slate-600">Ghi chú <span class="text-slate-400">(mỗi dòng 1 ghi chú)</span></span>
-              <textarea id="enroll-pref_notes" rows="3"
-                        class="w-full mt-1 border rounded px-3 py-2 text-sm"
+              <span style="font-size:.8rem;color:var(--txt-2)">Ghi chú <span style="font-weight:400">(mỗi dòng 1 ghi chú)</span></span>
+              <textarea id="enroll-pref_notes" rows="3" class="glass-input" style="margin-top:.35rem;resize:vertical"
                         placeholder="Họp 9h&#10;Mua sữa&#10;Sinh nhật Lan ngày 15"></textarea>
             </label>
             <label class="block">
-              <span class="text-sm text-slate-600">Lịch hôm nay <span class="text-slate-400">(mỗi dòng 1 mục)</span></span>
-              <textarea id="enroll-pref_schedule" rows="3"
-                        class="w-full mt-1 border rounded px-3 py-2 text-sm"
+              <span style="font-size:.8rem;color:var(--txt-2)">Lịch hôm nay <span style="font-weight:400">(mỗi dòng 1 mục)</span></span>
+              <textarea id="enroll-pref_schedule" rows="3" class="glass-input" style="margin-top:.35rem;resize:vertical"
                         placeholder="9:00 - Họp nhóm&#10;12:00 - Ăn trưa&#10;15:00 - Review code"></textarea>
             </label>
           </div>
@@ -320,30 +373,28 @@
       </section>
 
       <!-- Step 2: Record -->
-      <section>
-        <h3 class="font-semibold mb-3">2. Thu mẫu giọng nói</h3>
-        <div class="mb-4 p-3 bg-slate-50 border rounded text-sm">
+      <section style="border-top:1px solid rgba(0,0,0,.06);padding-top:1.25rem;margin-bottom:1.25rem">
+        <h3 style="font-weight:700;font-size:1rem;margin:0 0 .75rem;color:var(--txt)">2. Thu mẫu giọng nói</h3>
+        <div style="margin-bottom:.85rem;padding:.8rem 1rem;background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.15);border-radius:.85rem;font-size:.85rem">
           <strong>Câu mẫu:</strong>
-          <span id="enroll-prompt-text" class="italic">Trợ lý ơi, hôm nay thời tiết thế nào?</span>
+          <span id="enroll-prompt-text" style="font-style:italic;margin-left:.35rem">Trợ lý ơi, hôm nay thời tiết thế nào?</span>
         </div>
-        <div class="flex items-center gap-3">
-          <button id="enroll-record-btn"
-                  class="px-5 py-3 bg-rose-600 text-white rounded hover:bg-rose-700 disabled:bg-slate-300">
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+          <button id="enroll-record-btn">
             🎙 Bắt đầu thu mẫu <span id="enroll-sample-counter">1</span>/{{ num_samples }}
           </button>
-          <span id="enroll-status" class="text-sm text-slate-500"></span>
+          <span id="enroll-status" style="font-size:.82rem;color:var(--txt-2)"></span>
         </div>
-        <div id="enroll-samples-list" class="mt-4 space-y-2"></div>
+        <div id="enroll-samples-list" style="margin-top:.85rem;display:flex;flex-direction:column;gap:.5rem"></div>
       </section>
 
       <!-- Step 3: Submit -->
-      <section>
-        <h3 class="font-semibold mb-3">3. Hoàn tất</h3>
-        <button id="enroll-submit-btn" disabled
-                class="px-5 py-3 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:bg-slate-300">
+      <section style="border-top:1px solid rgba(0,0,0,.06);padding-top:1.25rem">
+        <h3 style="font-weight:700;font-size:1rem;margin:0 0 .75rem;color:var(--txt)">3. Hoàn tất</h3>
+        <button id="enroll-submit-btn" disabled>
           Lưu và tạo speaker profile
         </button>
-        <div id="enroll-result" class="mt-3 text-sm"></div>
+        <div id="enroll-result" style="margin-top:.75rem;font-size:.85rem"></div>
       </section>
     </div>
   </div>
@@ -357,168 +408,186 @@
   <div class="max-w-lg w-full mx-4 bg-white rounded-xl shadow-2xl">
 
     <!-- Header -->
-    <div class="flex items-center justify-between px-6 py-4 border-b">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.1rem 1.5rem;border-bottom:1px solid rgba(0,0,0,.07)">
       <div>
-        <h3 id="modal-user-name" class="text-lg font-bold"></h3>
-        <p  id="modal-user-id"   class="text-sm text-slate-400"></p>
+        <h3 id="modal-user-name" style="font-size:1.1rem;font-weight:700;margin:0"></h3>
+        <p  id="modal-user-id"   style="font-size:.78rem;color:var(--txt-2);margin:.15rem 0 0"></p>
       </div>
       <button id="modal-close"
-              class="text-slate-400 hover:text-slate-700 text-2xl leading-none px-1">✕</button>
+              style="color:var(--txt-2);background:none;border:none;cursor:pointer;font-size:1.5rem;line-height:1;padding:.25rem .5rem;border-radius:.5rem"
+              onmouseover="this.style.color='var(--txt)'" onmouseout="this.style.color='var(--txt-2)'">✕</button>
     </div>
 
     <!-- Password lock -->
-    <div id="modal-lock" class="px-6 py-5">
-      <p class="text-sm text-slate-600 mb-3">🔒 Nhập mật khẩu để chỉnh sửa</p>
+    <div id="modal-lock" style="padding:1.25rem 1.5rem">
+      <p style="font-size:.85rem;color:var(--txt-2);margin-bottom:.75rem">🔒 Nhập mật khẩu để chỉnh sửa</p>
       <div class="flex gap-2">
         <div class="relative flex-1">
-          <input id="modal-pw" type="password" placeholder="Mật khẩu"
-                 class="w-full border rounded px-3 py-2 pr-9 text-sm"/>
+          <input id="modal-pw" type="password" placeholder="Mật khẩu" class="glass-input" style="padding-right:2.5rem"/>
           <button type="button" id="modal-pw-eye"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
+                  style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;font-size:.85rem">
             👁
           </button>
         </div>
-        <button id="modal-unlock-btn"
-                class="px-4 py-2 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700">
-          Mở khóa
-        </button>
+        <button id="modal-unlock-btn" class="btn-primary">Mở khóa</button>
       </div>
-      <div id="modal-lock-error" class="mt-2 text-sm text-rose-600 hidden"></div>
+      <div id="modal-lock-error" style="margin-top:.5rem;font-size:.82rem;color:#ef4444;display:none"></div>
     </div>
 
     <!-- Editor (hidden until unlocked) -->
     <div id="modal-editor" class="hidden">
 
       <!-- Tabs -->
-      <div class="flex border-b px-6">
-        <button id="modal-tab-info-btn"
-                class="modal-tab-btn py-2 px-4 text-sm border-b-2 border-emerald-500 font-medium text-emerald-700 -mb-px">
+      <div style="display:flex;border-bottom:1px solid rgba(0,0,0,.07);padding:0 1.5rem;gap:.25rem">
+        <button id="modal-tab-info-btn" class="modal-tab-btn"
+                style="padding:.6rem 1rem;font-size:.83rem;font-weight:600;border:none;border-bottom:2px solid var(--c-violet);color:var(--c-violet);background:none;cursor:pointer;margin-bottom:-1px">
           Thông tin
         </button>
-        <button id="modal-tab-files-btn"
-                class="modal-tab-btn py-2 px-4 text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">
+        <button id="modal-tab-files-btn" class="modal-tab-btn"
+                style="padding:.6rem 1rem;font-size:.83rem;font-weight:500;border:none;border-bottom:2px solid transparent;color:var(--txt-2);background:none;cursor:pointer;margin-bottom:-1px">
           Files
+        </button>
+        <button id="modal-tab-music-btn" class="modal-tab-btn"
+                style="padding:.6rem 1rem;font-size:.83rem;font-weight:500;border:none;border-bottom:2px solid transparent;color:var(--txt-2);background:none;cursor:pointer;margin-bottom:-1px">
+          🎵 Nhạc
         </button>
       </div>
 
       <!-- Info tab -->
-      <div id="modal-tab-info" class="px-6 py-4 space-y-4">
+      <div id="modal-tab-info" style="padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:1rem">
 
         <label class="block">
-          <span class="text-sm text-slate-600">Tên hiển thị</span>
-          <input id="modal-name" type="text"
-                 class="w-full border rounded px-3 py-2 mt-1 text-sm"/>
+          <span style="font-size:.8rem;color:var(--txt-2)">Tên hiển thị</span>
+          <input id="modal-name" type="text" class="glass-input" style="margin-top:.35rem"/>
         </label>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <label class="block">
-            <span class="text-sm text-slate-600">Thể loại nhạc yêu thích</span>
-            <input id="modal-pref-genre" type="text"
-                   class="w-full border rounded px-3 py-2 mt-1 text-sm"
+            <span style="font-size:.8rem;color:var(--txt-2)">Thể loại nhạc yêu thích</span>
+            <input id="modal-pref-genre" type="text" class="glass-input" style="margin-top:.35rem"
                    placeholder="vd: pop, rock"/>
           </label>
           <label class="block">
-            <span class="text-sm text-slate-600">Ca sĩ yêu thích</span>
-            <input id="modal-pref-artist" type="text"
-                   class="w-full border rounded px-3 py-2 mt-1 text-sm"
+            <span style="font-size:.8rem;color:var(--txt-2)">Ca sĩ yêu thích</span>
+            <input id="modal-pref-artist" type="text" class="glass-input" style="margin-top:.35rem"
                    placeholder="vd: Sơn Tùng"/>
           </label>
           <label class="block">
-            <span class="text-sm text-slate-600">Số dư tài khoản (đồng)</span>
-            <input id="modal-pref-balance" type="number"
-                   class="w-full border rounded px-3 py-2 mt-1 text-sm"/>
+            <span style="font-size:.8rem;color:var(--txt-2)">Số dư tài khoản (đồng)</span>
+            <input id="modal-pref-balance" type="number" class="glass-input" style="margin-top:.35rem"/>
           </label>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <label class="block">
-            <span class="text-sm text-slate-600">Ghi chú <span class="text-slate-400">(mỗi dòng)</span></span>
-            <textarea id="modal-pref-notes" rows="3"
-                      class="w-full mt-1 border rounded px-3 py-2 text-sm"></textarea>
+            <span style="font-size:.8rem;color:var(--txt-2)">Ghi chú <span style="font-weight:400">(mỗi dòng)</span></span>
+            <textarea id="modal-pref-notes" rows="3" class="glass-input" style="margin-top:.35rem;resize:vertical"></textarea>
           </label>
           <label class="block">
-            <span class="text-sm text-slate-600">Lịch hôm nay <span class="text-slate-400">(mỗi dòng)</span></span>
-            <textarea id="modal-pref-schedule" rows="3"
-                      class="w-full mt-1 border rounded px-3 py-2 text-sm"></textarea>
+            <span style="font-size:.8rem;color:var(--txt-2)">Lịch hôm nay <span style="font-weight:400">(mỗi dòng)</span></span>
+            <textarea id="modal-pref-schedule" rows="3" class="glass-input" style="margin-top:.35rem;resize:vertical"></textarea>
           </label>
         </div>
 
-        <button id="modal-save-btn"
-                class="w-full py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-sm font-medium">
-          Lưu thay đổi
-        </button>
-        <div id="modal-save-msg" class="text-sm hidden"></div>
+        <button id="modal-save-btn" class="btn-primary" style="width:100%;padding:.65rem">Lưu thay đổi</button>
+        <div id="modal-save-msg" style="font-size:.82rem;display:none"></div>
 
         <!-- Change password -->
-        <div class="border-t pt-4">
-          <p class="text-sm font-medium text-slate-700 mb-2">Đổi mật khẩu</p>
+        <div style="border-top:1px solid rgba(0,0,0,.06);padding-top:1rem">
+          <p style="font-size:.85rem;font-weight:600;color:var(--txt);margin-bottom:.5rem">Đổi mật khẩu</p>
           <div class="flex gap-2">
             <div class="relative flex-1">
               <input id="modal-new-pw" type="password" placeholder="Mật khẩu mới"
-                     class="w-full border rounded px-3 py-2 pr-9 text-sm"/>
+                     class="glass-input" style="padding-right:2.5rem"/>
               <button type="button" id="modal-new-pw-eye"
-                      class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
+                      style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;font-size:.85rem">
                 👁
               </button>
             </div>
-            <button id="modal-change-pw-btn"
-                    class="px-3 py-2 bg-slate-700 text-white rounded text-sm hover:bg-slate-800">
-              Đổi
-            </button>
+            <button id="modal-change-pw-btn" style="white-space:nowrap">Đổi</button>
           </div>
-          <div id="modal-pw-msg" class="mt-1 text-sm hidden"></div>
+          <div id="modal-pw-msg" style="margin-top:.35rem;font-size:.82rem;display:none"></div>
         </div>
 
         <!-- Delete -->
-        <div class="border-t pt-4">
-          <button id="modal-delete-btn"
-                  class="w-full py-2 bg-rose-600 text-white rounded hover:bg-rose-700 text-sm font-medium">
-            🗑 Xóa người dùng này
-          </button>
-          <div id="modal-delete-msg" class="mt-1 text-sm hidden"></div>
+        <div style="border-top:1px solid rgba(0,0,0,.06);padding-top:1rem">
+          <button id="modal-delete-btn" style="width:100%;padding:.65rem">🗑 Xóa người dùng này</button>
+          <div id="modal-delete-msg" style="margin-top:.35rem;font-size:.82rem;display:none"></div>
         </div>
       </div><!-- end modal-tab-info -->
 
       <!-- Files tab -->
-      <div id="modal-tab-files" class="hidden px-6 py-4 space-y-3">
+      <div id="modal-tab-files" class="hidden" style="padding:1.25rem 1.5rem;display:none;flex-direction:column;gap:.85rem">
 
         <!-- Pw-based file session trigger -->
         <div id="modal-files-pw-section">
-          <p class="text-sm text-slate-500 mb-2">Mật khẩu đã xác nhận, nhấn để tải file.</p>
-          <button id="modal-files-open-btn"
-                  class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
-            📁 Mở File Manager
-          </button>
-          <div id="modal-files-open-msg" class="mt-1 text-sm hidden"></div>
+          <p style="font-size:.83rem;color:var(--txt-2);margin-bottom:.5rem">Mật khẩu đã xác nhận, nhấn để tải file.</p>
+          <button id="modal-files-open-btn" class="btn-primary btn-sm">📁 Mở File Manager</button>
+          <div id="modal-files-open-msg" style="margin-top:.35rem;font-size:.82rem;display:none"></div>
         </div>
 
         <!-- File manager (shown after session set) -->
-        <div id="modal-files-manager" class="hidden space-y-3">
+        <div id="modal-files-manager" class="hidden" style="display:none;flex-direction:column;gap:.75rem">
           <div class="flex gap-2 items-center">
-            <input id="modal-files-input" type="file" multiple
-                   class="flex-1 text-xs file:py-1 file:px-2 file:rounded file:border-0
-                          file:bg-slate-100 file:text-slate-600 file:hover:bg-slate-200"/>
-            <button id="modal-files-upload-btn"
-                    class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700">
-              Tải lên
-            </button>
+            <input id="modal-files-input" type="file" multiple class="flex-1 text-xs"/>
+            <button id="modal-files-upload-btn" class="btn-primary btn-sm">Tải lên</button>
           </div>
-          <div id="modal-files-upload-msg" class="text-xs hidden"></div>
-          <div class="border rounded overflow-hidden">
-            <div id="modal-files-list" class="divide-y text-sm max-h-64 overflow-y-auto"></div>
-            <div id="modal-files-empty" class="hidden p-8 text-center text-slate-400 text-sm">
+          <div id="modal-files-upload-msg" style="font-size:.75rem;display:none"></div>
+          <div style="border:1px solid rgba(0,0,0,.08);border-radius:.85rem;overflow:hidden">
+            <div id="modal-files-list" style="max-height:16rem;overflow-y:auto;font-size:.85rem"></div>
+            <div id="modal-files-empty" class="hidden" style="padding:2rem;text-align:center;color:var(--txt-2);font-size:.85rem">
               Chưa có file nào.
             </div>
           </div>
         </div>
 
       </div><!-- end modal-tab-files -->
+
+      <!-- Music tab -->
+      <div id="modal-tab-music" class="hidden" style="padding:1.25rem 1.5rem;display:none;flex-direction:column;gap:1rem">
+
+        <!-- Upload music -->
+        <div>
+          <h4 style="font-size:.85rem;font-weight:600;color:var(--txt);margin-bottom:.35rem">Tải lên nhạc cá nhân</h4>
+          <p style="font-size:.75rem;color:var(--txt-2);margin-bottom:.5rem">Hỗ trợ: mp3, wav, flac, ogg, m4a, aac</p>
+          <div class="flex gap-2 items-center">
+            <input id="modal-music-input" type="file" multiple accept="audio/*" class="flex-1 text-xs"/>
+            <button id="modal-music-upload-btn" class="btn-primary btn-sm">Tải lên</button>
+          </div>
+          <div id="modal-music-upload-msg" style="margin-top:.35rem;font-size:.75rem;display:none"></div>
+        </div>
+
+        <!-- Track list -->
+        <div>
+          <h4 style="font-size:.85rem;font-weight:600;color:var(--txt);margin-bottom:.5rem">
+            Danh sách nhạc <span id="modal-music-count" style="font-weight:400;color:var(--txt-2)"></span>
+          </h4>
+          <div id="modal-music-list" style="max-height:16rem;overflow-y:auto;border:1px solid rgba(0,0,0,.08);border-radius:.85rem;padding:.35rem;display:flex;flex-direction:column;gap:.25rem">
+            <div id="modal-music-empty" style="padding:1.5rem;text-align:center;color:var(--txt-2);font-size:.78rem">
+              Chưa có bài nhạc nào. Tải lên để tạo playlist cá nhân.
+            </div>
+          </div>
+        </div>
+
+        <!-- Mini player (dùng chung audio-el của trang) -->
+        <div id="modal-mini-player" class="hidden items-center gap-2 p-2 text-white rounded-lg text-xs">
+          <button id="modal-prev-btn" style="background:none;border:none;cursor:pointer;color:rgba(255,255,255,.6);padding:0 4px">⏮</button>
+          <button id="modal-play-btn" style="width:28px;height:28px;border-radius:50%;background:var(--grad-btn);border:none;cursor:pointer;color:white;font-size:.85rem;display:flex;align-items:center;justify-content:center">▶</button>
+          <button id="modal-next-btn" style="background:none;border:none;cursor:pointer;color:rgba(255,255,255,.6);padding:0 4px">⏭</button>
+          <div class="flex-1 min-w-0">
+            <div id="modal-np-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500"></div>
+            <div id="modal-np-info" style="color:rgba(255,255,255,.5)"></div>
+          </div>
+        </div>
+
+      </div><!-- end modal-tab-music -->
+
     </div><!-- end modal-editor -->
   </div><!-- end card -->
 </div><!-- end user-modal -->
 
 <!-- Toast -->
-<div id="toast"
-     class="hidden fixed bottom-16 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50"></div>
+<div id="toast" class="hidden"
+     style="position:fixed;bottom:5rem;right:1rem;padding:.55rem 1.2rem;color:white;z-index:9999"></div>
 
 {# ─────────────────────────────────────────────────────────
    JAVASCRIPT
@@ -530,6 +599,17 @@
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
                   .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+async function downloadFile(url, filename) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) { showToast("Tải về thất bại — kiểm tra xác thực", true); return; }
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch(e) { showToast("Lỗi tải về: " + e.message, true); }
 }
 function fmtSz(b) {
   if (b < 1024) return b + "B";
@@ -551,8 +631,9 @@ function fmt(s) {
 function showToast(msg, isErr=false) {
   const t = document.getElementById("toast");
   t.textContent = msg;
-  t.className = `fixed bottom-16 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50
-    ${isErr ? "bg-rose-600" : "bg-emerald-600"}`;
+  t.style.background = isErr
+    ? "linear-gradient(135deg,#f43f5e,#dc2626)"
+    : "linear-gradient(135deg,#22c55e,#16a34a)";
   t.classList.remove("hidden");
   clearTimeout(t._tid);
   t._tid = setTimeout(() => t.classList.add("hidden"), 3000);
@@ -564,16 +645,28 @@ function togglePwEye(inputId, btnEl) {
 }
 
 // ════════════════════════════════════════════════════════════
-// SCROLLSPY
+// SCROLLSPY  +  NAV PILL  +  SCROLL BLUR
 // ════════════════════════════════════════════════════════════
 (function initScrollspy() {
   const links    = document.querySelectorAll(".spy-link");
   const sections = document.querySelectorAll("section[id]");
+  const $nav     = document.getElementById("main-nav");
+  const $pill    = document.getElementById("nav-pill");
+  const $wrap    = document.getElementById("nav-links-wrap");
+
+  function movePill(el) {
+    if (!el || !$pill || !$wrap) return;
+    const wr = $wrap.getBoundingClientRect();
+    const er = el.getBoundingClientRect();
+    $pill.style.left  = (er.left - wr.left) + "px";
+    $pill.style.width = er.width + "px";
+  }
 
   function setActive(id) {
     links.forEach(a => {
       const active = a.dataset.section === id;
-      ["bg-slate-700","text-white"].forEach(c => a.classList.toggle(c, active));
+      a.classList.toggle("active", active);
+      if (active) movePill(a);
     });
   }
 
@@ -589,6 +682,16 @@ function togglePwEye(inputId, btnEl) {
       const target = document.getElementById(a.dataset.section);
       if (target) target.scrollIntoView({ behavior: "smooth" });
     });
+  });
+
+  window.addEventListener("scroll", () => {
+    $nav.classList.toggle("scrolled", window.scrollY > 20);
+  }, { passive: true });
+
+  // Init pill on first active link
+  requestAnimationFrame(() => {
+    const first = links[0];
+    if (first) { first.classList.add("active"); movePill(first); }
   });
 })();
 
@@ -606,25 +709,73 @@ const $tts    = document.getElementById("tts-player");
 
 if (!navigator.mediaDevices?.getUserMedia) {
   $pttBtn.disabled = true;
-  $pttBtn.classList.replace("bg-rose-600","bg-slate-400");
-  $pttBtn.classList.remove("hover:bg-rose-700","active:bg-rose-800");
+  $pttBtn.style.background = "#9ca3af";
+  $pttBtn.style.boxShadow  = "none";
+  $pttBtn.style.cursor     = "not-allowed";
   $pttLbl.textContent = "Không hỗ trợ";
   const isIP = !["localhost","127.0.0.1"].includes(location.hostname);
   $pttSts.textContent = isIP
     ? "⚠ Cần HTTPS — python -m web.app --ssl"
     : "⚠ Trình duyệt không hỗ trợ mic";
-  $pttSts.classList.add("text-rose-600");
+  $pttSts.style.color = "#ef4444";
+}
+
+// ════════════════════════════════════════════════════════════
+// VU METER  (Web Audio API)
+// ════════════════════════════════════════════════════════════
+let _vuCtx = null, _vuAnalyser = null, _vuSource = null, _vuRaf = null;
+const _vuBars = document.querySelectorAll(".vu-bar");
+
+function vuMeterStart(stream) {
+  if (!stream || _vuCtx) return;
+  try {
+    _vuCtx = new (window.AudioContext || window.webkitAudioContext)();
+    _vuAnalyser = _vuCtx.createAnalyser();
+    _vuAnalyser.fftSize = 64;
+    _vuSource = _vuCtx.createMediaStreamSource(stream);
+    _vuSource.connect(_vuAnalyser);
+    const data = new Uint8Array(_vuAnalyser.frequencyBinCount);
+    const $rings = document.getElementById("voice-rings");
+    const step = Math.floor(data.length / Math.max(_vuBars.length, 1));
+    function tick() {
+      _vuRaf = requestAnimationFrame(tick);
+      _vuAnalyser.getByteFrequencyData(data);
+      _vuBars.forEach((bar, i) => {
+        const v = data[i * step] / 255;
+        bar.style.height = Math.max(4, v * 44) + "px";
+      });
+      const avg = data.reduce((a, b) => a + b, 0) / data.length;
+      $rings.querySelectorAll(".v-ring").forEach((r, i) => {
+        r.style.transform = `scale(${1 + (avg / 255) * (0.28 - i * 0.07)})`;
+      });
+    }
+    tick();
+  } catch(_) {}
+}
+
+function vuMeterStop() {
+  cancelAnimationFrame(_vuRaf); _vuRaf = null;
+  if (_vuSource)  { try { _vuSource.disconnect(); } catch(_) {} _vuSource = null; }
+  if (_vuCtx)     { _vuCtx.close().catch(()=>{}); _vuCtx = null; }
+  _vuAnalyser = null;
+  _vuBars.forEach(b => { b.style.height = "4px"; });
+  document.getElementById("voice-rings").querySelectorAll(".v-ring").forEach(r => {
+    r.style.transform = "";
+  });
 }
 
 function setPttRec(on) {
+  const $rings = document.getElementById("voice-rings");
   if (on) {
-    $pttBtn.classList.replace("bg-rose-600","bg-emerald-500");
-    ["scale-110","ring-4","ring-emerald-300","animate-pulse"].forEach(c => $pttBtn.classList.add(c));
+    $pttBtn.classList.add("va-listening");
+    $rings.className = "voice-rings listening";
     $pttLbl.textContent = "Đang nghe...";
+    vuMeterStart(_stream);
   } else {
-    $pttBtn.classList.replace("bg-emerald-500","bg-rose-600");
-    ["scale-110","ring-4","ring-emerald-300","animate-pulse"].forEach(c => $pttBtn.classList.remove(c));
+    $pttBtn.classList.remove("va-listening");
+    $rings.className = "voice-rings idle";
     $pttLbl.textContent = "Bấm & giữ";
+    vuMeterStop();
   }
 }
 
@@ -657,7 +808,9 @@ async function startRec() {
 function stopRec() {
   if (_starting) { _pendingStop = true; return; }
   if (_mr?.state === "recording") {
-    _mr.stop(); setPttRec(false); $pttSts.textContent = "Đang xử lý...";
+    _mr.stop(); setPttRec(false);
+    document.getElementById("voice-rings").className = "voice-rings processing";
+    $pttSts.textContent = "Đang xử lý...";
   }
 }
 
@@ -693,41 +846,33 @@ async function sendAudio(blob) {
     addMsg("bot", data.response);
     if (data.tts_url) { $tts.src = data.tts_url; $tts.play().catch(()=>{}); }
 
-    if (data.action_type === "play_music") {
-      const {query, uid} = data.action_data;
-      showPanel("music");
-      if (uid) { _musicUserId = uid; loadPlaylist(uid); }
-      doMusicSearch(query, true);
-    } else if (data.action_type === "show_files") {
-      showPanel("files");
-      onFilesVerified(data.action_data);
-    }
+    handleTurnAction(data);
     $pttSts.textContent = "Sẵn sàng";
+    document.getElementById("voice-rings").className = "voice-rings idle";
   } catch(e) {
     addMsg("bot", "Lỗi mạng: " + e.message);
     $pttSts.textContent = "Sẵn sàng";
+    document.getElementById("voice-rings").className = "voice-rings idle";
   }
 }
 
 function addMsg(role, content) {
   const d = document.createElement("div");
   d.className = role === "user" ? "flex justify-end" : "flex justify-start";
-  d.innerHTML = `<div class="${role === "user"
-    ? "bg-emerald-600 text-white"
-    : "bg-slate-100 text-slate-800"} max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap">${esc(content)}</div>`;
+  d.innerHTML = `<div style="max-width:85%;border-radius:1.1rem;padding:.55rem .85rem;font-size:.83rem;white-space:pre-wrap;line-height:1.5">${esc(content)}</div>`;
   $chat.appendChild(d);
   $chat.scrollTop = $chat.scrollHeight;
 }
 
 function addMeta(r) {
   const m = document.createElement("div");
-  m.className = "text-xs text-slate-400 pl-1 mb-1";
+  m.style.cssText = "font-size:.72rem;color:var(--txt-2);padding-left:.25rem;margin-bottom:.2rem";
   const sv = r.sv_required
     ? ` · SV ${r.sv_passed ? "✓" : "✗"}(${r.sv_score?.toFixed(2)})`
     : "";
-  m.innerHTML = `<span class="bg-slate-100 rounded px-1">${esc(r.intent)}</span>
+  m.innerHTML = `<span style="background:rgba(0,0,0,.06);border-radius:4px;padding:1px 5px">${esc(r.intent)}</span>
     [${esc(r.auth_level)}] · 👤 <b>${esc(r.identified_user_name)}</b>(${r.sid_score.toFixed(2)})${sv}
-    ${r.blocked ? "<span class='text-rose-500 font-bold'>⛔</span>" : ""}`;
+    ${r.blocked ? "<span style='color:#ef4444;font-weight:700'>⛔</span>" : ""}`;
   $chat.appendChild(m);
 }
 
@@ -739,6 +884,13 @@ const $contentMusic = document.getElementById("content-music");
 const $contentFiles = document.getElementById("content-files");
 
 function showPanel(tab) {
+  // tab: "music" | "files"
+  // Show only the relevant tab button; hide the other
+  const tabMusic = document.getElementById("tab-music");
+  const tabFiles = document.getElementById("tab-files");
+  tabMusic.classList.toggle("hidden", tab !== "music");
+  tabFiles.classList.toggle("hidden", tab !== "files");
+
   $panel.classList.remove("hidden");
   $panel.classList.add("flex");
   switchTab(tab);
@@ -768,7 +920,90 @@ document.getElementById("tab-files").onclick   = () => switchTab("files");
 document.getElementById("panel-close").onclick = hidePanel;
 
 // ════════════════════════════════════════════════════════════
-// MUSIC PLAYER  (Deezer)
+// SHARED ACTION HANDLER  (voice + text mode)
+// ════════════════════════════════════════════════════════════
+function handleTurnAction(data) {
+  if (data.action_type === "play_music") {
+    const ad = data.action_data;
+    if (ad.mode === "user_tracks") {
+      const tracks = ad.tracks.map(name => ({
+        title: name, artist: ad.user_id,
+        preview: `/api/music/user-tracks/${ad.user_id}/stream/${encodeURIComponent(name)}`,
+        cover: "", id: name,
+      }));
+      queue = tracks; playAt(0);
+      showPanel("music");
+    } else {
+      // YouTube mode: artist → 5 songs, then genre → fill up to 10
+      const artist = ad.artist || "";
+      const genre  = ad.genre  || "v-pop";
+      if (ad.uid) { _musicUserId = ad.uid; loadPlaylist(ad.uid, data.identified_user_name); }
+      buildYtQueue(artist, genre);
+    }
+  } else if (data.action_type === "show_files") {
+    showPanel("files");
+    onFilesVerified(data.action_data);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// BUILD YOUTUBE QUEUE  (artist → 5 songs, then genre → fill 10)
+// ════════════════════════════════════════════════════════════
+async function buildYtQueue(artist, genre) {
+  const $sb = document.getElementById("music-search-btn");
+  $sb.textContent = "⏳"; $sb.disabled = true;
+
+  const ytTrack = v => ({
+    title: v.title, artist: v.channel, cover: v.thumbnail,
+    preview: `/api/music/yt-audio?v=${v.id}`, id: v.id,
+  });
+
+  let tracks = [];
+
+  // Step 1: artist songs (up to 5)
+  if (artist) {
+    try {
+      const r = await fetch("/api/music/youtube-search?q=" + encodeURIComponent(artist + " songs"));
+      const d = await r.json();
+      tracks = (d.videos || []).slice(0, 5).map(ytTrack);
+    } catch (_) {}
+  }
+
+  // Step 2: genre songs to fill up to 10
+  const needed = 10 - tracks.length;
+  if (needed > 0) {
+    const q = genre || "v-pop";
+    try {
+      const r = await fetch("/api/music/youtube-search?q=" + encodeURIComponent(q));
+      const d = await r.json();
+      const ids = new Set(tracks.map(t => t.id));
+      const more = (d.videos || []).filter(v => !ids.has(v.id)).slice(0, needed).map(ytTrack);
+      tracks.push(...more);
+    } catch (_) {}
+  }
+
+  // Fallback
+  if (!tracks.length) {
+    try {
+      const r = await fetch("/api/music/youtube-search?q=v-pop+nh%E1%BA%A1c+tr%E1%BA%BB");
+      const d = await r.json();
+      tracks = (d.videos || []).map(ytTrack);
+    } catch (_) {}
+  }
+
+  $sb.textContent = "🔍"; $sb.disabled = false;
+
+  if (tracks.length) {
+    searchResults = tracks;
+    renderResults();
+    queue = [...tracks];
+    playAt(0);
+    showPanel("music");
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// MUSIC PLAYER
 // ════════════════════════════════════════════════════════════
 const $audio     = document.getElementById("audio-el");
 const $playerBar = document.getElementById("player-bar");
@@ -828,8 +1063,8 @@ function highlightActive() {
     const isSrc = (el.dataset.trackSrc === "playlist" && queue === userPlaylist)
                || (el.dataset.trackSrc === "result"   && queue === searchResults);
     const active = isSrc && Number(el.dataset.idx) === queueIdx;
-    el.classList.toggle("bg-emerald-50", active);
-    el.classList.toggle("border-emerald-300", active);
+    el.style.background   = active ? "rgba(124,58,237,.1)"  : "";
+    el.style.borderColor  = active ? "rgba(124,58,237,.35)" : "";
   });
 }
 
@@ -845,20 +1080,18 @@ document.getElementById("music-q").addEventListener("keydown", e => {
     if (q) doMusicSearch(q, false);
   }
 });
-document.getElementById("music-random-btn").onclick = async () => {
-  const gs = ["pop","rock","ballad","edm","jazz","r&b","indie"];
-  const g = gs[Math.floor(Math.random() * gs.length)];
-  document.getElementById("music-q").value = g;
-  await doMusicSearch(g, true);
-  if (searchResults.length) showToast("🎲 " + g);
-};
 
 async function doMusicSearch(q, autoplay=false) {
   const $sb = document.getElementById("music-search-btn");
   $sb.textContent = "⏳"; $sb.disabled = true;
-  const r = await fetch("/api/music/search?q=" + encodeURIComponent(q));
-  const d = await r.json();
-  searchResults = d.tracks || [];
+  try {
+    const r = await fetch("/api/music/youtube-search?q=" + encodeURIComponent(q));
+    const d = await r.json();
+    searchResults = (d.videos || []).map(v => ({
+      title: v.title, artist: v.channel, cover: v.thumbnail,
+      preview: `/api/music/yt-audio?v=${v.id}`, id: v.id,
+    }));
+  } catch(_) { searchResults = []; }
   renderResults();
   $sb.textContent = "🔍"; $sb.disabled = false;
   if (autoplay && searchResults.length) { queue = [...searchResults]; playAt(0); }
@@ -875,11 +1108,11 @@ function renderResults() {
   searchResults.forEach((t,i) => $c.appendChild(makeTrackCard(t, i, "result")));
 }
 
-async function loadPlaylist(uid) {
+async function loadPlaylist(uid, name) {
   const r = await fetch(`/api/music/playlist/${uid}`);
   const d = await r.json();
   userPlaylist = r.ok ? (d.playlist || []) : [];
-  document.getElementById("music-user-name").textContent = uid;
+  document.getElementById("music-user-name").textContent = name || uid;
   document.getElementById("music-user-row").classList.remove("hidden");
   renderPlaylist();
 }
@@ -967,12 +1200,14 @@ const $fvStatus = document.getElementById("files-verify-status");
 
 function setFvRec(on) {
   if (on) {
-    $fvBtn.classList.replace("bg-blue-600","bg-emerald-500");
-    ["scale-110","ring-4","ring-emerald-300","animate-pulse"].forEach(c => $fvBtn.classList.add(c));
+    $fvBtn.style.background = "linear-gradient(135deg,#22c55e,#16a34a)";
+    $fvBtn.style.boxShadow  = "0 4px 16px rgba(34,197,94,.45), 0 0 0 8px rgba(34,197,94,.12)";
+    $fvBtn.style.transform  = "scale(1.08)";
     $fvLabel.textContent = "Nghe...";
   } else {
-    $fvBtn.classList.replace("bg-emerald-500","bg-blue-600");
-    ["scale-110","ring-4","ring-emerald-300","animate-pulse"].forEach(c => $fvBtn.classList.remove(c));
+    $fvBtn.style.background = "";
+    $fvBtn.style.boxShadow  = "";
+    $fvBtn.style.transform  = "";
     $fvLabel.textContent = "Giữ";
   }
 }
@@ -998,7 +1233,7 @@ async function startFv() {
       const d = await r.json();
       if (!r.ok) {
         $fvStatus.textContent = "✗ " + d.error;
-        $fvStatus.classList.add("text-rose-600"); return;
+        $fvStatus.style.color = "#ef4444"; return;
       }
       onFilesVerified(d);
     };
@@ -1044,9 +1279,8 @@ function renderFileList(files) {
         <div class="font-medium truncate">${esc(f.name)}</div>
         <div class="text-slate-400">${fmtSz(f.size)} · ${esc(f.modified)}</div>
       </div>
-      <a href="/api/files/download/${encodeURIComponent(f.name)}"
-         download="${esc(f.name)}"
-         class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇</a>
+      <button onclick="downloadFile('/api/files/download/${encodeURIComponent(f.name)}','${esc(f.name)}')"
+              class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇</button>
       <button data-name="${esc(f.name)}"
               class="btn-fdel px-2 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100">🗑</button>
     `;
@@ -1071,21 +1305,20 @@ document.getElementById("files-upload-btn").onclick = async () => {
   const files = document.getElementById("files-input").files;
   if (!files.length) { showToast("Chọn file trước", true); return; }
   const $msg = document.getElementById("files-upload-msg");
-  $msg.textContent = "Đang tải..."; $msg.classList.remove("hidden");
+  $msg.textContent = "Đang tải..."; $msg.style.cssText = "font-size:.75rem;color:var(--txt-2);display:block";
   const fd = new FormData();
   for (const f of files) fd.append(f.name, f);
   const r = await fetch("/api/files/upload", {method:"POST", body:fd});
   const d = await r.json();
   if (r.ok) {
     $msg.textContent = "✅ Đã tải: " + d.uploaded.join(", ");
-    $msg.className = "text-xs px-1 text-emerald-600";
+    $msg.style.cssText = "font-size:.75rem;color:#22c55e;display:block";
     document.getElementById("files-input").value = "";
     reloadFiles();
   } else {
     $msg.textContent = "✗ " + d.error;
-    $msg.className = "text-xs px-1 text-rose-600";
+    $msg.style.cssText = "font-size:.75rem;color:#ef4444;display:block";
   }
-  $msg.classList.remove("hidden");
 };
 
 document.getElementById("files-logout-btn").onclick = async () => {
@@ -1098,7 +1331,7 @@ function resetFilesPanel() {
   const $mgr = document.getElementById("files-manager");
   $mgr.classList.add("hidden"); $mgr.classList.remove("flex");
   $fvStatus.textContent = "Giữ nút để xác thực giọng nói";
-  $fvStatus.classList.remove("text-rose-600");
+  $fvStatus.style.color = "";
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1133,11 +1366,11 @@ function enrollRenderSamples() {
   $eList.innerHTML = "";
   enrollSamples.forEach((s, i) => {
     const div = document.createElement("div");
-    div.className = "flex items-center gap-3 p-2 bg-slate-50 border rounded";
+    div.style.cssText = "display:flex;align-items:center;gap:.75rem;padding:.6rem .85rem;background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.15);border-radius:.85rem";
     div.innerHTML = `
-      <span class="text-sm font-medium">Mẫu ${i+1}</span>
-      <audio controls src="${s.url}" class="h-8"></audio>
-      <button data-i="${i}" class="text-xs text-rose-600 hover:underline">Xóa</button>
+      <span style="font-size:.82rem;font-weight:600;color:var(--c-violet);white-space:nowrap">Mẫu ${i+1}</span>
+      <audio controls src="${s.url}" style="height:28px;flex:1"></audio>
+      <button data-i="${i}" style="font-size:.75rem;color:#ef4444;background:none;border:none;cursor:pointer">Xóa</button>
     `;
     div.querySelector("button").onclick = e => {
       const idx = +e.target.dataset.i;
@@ -1209,11 +1442,11 @@ $eSubmit.onclick = async () => {
   const name    = document.getElementById("enroll-name").value.trim();
   const pw      = document.getElementById("enroll-password").value.trim();
   if (!user_id || !name || !pw) {
-    $eResult.innerHTML = '<span class="text-rose-600">Cần nhập đầy đủ user_id, name và password.</span>';
+    $eResult.innerHTML = '<span style="color:#ef4444">Cần nhập đầy đủ user_id, name và password.</span>';
     return;
   }
   $eSubmit.disabled = true;
-  $eResult.innerHTML = '<span class="text-slate-600">Đang upload và xử lý...</span>';
+  $eResult.innerHTML = '<span style="color:var(--txt-2)">Đang upload và xử lý...</span>';
   const fd = new FormData();
   fd.append("user_id", user_id); fd.append("name", name); fd.append("password", pw);
   fd.append("preferences", JSON.stringify(buildEnrollPreferences()));
@@ -1222,11 +1455,11 @@ $eSubmit.onclick = async () => {
     const r = await fetch("/api/enroll", {method:"POST", body:fd});
     const data = await r.json();
     if (!r.ok) {
-      $eResult.innerHTML = `<span class="text-rose-600">Lỗi: ${esc(data.error)}</span>`;
+      $eResult.innerHTML = `<span style="color:#ef4444">Lỗi: ${esc(data.error)}</span>`;
       $eSubmit.disabled = false; return;
     }
     $eResult.innerHTML = `
-      <div class="p-3 bg-emerald-50 border border-emerald-200 rounded">
+      <div style="padding:.75rem 1rem;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:.85rem">
         ✅ Đã đăng ký <strong>${esc(data.name)}</strong>
         với ${data.n_samples} mẫu (centroid norm = ${data.centroid_norm.toFixed(4)}).
       </div>`;
@@ -1238,7 +1471,7 @@ $eSubmit.onclick = async () => {
     enrollSamples = []; enrollRenderSamples(); enrollUpdatePrompt();
     $eBtn.disabled = false; $eBtn.textContent = `🎙 Bắt đầu thu mẫu 1/${NUM_SAMPLES}`;
   } catch(e) {
-    $eResult.innerHTML = `<span class="text-rose-600">Lỗi mạng: ${esc(e.message)}</span>`;
+    $eResult.innerHTML = `<span style="color:#ef4444">Lỗi mạng: ${esc(e.message)}</span>`;
     $eSubmit.disabled = false;
   }
 };
@@ -1246,25 +1479,27 @@ $eSubmit.onclick = async () => {
 function addUserCard(uid, name) {
   const grid = document.getElementById("users-grid");
   if (!grid) return;
-  // If grid was the empty-state div, clear it and make it a grid
-  if (grid.tagName !== "DIV" || grid.classList.contains("py-16")) {
+  if (grid.classList.contains("py-16") || !grid.classList.contains("grid")) {
     grid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4";
+    grid.style = "";
     grid.innerHTML = "";
   }
   const div = document.createElement("div");
-  div.className = "user-card relative bg-slate-50 border rounded-xl p-5 cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all duration-150";
+  div.className = "user-card relative p-5";
   div.dataset.uid  = uid;
   div.dataset.name = name;
   div.innerHTML = `
-    <button class="card-trash-btn absolute top-3 right-3 text-slate-300 hover:text-rose-500 transition p-1 rounded"
+    <button class="card-trash-btn absolute top-3 right-3 p-1"
+            style="color:rgba(0,0,0,.18);background:none;border:none;cursor:pointer;font-size:1.1rem"
+            onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='rgba(0,0,0,.18)'"
             title="Xóa người dùng" data-uid="${esc(uid)}" data-name="${esc(name)}">🗑</button>
-    <div class="pr-6">
-      <div class="text-lg font-semibold truncate">${esc(name)}</div>
-      <div class="text-sm text-slate-400 mt-0.5">
-        <code class="bg-slate-100 px-1 rounded text-xs">${esc(uid)}</code>
+    <div style="padding-right:2rem">
+      <div style="font-size:1.1rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
+      <div style="font-size:.78rem;color:var(--txt-2);margin-top:.25rem">
+        <code style="background:rgba(124,58,237,.08);color:var(--c-violet);padding:2px 6px;border-radius:4px;font-size:.72rem">${esc(uid)}</code>
       </div>
     </div>
-    <div class="mt-3 text-xs text-slate-400">Nhấn để xem chi tiết</div>
+    <div style="margin-top:.75rem;font-size:.75rem;color:var(--txt-2)">Nhấn để xem chi tiết</div>
   `;
   div.addEventListener("click", e => {
     if (e.target.closest(".card-trash-btn")) return;
@@ -1309,15 +1544,15 @@ async function openModal(uid, name) {
   document.getElementById("modal-user-name").textContent = name;
   document.getElementById("modal-user-id").textContent   = "ID: " + uid;
   document.getElementById("modal-pw").value = "";
-  document.getElementById("modal-lock-error").classList.add("hidden");
+  document.getElementById("modal-lock-error").style.display = "none";
   document.getElementById("modal-lock").classList.remove("hidden");
   document.getElementById("modal-editor").classList.add("hidden");
-  document.getElementById("modal-save-msg").classList.add("hidden");
-  document.getElementById("modal-pw-msg").classList.add("hidden");
-  document.getElementById("modal-delete-msg").classList.add("hidden");
-  document.getElementById("modal-files-manager").classList.add("hidden");
+  document.getElementById("modal-save-msg").style.display = "none";
+  document.getElementById("modal-pw-msg").style.display   = "none";
+  document.getElementById("modal-delete-msg").style.display = "none";
+  document.getElementById("modal-files-manager").style.display = "none";
   document.getElementById("modal-files-pw-section").classList.remove("hidden");
-  document.getElementById("modal-files-open-msg").classList.add("hidden");
+  document.getElementById("modal-files-open-msg").style.display = "none";
   document.getElementById("modal-name").value = "";
 
   // Pre-fill preferences (best effort, no auth needed for read)
@@ -1351,40 +1586,43 @@ function populateModal(u) {
 function switchModalTab(tab) {
   const btnInfo  = document.getElementById("modal-tab-info-btn");
   const btnFiles = document.getElementById("modal-tab-files-btn");
+  const btnMusic = document.getElementById("modal-tab-music-btn");
   const tabInfo  = document.getElementById("modal-tab-info");
   const tabFiles = document.getElementById("modal-tab-files");
+  const tabMusic = document.getElementById("modal-tab-music");
 
-  ["border-emerald-500","font-medium","text-emerald-700"].forEach(c => {
-    btnInfo.classList.toggle(c,  tab === "info");
-    btnFiles.classList.toggle(c, tab === "files");
-  });
-  ["border-transparent","text-slate-500"].forEach(c => {
-    btnInfo.classList.toggle(c,  tab !== "info");
-    btnFiles.classList.toggle(c, tab !== "files");
-  });
-  tabInfo.classList.toggle("hidden",  tab !== "info");
-  tabFiles.classList.toggle("hidden", tab !== "files");
+  [["info", btnInfo, tabInfo], ["files", btnFiles, tabFiles], ["music", btnMusic, tabMusic]]
+    .forEach(([id, btn, pane]) => {
+      const active = tab === id;
+      btn.style.borderBottomColor = active ? "var(--c-violet)" : "transparent";
+      btn.style.color     = active ? "var(--c-violet)" : "var(--txt-2)";
+      btn.style.fontWeight = active ? "600" : "500";
+      pane.style.display  = active ? "flex" : "none";
+    });
+
+  // Khi mở tab Nhạc lần đầu → load track list nếu đã xác thực
+  if (tab === "music" && _modalUid) loadModalMusic(_modalUid);
 }
 
 // Unlock button
 document.getElementById("modal-unlock-btn").onclick = async () => {
   const pw   = document.getElementById("modal-pw").value;
   const $err = document.getElementById("modal-lock-error");
-  // Validate password with a lightweight no-op update-info call
-  const r = await fetch(`/api/users/${_modalUid}/update-info`, {
+  const r = await fetch(`/api/users/${_modalUid}/unlock`, {
     method: "POST", headers: {"Content-Type":"application/json"},
     body: JSON.stringify({password: pw})
   });
   if (!r.ok) {
     const d = await r.json();
     $err.textContent = d.error || "Sai mật khẩu";
-    $err.classList.remove("hidden"); return;
+    $err.style.display = "block"; return;
   }
+  const d = await r.json();
   _modalPw = pw;
-  $err.classList.add("hidden");
+  $err.style.display = "none";
   document.getElementById("modal-lock").classList.add("hidden");
-  if (!document.getElementById("modal-name").value)
-    document.getElementById("modal-name").value = document.getElementById("modal-user-name").textContent;
+  if (d.user && !document.getElementById("modal-name").value)
+    document.getElementById("modal-name").value = d.user.name || "";
   document.getElementById("modal-editor").classList.remove("hidden");
 };
 document.getElementById("modal-pw").addEventListener("keydown", e => {
@@ -1401,11 +1639,12 @@ document.getElementById("modal-tab-files-btn").onclick = () => {
   switchModalTab("files");
   if (!_modalFilesReady) {
     document.getElementById("modal-files-pw-section").classList.remove("hidden");
-    document.getElementById("modal-files-manager").classList.add("hidden");
+    document.getElementById("modal-files-manager").style.display = "none";
   }
 };
+document.getElementById("modal-tab-music-btn").onclick = () => switchModalTab("music");
 
-// Save info + preferences
+// Save info + preferences (+ optional password change)
 document.getElementById("modal-save-btn").onclick = async () => {
   const $msg    = document.getElementById("modal-save-msg");
   const name    = document.getElementById("modal-name").value.trim();
@@ -1414,6 +1653,7 @@ document.getElementById("modal-save-btn").onclick = async () => {
   const balance = document.getElementById("modal-pref-balance").value.trim();
   const notesRaw = document.getElementById("modal-pref-notes").value.trim();
   const schedRaw = document.getElementById("modal-pref-schedule").value.trim();
+  const newPw   = document.getElementById("modal-new-pw").value.trim();
 
   const preferences = {};
   if (genre)   preferences.favorite_genre  = genre;
@@ -1422,16 +1662,27 @@ document.getElementById("modal-save-btn").onclick = async () => {
   if (notesRaw) preferences.notes    = notesRaw.split("\n").map(s=>s.trim()).filter(Boolean);
   if (schedRaw) preferences.schedule = schedRaw.split("\n").map(s=>s.trim()).filter(Boolean);
 
-  $msg.textContent = "Đang lưu..."; $msg.className = "text-sm text-slate-500"; $msg.classList.remove("hidden");
+  $msg.textContent = "Đang lưu..."; $msg.style.cssText = "font-size:.82rem;color:var(--txt-2);display:block";
+
+  // Build info body — include new_password only if field has content
+  const infoBody = {password: _modalPw, name};
+  if (newPw) infoBody.new_password = newPw;
 
   const rInfo = await fetch(`/api/users/${_modalUid}/update-info`, {
     method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({password: _modalPw, name})
+    body: JSON.stringify(infoBody)
   });
   if (!rInfo.ok) {
     const d = await rInfo.json();
     $msg.textContent = "Lỗi: " + (d.error || "Không rõ");
-    $msg.className = "text-sm text-rose-600"; return;
+    $msg.style.color = "#ef4444"; return;
+  }
+  if (newPw) {
+    _modalPw = newPw;
+    document.getElementById("modal-new-pw").value = "";
+    const $pwMsg = document.getElementById("modal-pw-msg");
+    $pwMsg.textContent = "✓ Mật khẩu đã đổi";
+    $pwMsg.style.cssText = "margin-top:.35rem;font-size:.82rem;color:#22c55e;display:block";
   }
 
   const rPrefs = await fetch(`/api/users/${_modalUid}/update`, {
@@ -1441,10 +1692,11 @@ document.getElementById("modal-save-btn").onclick = async () => {
   if (!rPrefs.ok) {
     const d = await rPrefs.json();
     $msg.textContent = "Lỗi preferences: " + (d.error || "Không rõ");
-    $msg.className = "text-sm text-rose-600"; return;
+    $msg.style.color = "#ef4444"; return;
   }
 
-  $msg.textContent = "✓ Đã lưu"; $msg.className = "text-sm text-emerald-600";
+  $msg.textContent = newPw ? "✓ Đã lưu + đổi mật khẩu" : "✓ Đã lưu";
+  $msg.style.color = "#22c55e";
 
   // Update card in DOM
   const card = document.querySelector(`.user-card[data-uid="${_modalUid}"]`);
@@ -1458,13 +1710,13 @@ document.getElementById("modal-save-btn").onclick = async () => {
   }
 };
 
-// Change password
+// Change password (standalone button)
 document.getElementById("modal-change-pw-btn").onclick = async () => {
   const newPw = document.getElementById("modal-new-pw").value.trim();
   const $msg  = document.getElementById("modal-pw-msg");
   if (!newPw) {
-    $msg.textContent = "Nhập mật khẩu mới"; $msg.className = "text-sm text-rose-600";
-    $msg.classList.remove("hidden"); return;
+    $msg.textContent = "Nhập mật khẩu mới";
+    $msg.style.cssText = "margin-top:.35rem;font-size:.82rem;color:#ef4444;display:block"; return;
   }
   const r = await fetch(`/api/users/${_modalUid}/update-info`, {
     method:"POST", headers:{"Content-Type":"application/json"},
@@ -1473,13 +1725,13 @@ document.getElementById("modal-change-pw-btn").onclick = async () => {
   const d = await r.json();
   if (!r.ok) {
     $msg.textContent = "Lỗi: " + (d.error || "Không rõ");
-    $msg.className = "text-sm text-rose-600";
+    $msg.style.cssText = "margin-top:.35rem;font-size:.82rem;color:#ef4444;display:block";
   } else {
     _modalPw = newPw;
     document.getElementById("modal-new-pw").value = "";
-    $msg.textContent = "✓ Đã đổi mật khẩu"; $msg.className = "text-sm text-emerald-600";
+    $msg.textContent = "✓ Đã đổi mật khẩu";
+    $msg.style.cssText = "margin-top:.35rem;font-size:.82rem;color:#22c55e;display:block";
   }
-  $msg.classList.remove("hidden");
 };
 
 // Delete user
@@ -1494,7 +1746,7 @@ document.getElementById("modal-delete-btn").onclick = async () => {
   if (!r.ok) {
     const d = await r.json();
     $msg.textContent = "Lỗi: " + (d.error || "Không rõ");
-    $msg.className = "text-sm text-rose-600"; $msg.classList.remove("hidden"); return;
+    $msg.style.cssText = "margin-top:.35rem;font-size:.82rem;color:#ef4444;display:block"; return;
   }
   const card = document.querySelector(`.user-card[data-uid="${_modalUid}"]`);
   if (card) card.remove();
@@ -1512,7 +1764,7 @@ window.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); 
 // ── Modal Files tab ───────────────────────────────────────
 document.getElementById("modal-files-open-btn").onclick = async () => {
   const $msg = document.getElementById("modal-files-open-msg");
-  $msg.textContent = "Đang mở..."; $msg.className = "text-sm text-slate-500"; $msg.classList.remove("hidden");
+  $msg.textContent = "Đang mở..."; $msg.style.cssText = "font-size:.82rem;color:var(--txt-2);display:block";
   const r = await fetch("/api/files/verify-password", {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({user_id: _modalUid, password: _modalPw})
@@ -1520,12 +1772,13 @@ document.getElementById("modal-files-open-btn").onclick = async () => {
   const d = await r.json();
   if (!r.ok) {
     $msg.textContent = "Lỗi: " + (d.error || "Không rõ");
-    $msg.className = "text-sm text-rose-600"; return;
+    $msg.style.color = "#ef4444"; return;
   }
-  $msg.classList.add("hidden");
+  $msg.style.display = "none";
   _modalFilesReady = true;
   document.getElementById("modal-files-pw-section").classList.add("hidden");
-  document.getElementById("modal-files-manager").classList.remove("hidden");
+  const $mgr = document.getElementById("modal-files-manager");
+  $mgr.classList.remove("hidden"); $mgr.style.display = "flex";
   await loadModalFiles();
 };
 
@@ -1550,9 +1803,8 @@ function renderModalFileList(files) {
         <div class="text-sm font-medium truncate">${esc(f.name)}</div>
         <div class="text-xs text-slate-400">${fmtSz(f.size)} · ${esc(f.modified)}</div>
       </div>
-      <a href="/api/files/download/${encodeURIComponent(f.name)}"
-         download="${esc(f.name)}"
-         class="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇ Tải</a>
+      <button onclick="downloadFile('/api/files/download/${encodeURIComponent(f.name)}','${esc(f.name)}')"
+              class="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇ Tải</button>
       <button data-name="${esc(f.name)}"
               class="btn-mfdel text-xs px-2 py-1 bg-rose-50 text-rose-600 rounded hover:bg-rose-100">🗑 Xóa</button>
     `;
@@ -1571,22 +1823,210 @@ document.getElementById("modal-files-upload-btn").onclick = async () => {
   const files = document.getElementById("modal-files-input").files;
   if (!files.length) { showToast("Chọn file trước", true); return; }
   const $msg = document.getElementById("modal-files-upload-msg");
-  $msg.textContent = "Đang tải..."; $msg.className = "text-xs text-slate-500"; $msg.classList.remove("hidden");
+  $msg.textContent = "Đang tải..."; $msg.style.cssText = "font-size:.75rem;color:var(--txt-2);display:block";
   const fd = new FormData();
   for (const f of files) fd.append(f.name, f);
   const r = await fetch("/api/files/upload", {method:"POST", body:fd});
   const d = await r.json();
   if (r.ok) {
     $msg.textContent = "✅ Đã tải: " + d.uploaded.join(", ");
-    $msg.className = "text-xs text-emerald-600";
+    $msg.style.color = "#22c55e";
     document.getElementById("modal-files-input").value = "";
     loadModalFiles();
   } else {
     $msg.textContent = "✗ " + d.error;
-    $msg.className = "text-xs text-rose-600";
+    $msg.style.color = "#ef4444";
   }
-  $msg.classList.remove("hidden");
 };
+
+// ════════════════════════════════════════════════════════════
+// MODAL MUSIC TAB
+// ════════════════════════════════════════════════════════════
+let _modalMusicQueue = [], _modalMusicIdx = -1;
+
+async function loadModalMusic(uid) {
+  if (!uid) return;
+  const r = await fetch(`/api/music/user-tracks/${uid}`);
+  if (!r.ok) return;
+  const d = await r.json();
+  renderModalTracks(d.tracks || [], uid);
+}
+
+function renderModalTracks(tracks, uid) {
+  const $list  = document.getElementById("modal-music-list");
+  const $empty = document.getElementById("modal-music-empty");
+  const $count = document.getElementById("modal-music-count");
+  $list.innerHTML = "";
+  $count.textContent = tracks.length ? `(${tracks.length})` : "";
+  if (!tracks.length) { $list.appendChild($empty); $empty.style.display = "block"; return; }
+  $empty.style.display = "none";
+  _modalMusicQueue = tracks;
+  tracks.forEach((t, i) => {
+    const row = document.createElement("div");
+    row.className = "flex items-center gap-2 px-2 py-1.5 bg-white border rounded text-xs hover:border-slate-300 transition";
+    row.innerHTML = `
+      <span class="text-base">🎵</span>
+      <span class="flex-1 min-w-0 truncate font-medium">${esc(t.name)}</span>
+      <button class="btn-mtrack-play px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">▶</button>
+      <button class="btn-mtrack-del px-1.5 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100">🗑</button>
+    `;
+    row.querySelector(".btn-mtrack-play").onclick = () => {
+      // Dùng main player bar
+      queue = tracks.map(tr => ({
+        title: tr.name, artist: uid, preview: tr.url, cover: "", id: tr.name
+      }));
+      queueIdx = -1;
+      showPanel("music"); switchTab("music");
+      playAt(i);
+    };
+    row.querySelector(".btn-mtrack-del").onclick = async () => {
+      if (!confirm(`Xóa "${t.name}"?`)) return;
+      const dr = await fetch(`/api/music/user-tracks/${uid}/delete/${encodeURIComponent(t.name)}`, {method:"POST"});
+      if (dr.ok) { const dd = await dr.json(); renderModalTracks(dd.tracks||[], uid); }
+      else showToast("Lỗi xóa", true);
+    };
+    $list.appendChild(row);
+  });
+  // Show mini player if playing
+  const $mp = document.getElementById("modal-mini-player");
+  if (_modalMusicQueue.length) $mp.classList.remove("hidden"), $mp.classList.add("flex");
+}
+
+// Modal mini player reflects main player state
+document.getElementById("modal-play-btn").onclick = () => {
+  if ($audio.src) { $audio.paused ? $audio.play().catch(()=>{}) : $audio.pause(); }
+};
+document.getElementById("modal-prev-btn").onclick = () => { if (queueIdx > 0) playAt(queueIdx-1); };
+document.getElementById("modal-next-btn").onclick = () => playNext();
+$audio.addEventListener("play",  () => { document.getElementById("modal-play-btn").textContent = "⏸"; });
+$audio.addEventListener("pause", () => { document.getElementById("modal-play-btn").textContent = "▶"; });
+
+// Music upload
+document.getElementById("modal-music-upload-btn").onclick = async () => {
+  const files = document.getElementById("modal-music-input").files;
+  if (!files.length) { showToast("Chọn file âm thanh trước", true); return; }
+  const $msg = document.getElementById("modal-music-upload-msg");
+  $msg.textContent = "Đang tải..."; $msg.style.cssText = "font-size:.75rem;color:var(--txt-2);display:block";
+  const fd = new FormData();
+  for (const f of files) fd.append(f.name, f);
+  const r = await fetch(`/api/music/user-tracks/${_modalUid}/upload`, {method:"POST", body:fd});
+  const d = await r.json();
+  if (r.ok) {
+    $msg.textContent = "✅ Đã tải: " + d.uploaded.join(", ");
+    $msg.style.color = "#22c55e";
+    document.getElementById("modal-music-input").value = "";
+    renderModalTracks(d.tracks || [], _modalUid);
+  } else {
+    $msg.textContent = "✗ " + (d.error || "Lỗi");
+    $msg.style.color = "#ef4444";
+  }
+};
+
+
+// ════════════════════════════════════════════════════════════
+// TEXT MODE  (two-step: submit → if IMPORTANT → password)
+// ════════════════════════════════════════════════════════════
+(function initTextMode() {
+  const $userSel    = document.getElementById("text-user-sel");
+  const $input      = document.getElementById("text-input");
+  const $sendBtn    = document.getElementById("text-send-btn");
+  const $pwRow      = document.getElementById("text-pw-row");
+  const $pw         = document.getElementById("text-pw");
+  const $confirmBtn = document.getElementById("text-confirm-btn");
+
+  let _pendingText   = null;
+  let _pendingUserId = null;
+
+  $sendBtn.onclick = sendText;
+  $input.addEventListener("keydown", e => { if (e.key === "Enter") sendText(); });
+  $confirmBtn.onclick = confirmPassword;
+  $pw.addEventListener("keydown", e => { if (e.key === "Enter") confirmPassword(); });
+
+  async function sendText() {
+    const text = $input.value.trim();
+    if (!text) return;
+    _pendingText   = text;
+    _pendingUserId = $userSel.value;
+    $pwRow.classList.add("hidden");
+    $pw.value = "";
+    $sendBtn.disabled = true;
+    await submitText(text, _pendingUserId, "");
+    $sendBtn.disabled = false;
+  }
+
+  async function confirmPassword() {
+    const pw = $pw.value.trim();
+    if (!pw) { $pw.focus(); return; }
+    $confirmBtn.disabled = true;
+    await submitText(_pendingText, _pendingUserId, pw);
+    $confirmBtn.disabled = false;
+  }
+
+  async function submitText(text, userId, password) {
+    $pttSts.textContent = "Đang xử lý...";
+    try {
+      const r = await fetch("/api/assistant/text", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ text, user_id: userId, password }),
+      });
+      const data = await r.json();
+      if (!r.ok) { addMsg("bot", "Lỗi: " + data.error); return; }
+
+      addMsg("user", "[Văn bản] " + data.transcript);
+      addMeta(data);
+      addMsg("bot", data.response);
+      if (data.tts_url) { $tts.src = data.tts_url; $tts.play().catch(() => {}); }
+
+      // IMPORTANT intent and user selected but no/wrong password → show password field
+      if (data.sv_required && data.blocked && data.identified_user_id) {
+        $pwRow.classList.remove("hidden");
+        $pw.focus();
+        return;
+      }
+
+      $pwRow.classList.add("hidden");
+      $pw.value = "";
+      $input.value = "";
+      _pendingText = null;
+      handleTurnAction(data);
+    } catch (e) {
+      addMsg("bot", "Lỗi mạng: " + e.message);
+    } finally {
+      $pttSts.textContent = "Sẵn sàng";
+    }
+  }
+})();
+
+// ════════════════════════════════════════════════════════════
+// MODE TOGGLE  (voice ↔ text)
+// ════════════════════════════════════════════════════════════
+(function initModeToggle() {
+  const $voiceMode = document.getElementById("voice-mode");
+  const $textMode  = document.getElementById("text-mode");
+  const $toggleBtn = document.getElementById("mode-toggle-btn");
+
+  $toggleBtn.onclick = () => {
+    const goingText = !$voiceMode.classList.contains("hidden");
+    $voiceMode.classList.toggle("hidden", goingText);
+    $textMode.classList.toggle("hidden", !goingText);
+    $toggleBtn.textContent = goingText
+      ? "🎙 Chuyển sang giọng nói"
+      : "💬 Chuyển sang văn bản";
+  };
+})();
+
+// ════════════════════════════════════════════════════════════
+// FADE-UP  (scroll reveal)
+// ════════════════════════════════════════════════════════════
+(function initFadeUp() {
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) { e.target.classList.add("in"); obs.unobserve(e.target); }
+    });
+  }, { threshold: 0.1 });
+  document.querySelectorAll(".fade-up").forEach(el => obs.observe(el));
+})();
 </script>
 
 {% endblock %}
