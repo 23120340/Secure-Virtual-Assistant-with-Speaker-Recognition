@@ -637,6 +637,36 @@ def register_routes(app):
             return jsonify({"error": "File không tồn tại"}), 404
         return send_file(fpath, conditional=True)
 
+    def _ydl_base_opts(**extra) -> dict:
+        """Build yt-dlp options with cookie auth to bypass YouTube bot check.
+
+        Priority:
+          1. youtube_cookies.txt next to this file  (export from browser)
+          2. Cookies read live from Chrome / Edge / Firefox on this machine
+          3. No cookies (may fail on restricted videos)
+        """
+        import yt_dlp  # noqa: F401 — ensure import available for callers
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            **extra,
+        }
+        cookies_file = Path(__file__).parent / "youtube_cookies.txt"
+        if cookies_file.exists():
+            opts["cookiefile"] = str(cookies_file)
+        else:
+            for browser in ("chrome", "edge", "firefox", "chromium", "brave"):
+                try:
+                    import yt_dlp as _y
+                    test_opts = {**opts, "cookiesfrombrowser": (browser,)}
+                    with _y.YoutubeDL({**test_opts, "extract_flat": True}) as _ydl:
+                        _ydl.cookiejar  # trigger load; raises if browser not found
+                    opts["cookiesfrombrowser"] = (browser,)
+                    break
+                except Exception:
+                    continue
+        return opts
+
     # YouTube search proxy (yt-dlp, không cần API key)
     @app.route("/api/music/youtube-search")
     def api_youtube_search():
@@ -645,19 +675,16 @@ def register_routes(app):
             return jsonify({"videos": []})
         try:
             import yt_dlp
-            ydl_opts = {
-                "quiet": True,
-                "extract_flat": True,
-                "skip_download": True,
-                "no_warnings": True,
-            }
+            ydl_opts = _ydl_base_opts(
+                extract_flat=True,
+                skip_download=True,
+            )
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(f"ytsearch10:{q}", download=False)
             videos = []
             for e in (info.get("entries") or []):
                 if not e or not e.get("id"):
                     continue
-                # thumbnail: lấy ảnh nhỏ nhất có sẵn
                 thumbs = e.get("thumbnails") or []
                 thumb = thumbs[0]["url"] if thumbs else (
                     e.get("thumbnail") or
@@ -677,25 +704,21 @@ def register_routes(app):
 
     @app.route("/api/music/yt-audio")
     def api_yt_audio():
-        """Extract YouTube audio stream URL via yt-dlp and redirect to it.
-        The browser <audio> element follows the redirect and plays directly."""
+        """Extract YouTube audio stream URL via yt-dlp and redirect to it."""
         import yt_dlp
         video_id = request.args.get("v", "").strip()
         if not video_id or not re.match(r'^[a-zA-Z0-9_-]{1,20}$', video_id):
             return jsonify({"error": "Invalid video id"}), 400
         try:
-            ydl_opts = {
-                "quiet": True,
-                "no_warnings": True,
-                "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
-                "skip_download": True,
-            }
+            ydl_opts = _ydl_base_opts(
+                format="bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
+                skip_download=True,
+            )
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(
                     f"https://www.youtube.com/watch?v={video_id}",
                     download=False
                 )
-            # Prefer audio-only formats; fallback to info["url"]
             url = None
             for fmt in sorted(info.get("formats", []),
                                key=lambda f: f.get("tbr") or 0, reverse=True):
