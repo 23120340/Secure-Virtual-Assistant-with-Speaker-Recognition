@@ -69,13 +69,16 @@ def handle_send_email(entities, user, **kwargs) -> str:
     smtp_host = smtp_cfg.get("host", "smtp.gmail.com")
     smtp_port = smtp_cfg.get("port", 587)
 
-    # Tìm email của người nhận từ DB
-    recipient_email = ""
-    if db and recipient_name:
-        for u in db.list_users():
-            if recipient_name.lower() in u["name"].lower():
-                recipient_email = u["preferences"].get("email", "")
-                break
+    # Ưu tiên dùng email đã được flow xác nhận trước
+    recipient_email = entities.get("recipient_email", "")
+
+    if not recipient_email:
+        # Fallback: tìm theo tên trong DB
+        if db and recipient_name:
+            for u in db.list_users():
+                if recipient_name.lower() in u["name"].lower():
+                    recipient_email = u["preferences"].get("email", "")
+                    break
 
     if not recipient_email:
         if recipient_name:

@@ -44,6 +44,9 @@
         🎙<br><span id="ptt-label">Bấm & giữ</span>
       </button>
       <span id="ptt-status" class="text-sm text-slate-500">Sẵn sàng</span>
+      <div id="flow-indicator" class="hidden text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-1">
+        ✉ Đang soạn email — trả lời câu hỏi của trợ lý · nói <b>hủy</b> để dừng
+      </div>
     </div>
 
     <!-- Text mode (hidden by default) -->
@@ -221,7 +224,9 @@
 // PTT recording state
 // ════════════════════════════════════════════════════════════
 let _mr = null, _chunks = [], _stream = null;
-let _starting = false, _pendingStop = false;
+let _starting = false, _pendingStop = false, _aborted = false;
+let _recStartTime = 0;
+const MIN_REC_MS = 500;
 
 const $chat   = document.getElementById("chat");
 const $btn    = document.getElementById("ptt-btn");
@@ -268,9 +273,10 @@ async function startRec() {
     _mr.ondataavailable = e => { if (e.data.size>0) _chunks.push(e.data); };
     _mr.onstop = async () => {
       _stream.getTracks().forEach(t=>t.stop());
+      if (_aborted) { _aborted = false; return; }
       await sendAudio(new Blob(_chunks, {type: _mr.mimeType}));
     };
-    _mr.start(); _starting = false;
+    _mr.start(); _recStartTime = Date.now(); _starting = false;
     setRec(true); $status.textContent = "Đang nghe… thả tay để gửi";
   } catch(e) {
     _starting = false;
@@ -283,6 +289,11 @@ async function startRec() {
 function stopRec() {
   if (_starting) { _pendingStop = true; return; }
   if (_mr?.state === "recording") {
+    if (Date.now() - _recStartTime < MIN_REC_MS) {
+      _aborted = true;
+      _mr.stop(); setRec(false); $status.textContent = "Sẵn sàng";
+      return;
+    }
     _mr.stop(); setRec(false); $status.textContent = "Đang xử lý...";
   }
 }
@@ -313,7 +324,10 @@ async function sendAudio(blob) {
     const r = await fetch("/api/assistant/turn", {method:"POST", body:fd});
     const data = await r.json();
     if (!r.ok) {
-      addMsg("bot","Lỗi: "+data.error);
+      const silent = ["quá ngắn", "không có speech", "ASR không nhận diện"];
+      if (!silent.some(k => (data.error || "").includes(k))) {
+        addMsg("bot", "Lỗi: " + data.error);
+      }
       $status.textContent = "Sẵn sàng"; return;
     }
     addMsg("user", data.transcript);
@@ -325,6 +339,8 @@ async function sendAudio(blob) {
       $tts.play().catch(()=>{});
     }
 
+    document.getElementById("flow-indicator")
+            .classList.toggle("hidden", !data.flow_active);
     handleTurnAction(data);
     $status.textContent = "Sẵn sàng";
   } catch(e) {
@@ -912,6 +928,8 @@ function showToast(msg, isErr=false) {
         return;
       }
 
+      document.getElementById("flow-indicator")
+              .classList.toggle("hidden", !data.flow_active);
       $pwRow.classList.add("hidden");
       $pw.value = "";
       $input.value = "";

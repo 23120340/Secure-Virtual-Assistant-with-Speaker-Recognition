@@ -63,6 +63,25 @@
     </div>
   </div>
 
+  <!-- Danh bạ liên hệ -->
+  <div>
+    <h2 class="font-semibold mb-3">Danh bạ liên hệ</h2>
+    <p class="text-xs text-slate-400 mb-2">
+      Trợ lý sẽ tự tra email khi bạn nói tên người nhận trong lệnh gửi email.
+    </p>
+    <div id="contacts-list" class="space-y-1.5 mb-3"></div>
+    <div class="flex gap-2 flex-wrap">
+      <input id="contact-name" type="text" placeholder="Tên liên hệ"
+             class="border rounded px-3 py-1.5 text-sm w-36"/>
+      <input id="contact-email" type="email" placeholder="Email"
+             class="border rounded px-3 py-1.5 text-sm flex-1 min-w-0"/>
+      <button id="add-contact-btn"
+              class="px-3 py-1.5 bg-slate-600 text-white rounded text-sm hover:bg-slate-700 whitespace-nowrap">
+        + Thêm
+      </button>
+    </div>
+  </div>
+
   <div class="flex gap-3 items-center pt-2 border-t">
     <button id="save-btn"
             class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-sm">
@@ -79,11 +98,53 @@
 <script>
 const userId = {{ user.user_id | tojson }};
 
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+                  .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
 document.getElementById("pw-eye").onclick = function() {
   const inp = document.getElementById("pw-input");
   if (inp.type === "password") { inp.type = "text"; this.textContent = "🙈"; }
   else { inp.type = "password"; this.textContent = "👁"; }
 };
+
+// ── Danh bạ ──────────────────────────────────────────────
+let _contacts = {{ user.preferences.get('contacts', []) | tojson }};
+
+function renderContacts() {
+  const list = document.getElementById("contacts-list");
+  if (_contacts.length === 0) {
+    list.innerHTML = '<p class="text-sm text-slate-400 italic">Chưa có liên hệ nào.</p>';
+    return;
+  }
+  list.innerHTML = "";
+  _contacts.forEach((c, i) => {
+    const div = document.createElement("div");
+    div.className = "flex items-center gap-2 bg-slate-50 border rounded px-3 py-1.5 text-sm";
+    div.innerHTML =
+      `<span class="font-medium flex-shrink-0">${esc(c.name)}</span>` +
+      `<span class="text-slate-500 flex-1 truncate">${esc(c.email)}</span>` +
+      `<button class="text-rose-500 hover:text-rose-700 text-xs ml-1" data-i="${i}">✕</button>`;
+    div.querySelector("[data-i]").onclick = () => {
+      _contacts.splice(i, 1);
+      renderContacts();
+    };
+    list.appendChild(div);
+  });
+}
+renderContacts();
+
+document.getElementById("add-contact-btn").onclick = () => {
+  const name  = document.getElementById("contact-name").value.trim();
+  const email = document.getElementById("contact-email").value.trim();
+  if (!name || !email) return;
+  _contacts.push({ name, email });
+  renderContacts();
+  document.getElementById("contact-name").value  = "";
+  document.getElementById("contact-email").value = "";
+};
+// ── End danh bạ ───────────────────────────────────────────
 
 function buildPreferences() {
   const prefs = {};
@@ -97,6 +158,7 @@ function buildPreferences() {
   if (balance) prefs.balance         = Number(balance);
   if (notes)   prefs.notes    = notes.split("\n").map(s => s.trim()).filter(Boolean);
   if (sched)   prefs.schedule = sched.split("\n").map(s => s.trim()).filter(Boolean);
+  prefs.contacts = _contacts;
   return prefs;
 }
 

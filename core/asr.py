@@ -89,6 +89,44 @@ class ASR:
         return self.transcribe(audio)
 
 
+def correct_transcript(text: str) -> str:
+    """Sửa lỗi ASR bằng Gemini: chính tả, âm gần giống, ngữ nghĩa.
+    Nếu không có API key hoặc Gemini lỗi → trả về nguyên văn.
+    """
+    if not text or not config.GEMINI_API_KEY:
+        return text
+    try:
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=config.GEMINI_API_KEY)
+        system = (
+            "Bạn là module sửa lỗi nhận dạng giọng nói tiếng Việt.\n"
+            "Nhiệm vụ: nhận văn bản thô từ speech-to-text, trả về câu đã sửa.\n"
+            "Quy tắc:\n"
+            "- Câu đúng → trả về nguyên văn, không thay đổi gì.\n"
+            "- Lỗi âm thanh hoặc chính tả nhỏ → sửa lỗi.\n"
+            "- Nhiều từ nghe giống nhau → chọn nghĩa hợp lý nhất theo ngữ cảnh.\n"
+            "- Giữ nguyên ý định của người nói mọi lúc.\n"
+            "- KHÔNG thêm thông tin mới ngoài những gì có trong câu gốc.\n"
+            "- Câu mơ hồ → chọn cách diễn giải có xác suất cao nhất.\n"
+            "- Ưu tiên cụm từ thông dụng và ngôn ngữ tự nhiên.\n"
+            "CHỈ trả về câu đã sửa, không giải thích gì thêm."
+        )
+        resp = client.models.generate_content(
+            model=config.GEMINI_MODEL,
+            contents=text,
+            config=types.GenerateContentConfig(
+                system_instruction=system,
+                temperature=0.1,
+            ),
+        )
+        corrected = resp.text.strip()
+        return corrected if corrected else text
+    except Exception as e:
+        print(f"  [correct_transcript error: {e}] → giữ nguyên")
+        return text
+
+
 # Singleton
 _asr_instance = None
 

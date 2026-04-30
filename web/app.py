@@ -47,7 +47,9 @@ AUDIO_EXTS = {'.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac', '.wma', '.opus'}
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core import audio_io, config
-from core.asr import get_asr
+from core.asr import get_asr, correct_transcript
+from core import email_flow as _ef
+from core.handlers import handle_send_email as _send_email
 from core.tts import get_tts
 from core.nlu import get_nlu
 from core.database import UserDB, SpeakerManager
@@ -291,19 +293,89 @@ def register_routes(app):
         if not transcript:
             return jsonify({"error": "ASR không nhận diện được"}), 400
 
-        nlu_result = nlu.parse(transcript)
+        transcript = correct_transcript(transcript)
+
+        from urllib.parse import quote as _quote
+
         smtp_cfg = {
             "host":     config.SMTP_HOST,
             "port":     config.SMTP_PORT,
             "user":     config.SMTP_USER,
             "password": config.SMTP_PASS,
         }
+
+        # ── Email flow: tiếp tục nếu đang trong luồng soạn email ──────────
+        if "email_flow" in session:
+            flow_state = session["email_flow"]
+            uid   = flow_state.get("user_id")
+            _user = db.get_user(uid) if uid else None
+            contacts = (_user["preferences"].get("contacts", [])
+                        if _user else [])
+
+            resp, new_state, is_done = _ef.continue_flow(
+                transcript, flow_state, contacts)
+
+            if is_done:
+                ents = {
+                    "recipient":       new_state["recipient_name"],
+                    "recipient_email": new_state["recipient_email"],
+                    "subject":         new_state["subject"],
+                    "body":            new_state["body"],
+                }
+                resp = _send_email(ents, _user, db=db, smtp_config=smtp_cfg)
+                session.pop("email_flow", None)
+                flow_active = False
+            elif new_state is None:
+                session.pop("email_flow", None)
+                flow_active = False
+            else:
+                session["email_flow"] = new_state
+                flow_active = True
+
+            payload = {
+                "transcript":           transcript,
+                "intent":               "email_flow",
+                "auth_level":           "important",
+                "entities":             {},
+                "identified_user_id":   uid,
+                "identified_user_name": _user["name"] if _user else "Khách",
+                "sid_score":            1.0,
+                "sv_required":          False,
+                "sv_passed":            True,
+                "sv_score":             None,
+                "response":             resp,
+                "blocked":              False,
+                "action_url":           None,
+                "flow_active":          flow_active,
+                "tts_url":              f"/api/tts?text={_quote(resp)}",
+            }
+            return jsonify(payload)
+        # ── End email flow continuation ───────────────────────────────────
+
+        nlu_result = nlu.parse(transcript)
         result = router.handle_turn(audio, transcript, nlu_result,
                                     extra_context={"db": db, "smtp_config": smtp_cfg})
 
+        # Nếu send_email vừa pass SV → bắt đầu flow thay vì gửi ngay
+        if result.intent == "send_email" and not result.blocked:
+            uid   = result.identified_user_id
+            _user = db.get_user(uid) if uid else None
+            contacts = (_user["preferences"].get("contacts", [])
+                        if _user else [])
+            question, flow_state = _ef.start_flow(
+                result.entities.get("recipient", ""), contacts)
+            flow_state["user_id"] = uid
+            session["email_flow"] = flow_state
+
+            payload = asdict(result)
+            payload["response"]    = question
+            payload["tts_url"]     = f"/api/tts?text={_quote(question)}"
+            payload["flow_active"] = True
+            return jsonify(payload)
+
         payload = asdict(result)
-        from urllib.parse import quote as _quote
         payload["tts_url"] = f"/api/tts?text={_quote(result.response)}"
+        payload["flow_active"] = False
 
         # action_type + action_data cho frontend mở panel tương ứng
         if result.intent == "play_music" and not result.blocked:
@@ -386,9 +458,63 @@ def register_routes(app):
 
         from core.intents import INTENTS, AuthLevel
         from core import handlers as _h
+        from urllib.parse import quote as _q
 
         db  = app.config["db"]
         nlu = app.config["nlu"]
+
+        smtp_cfg = {
+            "host":     config.SMTP_HOST,
+            "port":     config.SMTP_PORT,
+            "user":     config.SMTP_USER,
+            "password": config.SMTP_PASS,
+        }
+
+        # ── Email flow: tiếp tục nếu đang trong luồng soạn email ──────────
+        if "email_flow" in session:
+            flow_state = session["email_flow"]
+            uid   = flow_state.get("user_id")
+            _user = db.get_user(uid) if uid else None
+            contacts = (_user["preferences"].get("contacts", [])
+                        if _user else [])
+
+            resp, new_state, is_done = _ef.continue_flow(text, flow_state, contacts)
+
+            if is_done:
+                ents = {
+                    "recipient":       new_state["recipient_name"],
+                    "recipient_email": new_state["recipient_email"],
+                    "subject":         new_state["subject"],
+                    "body":            new_state["body"],
+                }
+                resp = _send_email(ents, _user, db=db, smtp_config=smtp_cfg)
+                session.pop("email_flow", None)
+                flow_active = False
+            elif new_state is None:
+                session.pop("email_flow", None)
+                flow_active = False
+            else:
+                session["email_flow"] = new_state
+                flow_active = True
+
+            payload = {
+                "transcript":           text,
+                "intent":               "email_flow",
+                "auth_level":           "important",
+                "entities":             {},
+                "identified_user_id":   uid,
+                "identified_user_name": _user["name"] if _user else "Khách",
+                "sid_score":            1.0 if uid else 0.0,
+                "sv_required":          False,
+                "sv_passed":            True,
+                "sv_score":             None,
+                "response":             resp,
+                "blocked":              False,
+                "flow_active":          flow_active,
+                "tts_url":              f"/api/tts?text={_q(resp)}",
+            }
+            return jsonify(payload)
+        # ── End email flow continuation ───────────────────────────────────
 
         nlu_result = nlu.parse(text)
         intent   = nlu_result["intent"]
@@ -416,17 +542,38 @@ def register_routes(app):
             else:
                 sv_passed = True
 
+        # Nếu send_email pass auth → bắt đầu flow thay vì gửi ngay
+        if intent == "send_email" and not blocked:
+            _user2 = db.get_user(uid) if uid else None
+            contacts = (_user2["preferences"].get("contacts", [])
+                        if _user2 else [])
+            question, flow_state = _ef.start_flow(
+                entities.get("recipient", ""), contacts)
+            flow_state["user_id"] = uid
+            session["email_flow"] = flow_state
+
+            payload = {
+                "transcript":           text,
+                "intent":               "send_email",
+                "auth_level":           level.value,
+                "entities":             entities,
+                "identified_user_id":   uid,
+                "identified_user_name": name,
+                "sid_score":            1.0 if uid else 0.0,
+                "sv_required":          sv_required,
+                "sv_passed":            sv_passed,
+                "sv_score":             None,
+                "response":             question,
+                "blocked":              False,
+                "flow_active":          True,
+                "tts_url":              f"/api/tts?text={_q(question)}",
+            }
+            return jsonify(payload)
+
         if not blocked:
             handler  = _h.HANDLERS.get(intent, _h.handle_unknown)
-            smtp_cfg = {
-                "host":     config.SMTP_HOST,
-                "port":     config.SMTP_PORT,
-                "user":     config.SMTP_USER,
-                "password": config.SMTP_PASS,
-            }
             response = handler(entities, user, db=db, smtp_config=smtp_cfg)
 
-        from urllib.parse import quote as _q
         payload = {
             "transcript":           text,
             "intent":               intent,
@@ -440,6 +587,7 @@ def register_routes(app):
             "sv_score":             None,
             "response":             response,
             "blocked":              blocked,
+            "flow_active":          False,
             "tts_url":              f"/api/tts?text={_q(response)}",
         }
 
