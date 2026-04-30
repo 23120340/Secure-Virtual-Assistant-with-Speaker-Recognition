@@ -9,8 +9,9 @@
       <div id="nav-pill"></div>
       <a href="#hero"      class="spy-link" data-section="hero">Trang chủ</a>
       <a href="#assistant" class="spy-link" data-section="assistant">Trợ lý</a>
-      <a href="#users"     class="spy-link" data-section="users">Người dùng</a>
+      <a href="#users"     class="spy-link" data-section="users">Tài khoản</a>
       <a href="#enroll"    class="spy-link" data-section="enroll">Đăng ký</a>
+      <a href="#admin"     class="spy-link" data-section="admin">Quản trị</a>
     </div>
   </div>
 </nav>
@@ -105,12 +106,16 @@
 
         <!-- ── Text mode ──────────────────────────────────── -->
         <div id="text-mode" class="hidden mt-2 w-full space-y-2">
-          <select id="text-user-sel" class="glass-input">
-            <option value="">Khách (không xác thực)</option>
-            {% for u in users %}
-            <option value="{{ u.user_id }}">{{ u.name }}</option>
-            {% endfor %}
-          </select>
+          <div class="flex gap-2 items-center">
+            <input id="text-uid-search" type="text" placeholder="Nhập ID người dùng để chọn..."
+                   class="glass-input" style="border-radius:.75rem;flex:1;font-size:.82rem;padding:.45rem .75rem"/>
+            <button id="text-uid-find-btn" class="btn-primary btn-sm whitespace-nowrap">Tìm</button>
+          </div>
+          <input type="hidden" id="text-user-sel" value=""/>
+          <div id="text-user-found" style="display:none;padding:.45rem .85rem;border-radius:.75rem;font-size:.82rem;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);display:flex;align-items:center;gap:.5rem">
+            <span style="flex:1">Người dùng: <strong id="text-user-found-name" style="color:var(--c-violet)"></strong></span>
+            <button id="text-user-clear-btn" style="color:#9ca3af;background:none;border:none;cursor:pointer;font-size:.75rem;flex-shrink:0;line-height:1">✕ Bỏ chọn</button>
+          </div>
           <div class="flex gap-2">
             <input id="text-input" type="text"
                    placeholder="Nhập lệnh: Mấy giờ rồi, Phát nhạc, Đọc ghi chú..."
@@ -255,35 +260,24 @@
    ───────────────────────────────────────────────────────── #}
 <section id="users" class="va-section">
   <div class="s-container">
-    <div class="flex items-center justify-between fade-up" style="margin-bottom:1.5rem">
-      <div>
-        <h2 class="s-title">Người dùng <em>đã đăng ký</em></h2>
-        <p class="s-subtitle">{{ users | length }} người dùng trong hệ thống</p>
+    <div class="fade-up" style="margin-bottom:2rem">
+      <h2 class="s-title">Truy cập <em>tài khoản</em></h2>
+      <p class="s-subtitle">Nhập ID của bạn để xem và chỉnh sửa thông tin cá nhân. Yêu cầu mật khẩu để thay đổi.</p>
+    </div>
+
+    <div class="fade-up" style="max-width:480px">
+      <div class="enroll-card" style="padding:1.75rem">
+        <div style="display:flex;gap:.65rem;align-items:center">
+          <input id="user-find-id" type="text" placeholder="Nhập User ID của bạn..."
+                 class="glass-input" style="flex:1;border-radius:.75rem"/>
+          <button id="user-find-btn" class="btn-primary" style="white-space:nowrap">Tìm</button>
+        </div>
+        <div id="user-find-msg" style="margin-top:.6rem;font-size:.82rem;display:none"></div>
       </div>
     </div>
 
-    {% if users %}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="users-grid">
-      {% for u in users %}
-      <div class="user-card relative p-5 fade-up"
-           data-uid="{{ u.user_id }}" data-name="{{ u.name }}">
-        <div>
-          <div data-user-name style="font-size:1.1rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ u.name }}</div>
-          <div style="font-size:.78rem;color:var(--txt-2);margin-top:.25rem">
-            <code style="background:rgba(124,58,237,.08);color:var(--c-violet);padding:2px 6px;border-radius:4px;font-size:.72rem">{{ u.user_id }}</code>
-          </div>
-        </div>
-        <div style="margin-top:.75rem;font-size:.75rem;color:var(--txt-2)">Nhấn để xem chi tiết</div>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div id="users-grid" class="fade-up" style="padding:4rem 0;text-align:center;color:var(--txt-2)">
-      <div style="margin-bottom:.75rem;color:#d1d5db"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-      <p style="font-size:1.1rem;font-weight:600">Chưa có người dùng nào.</p>
-      <p style="font-size:.85rem;margin-top:.35rem">Cuộn xuống để đăng ký người dùng mới.</p>
-    </div>
-    {% endif %}
+    {# Grid ẩn — chỉ dùng bởi addUserCard() trong JS #}
+    <div id="users-grid" style="display:none"></div>
   </div>
 </section>
 
@@ -509,6 +503,22 @@
           </div>
         </div>
 
+        <!-- Contacts section -->
+        <div class="modal-section">
+          <p class="modal-section-label">Danh bạ liên hệ</p>
+          <p style="font-size:.75rem;color:var(--txt-2);margin-bottom:.5rem">
+            Trợ lý sẽ tự tra email khi bạn nói tên người nhận trong lệnh gửi email.
+          </p>
+          <div id="modal-contacts-list" style="display:flex;flex-direction:column;gap:.35rem;margin-bottom:.5rem"></div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+            <input id="modal-contact-name" type="text" placeholder="Tên liên hệ"
+                   class="glass-input" style="width:9rem;border-radius:.75rem;padding:.4rem .75rem;font-size:.8rem"/>
+            <input id="modal-contact-email" type="email" placeholder="Email"
+                   class="glass-input" style="flex:1;min-width:0;border-radius:.75rem;padding:.4rem .75rem;font-size:.8rem"/>
+            <button id="modal-add-contact-btn" class="btn-primary btn-sm whitespace-nowrap">+ Thêm</button>
+          </div>
+        </div>
+
         <button id="modal-save-btn" class="btn-primary" style="width:100%;padding:.65rem">Lưu thay đổi</button>
         <div id="modal-save-msg" style="font-size:.82rem;display:none"></div>
 
@@ -604,9 +614,89 @@
   </div><!-- end card -->
 </div><!-- end user-modal -->
 
+{# ─────────────────────────────────────────────────────────
+   SECTION 4 — ADMIN
+   ───────────────────────────────────────────────────────── #}
+<section id="admin" class="va-section">
+  <div class="s-container">
+
+    <div class="fade-up" style="margin-bottom:2rem">
+      <h2 class="s-title">Quản trị <em>hệ thống</em></h2>
+      <p class="s-subtitle">Truy cập bằng mật khẩu quản trị để xem danh sách người dùng.</p>
+    </div>
+
+    <!-- Lock screen -->
+    <div id="admin-lock" class="fade-up" style="max-width:440px">
+      <div class="enroll-card" style="padding:1.75rem">
+        <div style="display:flex;align-items:center;gap:.85rem;margin-bottom:1.25rem">
+          <div style="width:2.5rem;height:2.5rem;border-radius:50%;background:var(--grad-btn);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <div>
+            <p style="font-weight:700;font-size:.95rem;margin:0">Xác thực quản trị viên</p>
+            <p style="font-size:.78rem;color:var(--txt-2);margin:.1rem 0 0">Chỉ quản trị viên mới có thể truy cập</p>
+          </div>
+        </div>
+        <div style="display:flex;gap:.65rem">
+          <div style="position:relative;flex:1">
+            <input id="admin-pw" type="password" placeholder="Mật khẩu quản trị..."
+                   class="glass-input" style="padding-right:2.5rem"/>
+            <button type="button" id="admin-pw-eye"
+                    style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;display:flex;align-items:center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <button id="admin-unlock-btn" class="btn-primary">Mở khóa</button>
+        </div>
+        <div id="admin-lock-error" style="margin-top:.5rem;font-size:.82rem;color:#ef4444;display:none"></div>
+      </div>
+    </div>
+
+    <!-- Dashboard (hiện sau khi xác thực) -->
+    <div id="admin-dashboard" class="hidden" style="margin-top:1.5rem">
+
+      <!-- Stats bar -->
+      <div class="fade-up" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:.75rem">
+        <div style="display:flex;align-items:center;gap:.65rem">
+          <div style="background:var(--grad-btn);border-radius:.75rem;padding:.55rem 1.1rem;color:white;font-size:.85rem;font-weight:600">
+            Tổng: <span id="admin-count" style="font-size:1.1rem;font-weight:800">0</span> người dùng
+          </div>
+        </div>
+        <button id="admin-logout-btn"
+                style="font-size:.78rem;color:var(--txt-2);background:none;border:1px solid rgba(0,0,0,.1);border-radius:var(--r-btn);padding:.35rem .9rem;cursor:pointer">
+          Đăng xuất
+        </button>
+      </div>
+
+      <!-- User table -->
+      <div class="enroll-card fade-up" style="padding:0;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+          <thead>
+            <tr style="background:rgba(124,58,237,.06);border-bottom:1px solid rgba(0,0,0,.07)">
+              <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">#</th>
+              <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">User ID</th>
+              <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">Tên</th>
+              <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">Ngày đăng ký</th>
+              <th style="padding:.7rem 1.1rem"></th>
+            </tr>
+          </thead>
+          <tbody id="admin-user-tbody"></tbody>
+        </table>
+        <div id="admin-empty" class="hidden" style="padding:3rem;text-align:center;color:var(--txt-2);font-size:.9rem">
+          Chưa có người dùng nào trong hệ thống.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
 <!-- Toast -->
 <div id="toast" class="hidden"
      style="position:fixed;bottom:5rem;right:1rem;padding:.55rem 1.2rem;color:white;z-index:9999"></div>
+
+{# Embed users data for JS (tránh Jinja inline trong JS) #}
+<script id="users-json-data" type="application/json">{{ users | tojson }}</script>
 
 {# ─────────────────────────────────────────────────────────
    JAVASCRIPT
@@ -619,6 +709,10 @@ function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
                   .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
+
+// Danh sách người dùng (dùng cho tìm kiếm text mode)
+const _usersRaw = JSON.parse(document.getElementById("users-json-data").textContent || "[]");
+let _allUsers = _usersRaw.map(u => ({ id: u.user_id, name: u.name }));
 async function downloadFile(url, filename) {
   try {
     const r = await fetch(url);
@@ -1546,28 +1640,7 @@ $eSubmit.onclick = async () => {
 };
 
 function addUserCard(uid, name) {
-  const grid = document.getElementById("users-grid");
-  if (!grid) return;
-  if (grid.classList.contains("py-16") || !grid.classList.contains("grid")) {
-    grid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4";
-    grid.style = "";
-    grid.innerHTML = "";
-  }
-  const div = document.createElement("div");
-  div.className = "user-card relative p-5";
-  div.dataset.uid  = uid;
-  div.dataset.name = name;
-  div.innerHTML = `
-    <div>
-      <div data-user-name style="font-size:1.1rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
-      <div style="font-size:.78rem;color:var(--txt-2);margin-top:.25rem">
-        <code style="background:rgba(124,58,237,.08);color:var(--c-violet);padding:2px 6px;border-radius:4px;font-size:.72rem">${esc(uid)}</code>
-      </div>
-    </div>
-    <div style="margin-top:.75rem;font-size:.75rem;color:var(--txt-2)">Nhấn để xem chi tiết</div>
-  `;
-  div.addEventListener("click", () => openModal(uid, name));
-  grid.appendChild(div);
+  if (!_allUsers.some(u => u.id === uid)) _allUsers.push({ id: uid, name });
 }
 
 // Password eye toggle for enroll form
@@ -1588,6 +1661,37 @@ document.querySelectorAll(".user-card").forEach(card => {
 let _modalUid        = null;
 let _modalPw         = "";
 let _modalFilesReady = false;
+let _modalContacts   = [];
+
+function renderModalContacts() {
+  const $list = document.getElementById("modal-contacts-list");
+  if (!$list) return;
+  if (_modalContacts.length === 0) {
+    $list.innerHTML = '<p style="font-size:.82rem;color:var(--txt-2);font-style:italic">Chưa có liên hệ nào.</p>';
+    return;
+  }
+  $list.innerHTML = "";
+  _modalContacts.forEach((c, i) => {
+    const div = document.createElement("div");
+    div.style.cssText = "display:flex;align-items:center;gap:.5rem;background:rgba(0,0,0,.03);border:1px solid rgba(0,0,0,.07);border-radius:.65rem;padding:.35rem .75rem;font-size:.82rem";
+    div.innerHTML =
+      `<span style="font-weight:600;flex-shrink:0">${esc(c.name)}</span>` +
+      `<span style="color:var(--txt-2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.email)}</span>` +
+      `<button style="color:#ef4444;background:none;border:none;cursor:pointer;font-size:.75rem;flex-shrink:0;line-height:1" data-i="${i}">✕</button>`;
+    div.querySelector("[data-i]").onclick = () => { _modalContacts.splice(i, 1); renderModalContacts(); };
+    $list.appendChild(div);
+  });
+}
+
+document.getElementById("modal-add-contact-btn").onclick = () => {
+  const name  = document.getElementById("modal-contact-name").value.trim();
+  const email = document.getElementById("modal-contact-email").value.trim();
+  if (!name || !email) return;
+  _modalContacts.push({ name, email });
+  renderModalContacts();
+  document.getElementById("modal-contact-name").value  = "";
+  document.getElementById("modal-contact-email").value = "";
+};
 
 async function openModal(uid, name) {
   _modalUid = uid; _modalPw = ""; _modalFilesReady = false;
@@ -1619,7 +1723,7 @@ async function openModal(uid, name) {
 function closeModal() {
   document.getElementById("user-modal").classList.add("hidden");
   _modalUid = null; _modalPw = ""; _modalFilesReady = false;
-  _modalMode = false;
+  _modalMode = false; _modalContacts = [];
 }
 
 function populateModal(u) {
@@ -1634,6 +1738,8 @@ function populateModal(u) {
     Array.isArray(prefs.notes) ? prefs.notes.join("\n") : (prefs.notes || "");
   document.getElementById("modal-pref-schedule").value =
     Array.isArray(prefs.schedule) ? prefs.schedule.join("\n") : (prefs.schedule || "");
+  _modalContacts = Array.isArray(prefs.contacts) ? [...prefs.contacts] : [];
+  renderModalContacts();
 }
 
 function switchModalTab(tab) {
@@ -1716,6 +1822,7 @@ document.getElementById("modal-save-btn").onclick = async () => {
   if (balance) preferences.balance         = Number(balance);
   if (notesRaw) preferences.notes    = notesRaw.split("\n").map(s=>s.trim()).filter(Boolean);
   if (schedRaw) preferences.schedule = schedRaw.split("\n").map(s=>s.trim()).filter(Boolean);
+  preferences.contacts = _modalContacts;
 
   $msg.textContent = "Đang lưu..."; $msg.style.cssText = "font-size:.82rem;color:var(--txt-2);display:block";
 
@@ -2054,6 +2161,151 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
       ? "Chuyển sang giọng nói"
       : "Chuyển sang văn bản";
   };
+})();
+
+// ════════════════════════════════════════════════════════════
+// USER FIND  (tìm bằng ID để mở modal chỉnh sửa)
+// ════════════════════════════════════════════════════════════
+(function initUserFind() {
+  const $input = document.getElementById("user-find-id");
+  const $btn   = document.getElementById("user-find-btn");
+  const $msg   = document.getElementById("user-find-msg");
+  if (!$input || !$btn) return;
+
+  function findAndOpen() {
+    const q = $input.value.trim().toLowerCase();
+    if (!q) return;
+    const u = _allUsers.find(x => x.id.toLowerCase() === q || x.id.toLowerCase().includes(q));
+    if (u) {
+      $msg.style.display = "none";
+      openModal(u.id, u.name);
+    } else {
+      $msg.textContent = 'Không tìm thấy ID "' + $input.value.trim() + '". Kiểm tra lại hoặc đăng ký mới.';
+      $msg.style.cssText = "margin-top:.6rem;font-size:.82rem;color:#ef4444;display:block";
+    }
+  }
+
+  $btn.onclick = findAndOpen;
+  $input.addEventListener("keydown", e => { if (e.key === "Enter") findAndOpen(); });
+})();
+
+// ════════════════════════════════════════════════════════════
+// TEXT MODE — tìm người dùng bằng ID
+// ════════════════════════════════════════════════════════════
+(function initTextUidFind() {
+  const $search   = document.getElementById("text-uid-search");
+  const $findBtn  = document.getElementById("text-uid-find-btn");
+  const $hidden   = document.getElementById("text-user-sel");
+  const $found    = document.getElementById("text-user-found");
+  const $foundNm  = document.getElementById("text-user-found-name");
+  const $clearBtn = document.getElementById("text-user-clear-btn");
+  if (!$search || !$findBtn || !$hidden) return;
+
+  function selectUser(u) {
+    $hidden.value = u.id;
+    $foundNm.textContent = u.name + " (" + u.id + ")";
+    $found.style.display = "flex";
+    $search.style.borderColor = "rgba(34,197,94,.5)";
+    setTimeout(() => { $search.style.borderColor = ""; }, 1200);
+  }
+
+  function clearUser() {
+    $hidden.value = "";
+    $found.style.display = "none";
+    $search.value = "";
+  }
+
+  function findUser() {
+    const q = $search.value.trim().toLowerCase();
+    if (!q) { clearUser(); return; }
+    const match = _allUsers.find(u =>
+      u.id.toLowerCase() === q ||
+      u.id.toLowerCase().includes(q) ||
+      u.name.toLowerCase().includes(q)
+    );
+    if (match) {
+      selectUser(match);
+    } else {
+      $hidden.value = "";
+      $found.style.display = "none";
+      $search.style.borderColor = "rgba(239,68,68,.5)";
+      setTimeout(() => { $search.style.borderColor = ""; }, 1200);
+    }
+  }
+
+  $findBtn.onclick = findUser;
+  $search.addEventListener("keydown", e => { if (e.key === "Enter") findUser(); });
+  if ($clearBtn) $clearBtn.onclick = clearUser;
+})();
+
+// ════════════════════════════════════════════════════════════
+// ADMIN PANEL
+// ════════════════════════════════════════════════════════════
+(function initAdmin() {
+  const $pw      = document.getElementById("admin-pw");
+  const $unlBtn  = document.getElementById("admin-unlock-btn");
+  const $pwEye   = document.getElementById("admin-pw-eye");
+  const $err     = document.getElementById("admin-lock-error");
+  const $lock    = document.getElementById("admin-lock");
+  const $dash    = document.getElementById("admin-dashboard");
+  const $tbody   = document.getElementById("admin-user-tbody");
+  const $count   = document.getElementById("admin-count");
+  const $logBtn  = document.getElementById("admin-logout-btn");
+  const $empty   = document.getElementById("admin-empty");
+  if (!$pw) return;
+
+  if ($pwEye) $pwEye.onclick = function() { togglePwEye("admin-pw", this); };
+
+  async function unlock() {
+    const pw = $pw.value.trim();
+    if (!pw) return;
+    $unlBtn.disabled = true;
+    const r = await fetch("/api/admin/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw }),
+    });
+    $unlBtn.disabled = false;
+    const d = await r.json();
+    if (!r.ok) {
+      $err.textContent = d.error || "Sai mật khẩu";
+      $err.style.display = "block"; return;
+    }
+    $err.style.display = "none";
+    $lock.classList.add("hidden");
+    $dash.classList.remove("hidden");
+    $count.textContent = d.count;
+    renderAdminTable(d.users);
+  }
+
+  function renderAdminTable(users) {
+    $tbody.innerHTML = "";
+    if (!users.length) { $empty.classList.remove("hidden"); return; }
+    $empty.classList.add("hidden");
+    users.forEach((u, i) => {
+      const tr = document.createElement("tr");
+      tr.style.cssText = "border-bottom:1px solid rgba(0,0,0,.05);transition:background .15s";
+      tr.onmouseenter = () => { tr.style.background = "rgba(124,58,237,.04)"; };
+      tr.onmouseleave = () => { tr.style.background = ""; };
+      tr.innerHTML =
+        `<td style="padding:.65rem 1.1rem;color:var(--txt-2);font-size:.78rem">${i + 1}</td>` +
+        `<td style="padding:.65rem 1.1rem"><code style="background:rgba(124,58,237,.08);color:var(--c-violet);padding:2px 7px;border-radius:4px;font-size:.78rem">${esc(u.user_id)}</code></td>` +
+        `<td style="padding:.65rem 1.1rem;font-weight:600">${esc(u.name)}</td>` +
+        `<td style="padding:.65rem 1.1rem;color:var(--txt-2);font-size:.82rem">${esc(u.created_at)}</td>` +
+        `<td style="padding:.65rem 1.1rem"><button class="btn-admin-edit btn-primary btn-sm">Sửa</button></td>`;
+      tr.querySelector(".btn-admin-edit").onclick = () => openModal(u.user_id, u.name);
+      $tbody.appendChild(tr);
+    });
+  }
+
+  if ($logBtn) $logBtn.onclick = () => {
+    $lock.classList.remove("hidden");
+    $dash.classList.add("hidden");
+    $pw.value = "";
+  };
+
+  $unlBtn.onclick = unlock;
+  $pw.addEventListener("keydown", e => { if (e.key === "Enter") unlock(); });
 })();
 
 // ════════════════════════════════════════════════════════════

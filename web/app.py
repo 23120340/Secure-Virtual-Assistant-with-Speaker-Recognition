@@ -1022,6 +1022,26 @@ def register_routes(app):
         fpath.unlink()
         return jsonify({"ok": True})
 
+    # ----- Admin -----
+    @app.route("/api/admin/verify", methods=["POST"])
+    def api_admin_verify():
+        data = request.get_json() or {}
+        if not config.ADMIN_PASS or data.get("password") != config.ADMIN_PASS:
+            return jsonify({"error": "Sai mật khẩu quản trị"}), 403
+        users = app.config["db"].list_users()
+        return jsonify({
+            "ok": True,
+            "count": len(users),
+            "users": [
+                {
+                    "user_id":    u["user_id"],
+                    "name":       u["name"],
+                    "created_at": u["created_at"][:10],
+                }
+                for u in users
+            ],
+        })
+
     # ----- Misc -----
     @app.route("/api/health")
     def health():

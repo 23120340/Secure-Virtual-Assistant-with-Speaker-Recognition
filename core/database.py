@@ -92,8 +92,8 @@ class UserDB:
 
     def list_users(self) -> list:
         with self._conn() as c:
-            rows = c.execute("SELECT user_id, name FROM users").fetchall()
-        return [{"user_id": r[0], "name": r[1]} for r in rows]
+            rows = c.execute("SELECT user_id, name, created_at FROM users").fetchall()
+        return [{"user_id": r[0], "name": r[1], "created_at": r[2]} for r in rows]
 
     def delete_user(self, user_id: str):
         with self._conn() as c:

@@ -86,9 +86,13 @@ def handle_send_email(entities, user, **kwargs) -> str:
                     "Hãy đảm bảo người đó đã đăng ký email trong hồ sơ.")
         return "Bạn muốn gửi email cho ai? Hãy nói tên người nhận."
 
+    # Nếu user chưa có email riêng, dùng tài khoản SMTP làm người gửi
     if not sender_email:
-        return (f"{sender_name} ơi, bạn chưa có địa chỉ email trong hồ sơ. "
-                "Hãy cập nhật email của bạn trong trang cài đặt người dùng.")
+        if smtp_user:
+            sender_email = smtp_user
+        else:
+            return (f"{sender_name} ơi, bạn chưa có địa chỉ email trong hồ sơ. "
+                    "Hãy cập nhật email của bạn trong trang cài đặt người dùng.")
 
     if not smtp_user or not smtp_pass:
         # SMTP chưa cấu hình — trả về thông báo mô phỏng
@@ -101,14 +105,19 @@ def handle_send_email(entities, user, **kwargs) -> str:
         msg["Subject"] = subject
         msg["From"] = f"{sender_name} <{smtp_user}>"
         msg["To"] = recipient_email
+        # Reply-To = email thật của user, giúp người nhận reply đúng địa chỉ
+        if sender_email and sender_email != smtp_user:
+            msg["Reply-To"] = f"{sender_name} <{sender_email}>"
 
         with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
             server.starttls()
             server.login(smtp_user, smtp_pass)
             server.sendmail(smtp_user, [recipient_email], msg.as_string())
 
-        return (f"Đã gửi email thành công từ {sender_name} ({sender_email}) "
-                f"đến {recipient_name} ({recipient_email})!")
+        reply_note = (f" (trả lời sẽ đến {sender_email})"
+                      if sender_email and sender_email != smtp_user else "")
+        return (f"Đã gửi email thành công đến {recipient_name} ({recipient_email})!"
+                f"{reply_note}")
     except smtplib.SMTPAuthenticationError:
         return "Xác thực SMTP thất bại. Kiểm tra lại cấu hình email ứng dụng."
     except smtplib.SMTPException as e:
