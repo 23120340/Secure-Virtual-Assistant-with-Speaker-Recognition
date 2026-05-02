@@ -1,3 +1,4 @@
+
 """Flask web app cho Virtual Assistant.
 
 Routes:
@@ -50,6 +51,8 @@ from core import audio_io, config
 from core.asr import get_asr, correct_transcript
 from core import email_flow as _ef
 from core.handlers import handle_send_email as _send_email
+from core.oauth import (OAUTH_RESP_PREFIX as _OA,
+                        build_auth_url, exchange_code, get_user_email)
 from core.tts import get_tts
 from core.nlu import get_nlu
 from core.database import UserDB, SpeakerManager
@@ -315,6 +318,7 @@ def register_routes(app):
             resp, new_state, is_done = _ef.continue_flow(
                 transcript, flow_state, contacts)
 
+            _oauth_extras = {}
             if is_done:
                 ents = {
                     "recipient":       new_state["recipient_name"],
@@ -323,8 +327,16 @@ def register_routes(app):
                     "body":            new_state["body"],
                 }
                 resp = _send_email(ents, _user, db=db, smtp_config=smtp_cfg)
-                session.pop("email_flow", None)
-                flow_active = False
+                if resp.startswith(_OA):
+                    _auth_url, _, resp = resp[len(_OA):].partition('\n')
+                    resp = resp.strip()
+                    session["email_flow"] = new_state   # giữ để retry sau khi auth
+                    flow_active = True
+                    _oauth_extras = {"action_type": "oauth_required",
+                                     "action_data": {"auth_url": _auth_url.strip()}}
+                else:
+                    session.pop("email_flow", None)
+                    flow_active = False
             elif new_state is None:
                 session.pop("email_flow", None)
                 flow_active = False
@@ -348,6 +360,7 @@ def register_routes(app):
                 "action_url":           None,
                 "flow_active":          flow_active,
                 "tts_url":              f"/api/tts?text={_quote(resp)}",
+                **_oauth_extras,
             }
             return jsonify(payload)
         # ── End email flow continuation ───────────────────────────────────
@@ -480,6 +493,7 @@ def register_routes(app):
 
             resp, new_state, is_done = _ef.continue_flow(text, flow_state, contacts)
 
+            _oauth_extras = {}
             if is_done:
                 ents = {
                     "recipient":       new_state["recipient_name"],
@@ -488,8 +502,16 @@ def register_routes(app):
                     "body":            new_state["body"],
                 }
                 resp = _send_email(ents, _user, db=db, smtp_config=smtp_cfg)
-                session.pop("email_flow", None)
-                flow_active = False
+                if resp.startswith(_OA):
+                    _auth_url, _, resp = resp[len(_OA):].partition('\n')
+                    resp = resp.strip()
+                    session["email_flow"] = new_state   # giữ để retry sau khi auth
+                    flow_active = True
+                    _oauth_extras = {"action_type": "oauth_required",
+                                     "action_data": {"auth_url": _auth_url.strip()}}
+                else:
+                    session.pop("email_flow", None)
+                    flow_active = False
             elif new_state is None:
                 session.pop("email_flow", None)
                 flow_active = False
@@ -512,6 +534,7 @@ def register_routes(app):
                 "blocked":              False,
                 "flow_active":          flow_active,
                 "tts_url":              f"/api/tts?text={_q(resp)}",
+                **_oauth_extras,
             }
             return jsonify(payload)
         # ── End email flow continuation ───────────────────────────────────
@@ -1041,6 +1064,132 @@ def register_routes(app):
                 for u in users
             ],
         })
+
+    # ==========================================================================
+    # Google OAuth 2.0 — Gmail API authentication
+    # ==========================================================================
+    @app.route("/auth/google")
+    def auth_google():
+        """Redirect user đến Google consent screen.
+
+        Query param: user_id (bắt buộc) — dùng làm OAuth state để bind
+        authorization code về đúng speaker profile.
+        """
+        user_id = request.args.get("user_id", "").strip()
+        if not user_id:
+            return "Thiếu user_id", 400
+        try:
+            url = build_auth_url(state=user_id)
+        except RuntimeError as e:
+            return str(e), 500
+        return redirect(url)
+
+    @app.route("/auth/google/callback")
+    def auth_google_callback():
+        """Google redirect về đây với code + state sau khi user đồng ý.
+
+        Flow:
+          1. Trao đổi code lấy access_token + refresh_token
+          2. Lấy Gmail address của user
+          3. Lưu token vào DB (oauth_tokens table)
+          4. Cập nhật user preferences với Gmail address
+          5. Trả về trang thành công (user có thể đóng tab)
+        """
+        error   = request.args.get("error")
+        code    = request.args.get("code")
+        user_id = request.args.get("state")
+
+        # Lỗi từ Google (vd: user từ chối, redirect_uri_mismatch)
+        if error:
+            return (
+                "<!doctype html><html><head><meta charset='utf-8'>"
+                "<style>body{font-family:sans-serif;text-align:center;padding:60px}"
+                "h2{color:#c62828}pre{background:#f5f5f5;padding:12px;border-radius:6px;"
+                "text-align:left;max-width:500px;margin:auto;word-break:break-all}</style></head><body>"
+                f"<h2>✗ Xác thực thất bại</h2>"
+                f"<pre>{error}</pre>"
+                "<p>Kiểm tra lại <b>Authorized Redirect URIs</b> trong Google Cloud Console.<br>"
+                "URI phải khớp chính xác với <code>GOOGLE_REDIRECT_URI</code> trong <code>.env</code>.</p>"
+                "<button onclick='window.close()' style='margin-top:16px;padding:8px 20px;"
+                "background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
+                "Đóng tab</button>"
+                "</body></html>"
+            ), 400
+
+        if not code or not user_id:
+            return "<h3>Thiếu tham số (code hoặc state)</h3>", 400
+
+        _db = app.config["db"]
+        user = _db.get_user(user_id)
+        if not user:
+            return f"<h3>Không tìm thấy user '{user_id}'</h3>", 404
+
+        try:
+            tokens     = exchange_code(code)
+            gmail_addr = get_user_email(tokens["access_token"])
+            tokens["gmail_address"] = gmail_addr
+            _db.save_oauth_token(user_id, tokens)
+
+            prefs = dict(user["preferences"])
+            prefs["email"] = gmail_addr
+            _db.update_preferences(user_id, prefs)
+        except Exception as e:
+            return (
+                "<!doctype html><html><head><meta charset='utf-8'>"
+                "<style>body{font-family:sans-serif;text-align:center;padding:60px}"
+                "h2{color:#c62828}pre{background:#f5f5f5;padding:12px;border-radius:6px;"
+                "text-align:left;max-width:500px;margin:auto;word-break:break-all}</style></head><body>"
+                f"<h2>✗ Lỗi trao đổi token</h2><pre>{e}</pre>"
+                "<button onclick='window.close()' style='margin-top:16px;padding:8px 20px;"
+                "background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
+                "Đóng tab</button></body></html>"
+            ), 500
+
+        # Tab tự đóng sau 3s, đồng thời báo hiệu cho cửa sổ mẹ (nếu có)
+        return (
+            "<!doctype html><html><head><meta charset='utf-8'>"
+            "<style>body{font-family:sans-serif;text-align:center;padding:60px}"
+            "h2{color:#2e7d32}.badge{display:inline-block;background:#e8f5e9;"
+            "border:1px solid #a5d6a7;border-radius:8px;padding:12px 24px;margin:12px 0}"
+            ".cnt{font-size:2rem;font-weight:bold;color:#1565c0}</style></head><body>"
+            f"<h2>✓ Xác thực Gmail thành công!</h2>"
+            f"<div class='badge'>📧 <strong>{gmail_addr}</strong></div>"
+            "<p>Tab sẽ tự đóng trong <span id='cnt' class='cnt'>3</span> giây.<br>"
+            "Quay lại trang trợ lý và nói <b>\"có\"</b> để gửi email.</p>"
+            "<button onclick='window.close()' style='margin-top:8px;padding:8px 20px;"
+            "background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
+            "Đóng ngay</button>"
+            "<script>"
+            "if(window.opener){try{window.opener.postMessage({type:'oauth_done'},'*');}catch(_){}}"
+            "let s=3;const t=setInterval(()=>{s--;document.getElementById('cnt').textContent=s;"
+            "if(s<=0){clearInterval(t);window.close();}},1000);"
+            "</script>"
+            "</body></html>"
+        )
+
+    @app.route("/api/oauth/status/<user_id>")
+    def api_oauth_status(user_id):
+        """Kiểm tra trạng thái OAuth của user — dùng bởi frontend polling."""
+        _db  = app.config["db"]
+        tok  = _db.get_oauth_token(user_id)
+        return jsonify({
+            "authenticated": tok is not None,
+            "gmail":         tok["gmail_address"] if tok else "",
+        })
+
+    @app.route("/api/oauth/revoke/<user_id>", methods=["POST"])
+    def api_oauth_revoke(user_id):
+        """Thu hồi token và xóa khỏi DB — user đăng xuất Gmail."""
+        _db = app.config["db"]
+        tok = _db.get_oauth_token(user_id)
+        if tok:
+            from core.oauth import revoke_token
+            try:
+                revoke_token(tok.get("access_token", ""))
+            except Exception:
+                pass
+            _db.delete_oauth_token(user_id)
+        return jsonify({"ok": True})
 
     # ----- Misc -----
     @app.route("/api/health")

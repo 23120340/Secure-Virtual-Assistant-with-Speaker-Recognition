@@ -65,6 +65,15 @@ SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 
 # ==========================================================================
+# Google OAuth 2.0 (Gmail API)
+# ==========================================================================
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+# Phải khớp chính xác với URI đã đăng ký trong Google Cloud Console
+GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI",
+                                  "http://localhost:5000/auth/google/callback")
+
+# ==========================================================================
 # Admin
 # ==========================================================================
 ADMIN_PASS = os.getenv("ADMIN_PASS", "")

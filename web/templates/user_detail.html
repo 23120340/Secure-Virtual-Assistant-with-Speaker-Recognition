@@ -82,6 +82,26 @@
     </div>
   </div>
 
+  <!-- Gmail OAuth -->
+  <div>
+    <h2 class="font-semibold mb-2">Xác thực Gmail</h2>
+    <p class="text-xs text-slate-400 mb-3">
+      Kết nối tài khoản Google để gửi email qua trợ lý bằng Gmail của bạn.
+    </p>
+    <div class="flex items-center gap-3 flex-wrap">
+      <span id="oauth-status-text" class="text-sm text-slate-400">Đang kiểm tra...</span>
+      <button id="oauth-auth-btn"
+              class="hidden px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+        🔗 Xác thực Gmail
+      </button>
+      <button id="oauth-revoke-btn"
+              class="hidden px-3 py-1.5 bg-rose-500 text-white rounded text-sm hover:bg-rose-600">
+        Hủy xác thực
+      </button>
+      <span id="oauth-msg" class="text-xs text-slate-400"></span>
+    </div>
+  </div>
+
   <div class="flex gap-3 items-center pt-2 border-t">
     <button id="save-btn"
             class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-sm">
@@ -195,6 +215,64 @@ document.getElementById("delete-btn").onclick = async () => {
     document.getElementById("msg").textContent = "Lỗi: " + (d.error || "Xóa thất bại");
     document.getElementById("msg").className = "text-sm text-rose-600";
   }
+};
+
+// ── Gmail OAuth ───────────────────────────────────────────
+let _oauthPollTimer = null;
+
+async function loadOAuthStatus() {
+  try {
+    const res  = await fetch(`/api/oauth/status/${userId}`);
+    const data = await res.json();
+    const $txt     = document.getElementById("oauth-status-text");
+    const $authBtn = document.getElementById("oauth-auth-btn");
+    const $revBtn  = document.getElementById("oauth-revoke-btn");
+    if (data.authenticated) {
+      $txt.innerHTML  = `✅ Đã xác thực: <strong>${esc(data.gmail)}</strong>`;
+      $txt.className  = "text-sm text-emerald-600";
+      $authBtn.classList.add("hidden");
+      $revBtn.classList.remove("hidden");
+    } else {
+      $txt.textContent = "Chưa xác thực Gmail";
+      $txt.className   = "text-sm text-slate-400";
+      $authBtn.classList.remove("hidden");
+      $revBtn.classList.add("hidden");
+    }
+  } catch (_) {}
+}
+loadOAuthStatus();
+
+document.getElementById("oauth-auth-btn").onclick = () => {
+  const $oauthMsg = document.getElementById("oauth-msg");
+  window.open(`/auth/google?user_id=${encodeURIComponent(userId)}`, "_blank");
+  $oauthMsg.textContent = "Đang chờ xác thực...";
+
+  _oauthPollTimer = setInterval(async () => {
+    const res  = await fetch(`/api/oauth/status/${userId}`);
+    const data = await res.json();
+    if (data.authenticated) {
+      clearInterval(_oauthPollTimer);
+      _oauthPollTimer = null;
+      $oauthMsg.textContent = "";
+      loadOAuthStatus();
+    }
+  }, 2000);
+
+  window.addEventListener("message", function handler(e) {
+    if (e.data && e.data.type === "oauth_done") {
+      clearInterval(_oauthPollTimer);
+      _oauthPollTimer = null;
+      window.removeEventListener("message", handler);
+      document.getElementById("oauth-msg").textContent = "";
+      loadOAuthStatus();
+    }
+  });
+};
+
+document.getElementById("oauth-revoke-btn").onclick = async () => {
+  if (!confirm("Hủy xác thực Gmail? Tính năng gửi email sẽ ngừng hoạt động.")) return;
+  const res = await fetch(`/api/oauth/revoke/${userId}`, {method: "POST"});
+  if (res.ok) loadOAuthStatus();
 };
 </script>
 {% endblock %}

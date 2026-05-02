@@ -5,9 +5,9 @@
 Trả về: response_text (str)
 """
 import random
-import smtplib
 from datetime import datetime
-from email.mime.text import MIMEText
+
+from .oauth import OAUTH_RESP_PREFIX, build_auth_url
 
 
 # ==========================================================================
@@ -35,8 +35,16 @@ def handle_tell_joke(entities, user, **kwargs) -> str:
 
 
 def handle_general_question(entities, user, **kwargs) -> str:
-    query = entities.get("query", "")
-    return f"Để mình tìm hiểu về '{query}' rồi trả lời bạn sau nhé."
+    from .nlu import get_chat
+    query = entities.get("query", "").strip()
+    if not query:
+        return "Bạn hỏi gì vậy? Mình chưa nghe rõ câu hỏi."
+    chat = get_chat()
+    if chat is None:
+        return (f"Câu hỏi hay đấy, nhưng mình chưa được kết nối AI để trả lời. "
+                "Cần cấu hình GEMINI_API_KEY.")
+    user_name = user["name"] if user else ""
+    return chat.answer(query, user_name)
 
 
 # ==========================================================================
@@ -52,33 +60,65 @@ def handle_read_notes(entities, user, **kwargs) -> str:
 
 
 def handle_send_email(entities, user, **kwargs) -> str:
-    """Gửi email thật qua SMTP nếu config đầy đủ, fallback về thông báo mock."""
+    """Gửi email qua Gmail API (OAuth 2.0).
+
+    Nếu user chưa xác thực → trả về OAUTH_RESP_PREFIX + auth_url để web/app.py
+    chuyển thành action_type="oauth_required" với nút đăng nhập Google.
+    """
     if user is None:
         return "Mình chưa nhận ra giọng bạn nên không thể gửi email."
 
-    sender_name = user["name"]
-    sender_email = user["preferences"].get("email", "")
-    recipient_name = entities.get("recipient", "")
-    subject = entities.get("subject", "Tin nhắn từ Trợ lý Ảo")
-    body = entities.get("body", entities.get("content", ""))
+    import time
+    from .oauth import refresh_access_token
+    from .gmail_api import send_email as _gmail_send
 
-    db = kwargs.get("db")
-    smtp_cfg = kwargs.get("smtp_config", {})
-    smtp_user = smtp_cfg.get("user", "")
-    smtp_pass = smtp_cfg.get("password", "")
-    smtp_host = smtp_cfg.get("host", "smtp.gmail.com")
-    smtp_port = smtp_cfg.get("port", 587)
+    db      = kwargs.get("db")
+    user_id = user["user_id"]
 
-    # Ưu tiên dùng email đã được flow xác nhận trước
+    # ── 1. Kiểm tra OAuth token ─────────────────────────────────────────────
+    token_data = db.get_oauth_token(user_id) if db else None
+
+    if not token_data:
+        try:
+            auth_url = build_auth_url(state=user_id)
+        except RuntimeError as e:
+            return f"Chưa cấu hình Gmail OAuth: {e}"
+        return (f"{OAUTH_RESP_PREFIX}{auth_url}\n"
+                f"{user['name']} ơi, bạn chưa xác thực Gmail. "
+                "Nhấn nút 'Đăng nhập Google' trên màn hình để tiếp tục.")
+
+    # ── 2. Refresh nếu access_token hết hạn ────────────────────────────────
+    if time.time() > token_data.get("expiry", 0):
+        try:
+            updated = refresh_access_token(token_data["refresh_token"])
+            token_data.update(updated)
+            if db:
+                db.save_oauth_token(user_id, token_data)
+        except Exception:
+            if db:
+                db.delete_oauth_token(user_id)
+            try:
+                auth_url = build_auth_url(state=user_id)
+            except RuntimeError:
+                return "Token Gmail hết hạn và không thể làm mới. Kiểm tra cấu hình OAuth."
+            return (f"{OAUTH_RESP_PREFIX}{auth_url}\n"
+                    "Token Gmail hết hạn. Vui lòng đăng nhập lại.")
+
+    access_token  = token_data["access_token"]
+    gmail_address = token_data.get("gmail_address", "")
+
+    # ── 3. Lấy thông tin người nhận ─────────────────────────────────────────
+    recipient_name  = entities.get("recipient", "")
     recipient_email = entities.get("recipient_email", "")
+    subject = entities.get("subject", "Tin nhắn từ Trợ lý Ảo")
+    body    = entities.get("body", entities.get("content", ""))
 
-    if not recipient_email:
-        # Fallback: tìm theo tên trong DB
-        if db and recipient_name:
-            for u in db.list_users():
-                if recipient_name.lower() in u["name"].lower():
-                    recipient_email = u["preferences"].get("email", "")
-                    break
+    if not recipient_email and db and recipient_name:
+        for u in db.list_users():
+            full = db.get_user(u["user_id"])
+            if full and recipient_name.lower() in full["name"].lower():
+                recipient_email = full["preferences"].get("email", "")
+                break
 
     if not recipient_email:
         if recipient_name:
@@ -86,44 +126,20 @@ def handle_send_email(entities, user, **kwargs) -> str:
                     "Hãy đảm bảo người đó đã đăng ký email trong hồ sơ.")
         return "Bạn muốn gửi email cho ai? Hãy nói tên người nhận."
 
-    # Nếu user chưa có email riêng, dùng tài khoản SMTP làm người gửi
-    if not sender_email:
-        if smtp_user:
-            sender_email = smtp_user
-        else:
-            return (f"{sender_name} ơi, bạn chưa có địa chỉ email trong hồ sơ. "
-                    "Hãy cập nhật email của bạn trong trang cài đặt người dùng.")
-
-    if not smtp_user or not smtp_pass:
-        # SMTP chưa cấu hình — trả về thông báo mô phỏng
-        return (f"Đã chuẩn bị email từ {sender_name} ({sender_email}) "
-                f"gửi tới {recipient_name} ({recipient_email}). "
-                "Máy chủ email chưa được cấu hình nên chưa gửi thật.")
-
+    # ── 4. Gửi qua Gmail API ────────────────────────────────────────────────
     try:
-        msg = MIMEText(body or f"Email từ {sender_name} gửi qua Trợ lý Ảo.", "plain", "utf-8")
-        msg["Subject"] = subject
-        msg["From"] = f"{sender_name} <{smtp_user}>"
-        msg["To"] = recipient_email
-        # Reply-To = email thật của user, giúp người nhận reply đúng địa chỉ
-        if sender_email and sender_email != smtp_user:
-            msg["Reply-To"] = f"{sender_name} <{sender_email}>"
-
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_user, [recipient_email], msg.as_string())
-
-        reply_note = (f" (trả lời sẽ đến {sender_email})"
-                      if sender_email and sender_email != smtp_user else "")
-        return (f"Đã gửi email thành công đến {recipient_name} ({recipient_email})!"
-                f"{reply_note}")
-    except smtplib.SMTPAuthenticationError:
-        return "Xác thực SMTP thất bại. Kiểm tra lại cấu hình email ứng dụng."
-    except smtplib.SMTPException as e:
-        return f"Gửi email thất bại: {e}"
+        _gmail_send(
+            access_token=access_token,
+            to=recipient_email,
+            subject=subject,
+            body=body or f"Email từ {user['name']} qua Trợ lý Ảo.",
+            from_name=user["name"],
+        )
+        from_note = f" (từ {gmail_address})" if gmail_address else ""
+        return (f"Đã gửi email thành công đến "
+                f"{recipient_name or recipient_email}!{from_note}")
     except Exception as e:
-        return f"Lỗi khi gửi email: {e}"
+        return f"Gửi email thất bại: {e}"
 
 
 def handle_check_balance(entities, user, **kwargs) -> str:

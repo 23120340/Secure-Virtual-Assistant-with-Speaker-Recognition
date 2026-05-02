@@ -2,11 +2,28 @@
 import re
 
 _CANCEL = {"thôi", "hủy", "hủy bỏ", "cancel", "dừng", "không gửi", "bỏ qua", "thoát"}
+_YES    = {"có", "đúng", "ok", "oke", "gửi", "gửi đi", "xác nhận", "yes", "đồng ý", "gửi ngay"}
 
 
 def _is_cancel(text: str) -> bool:
     t = text.lower().strip()
     return any(t == w or t.startswith(w + " ") for w in _CANCEL) and len(t) < 40
+
+
+def _is_affirmative(text: str) -> bool:
+    t = text.lower().strip()
+    return any(t == w or t.startswith(w + " ") for w in _YES) and len(t) < 40
+
+
+def _email_preview(state: dict) -> str:
+    body_preview = state["body"][:120] + ("..." if len(state["body"]) > 120 else "")
+    return (
+        f"Xác nhận gửi email:\n"
+        f"  Đến   : {state['recipient_name']} ({state['recipient_email']})\n"
+        f"  Chủ đề: {state['subject']}\n"
+        f"  Nội dung: {body_preview}\n"
+        'Nói "có" để gửi, "không" để hủy.'
+    )
 
 
 def _looks_like_email(text: str) -> bool:
@@ -109,6 +126,17 @@ def continue_flow(text: str, state: dict, contacts: list = None) -> tuple:
 
     if step == "body":
         state["body"] = text.strip()
-        return "", state, True
+        state["step"] = "confirm"
+        return _email_preview(state), state, False
+
+    if step == "confirm":
+        t = text.lower().strip()
+        # Từ chối / hủy
+        if _is_cancel(text) or any(w in t.split() for w in ("không", "no", "thôi")):
+            return "Đã hủy gửi email.", None, False
+        # Xác nhận gửi
+        if _is_affirmative(text):
+            return "", state, True
+        return 'Mình chưa hiểu. Nói "có" để gửi hoặc "không" để hủy.', state, False
 
     return "Có lỗi trong quá trình soạn email.", None, False

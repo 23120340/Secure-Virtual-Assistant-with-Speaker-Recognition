@@ -13,7 +13,7 @@
   <!-- Step 1: Thông tin user -->
   <section>
     <h2 class="font-semibold mb-3">1. Thông tin</h2>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <label class="block">
         <span class="text-sm text-slate-600">User ID (không dấu, không space) <span class="text-rose-500">*</span></span>
         <input id="user_id" type="text" class="w-full border rounded px-3 py-2 mt-1"
@@ -34,6 +34,18 @@
             👁
           </button>
         </div>
+      </label>
+      <label class="block">
+        <span class="text-sm text-slate-600">Nhập lại mật khẩu <span class="text-rose-500">*</span></span>
+        <div class="relative mt-1">
+          <input id="password2" type="password" class="w-full border rounded px-3 py-2 pr-9"
+                 placeholder="Xác nhận mật khẩu"/>
+          <button type="button" id="pw2-eye"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
+            👁
+          </button>
+        </div>
+        <span id="pw-match-msg" class="text-xs mt-1 block h-4"></span>
       </label>
     </div>
 
@@ -139,7 +151,20 @@ function checkReady() {
   const uid = document.getElementById("user_id").value.trim();
   const nm  = document.getElementById("name").value.trim();
   const pw  = document.getElementById("password").value.trim();
-  $submit.disabled = !(uid && nm && pw && samples.length >= 2);
+  const pw2 = document.getElementById("password2").value.trim();
+  const $msg = document.getElementById("pw-match-msg");
+  if (pw && pw2) {
+    if (pw !== pw2) {
+      $msg.textContent = "Mật khẩu không khớp";
+      $msg.className = "text-xs mt-1 block h-4 text-rose-500";
+    } else {
+      $msg.textContent = "✓ Khớp";
+      $msg.className = "text-xs mt-1 block h-4 text-emerald-600";
+    }
+  } else {
+    $msg.textContent = "";
+  }
+  $submit.disabled = !(uid && nm && pw && pw === pw2 && samples.length >= 2);
 }
 
 function renderSamples() {
@@ -164,7 +189,7 @@ function renderSamples() {
   checkReady();
 }
 
-["user_id","name","password"].forEach(id =>
+["user_id","name","password","password2"].forEach(id =>
   document.getElementById(id).addEventListener("input", checkReady));
 
 async function startRecording() {
@@ -235,14 +260,24 @@ document.getElementById("pw-eye").onclick = function() {
   if (inp.type === "password") { inp.type = "text"; this.textContent = "🙈"; }
   else { inp.type = "password"; this.textContent = "👁"; }
 };
+document.getElementById("pw2-eye").onclick = function() {
+  const inp = document.getElementById("password2");
+  if (inp.type === "password") { inp.type = "text"; this.textContent = "🙈"; }
+  else { inp.type = "password"; this.textContent = "👁"; }
+};
 
 $submit.onclick = async () => {
   const user_id  = document.getElementById("user_id").value.trim();
   const name     = document.getElementById("name").value.trim();
   const password = document.getElementById("password").value.trim();
 
+  const password2 = document.getElementById("password2").value.trim();
   if (!user_id || !name || !password) {
     $result.innerHTML = '<span class="text-rose-600">Cần nhập đầy đủ user_id, tên và mật khẩu.</span>';
+    return;
+  }
+  if (password !== password2) {
+    $result.innerHTML = '<span class="text-rose-600">Mật khẩu nhập lại không khớp.</span>';
     return;
   }
 

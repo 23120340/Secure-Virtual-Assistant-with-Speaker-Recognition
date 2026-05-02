@@ -49,6 +49,16 @@ class UserDB:
                 c.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''")
             except sqlite3.OperationalError:
                 pass
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS oauth_tokens (
+                    user_id       TEXT PRIMARY KEY,
+                    access_token  TEXT NOT NULL,
+                    refresh_token TEXT NOT NULL,
+                    gmail_address TEXT NOT NULL DEFAULT '',
+                    expiry        REAL NOT NULL DEFAULT 0,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id)
+                )
+            """)
 
     # ----------------------------------------------------------------
     # User CRUD
@@ -137,6 +147,54 @@ class UserDB:
         if row is None:
             return False
         return bool(row[0])
+
+    # ----------------------------------------------------------------
+    # OAuth token storage
+    # ----------------------------------------------------------------
+    def save_oauth_token(self, user_id: str, token_data: dict):
+        """Lưu hoặc cập nhật token OAuth cho user."""
+        with self._conn() as c:
+            c.execute(
+                """INSERT INTO oauth_tokens(user_id, access_token, refresh_token,
+                                            gmail_address, expiry)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       access_token  = excluded.access_token,
+                       refresh_token = CASE WHEN excluded.refresh_token != ''
+                                       THEN excluded.refresh_token
+                                       ELSE oauth_tokens.refresh_token END,
+                       gmail_address = CASE WHEN excluded.gmail_address != ''
+                                       THEN excluded.gmail_address
+                                       ELSE oauth_tokens.gmail_address END,
+                       expiry        = excluded.expiry""",
+                (user_id,
+                 token_data.get("access_token", ""),
+                 token_data.get("refresh_token", ""),
+                 token_data.get("gmail_address", ""),
+                 token_data.get("expiry", 0.0)),
+            )
+
+    def get_oauth_token(self, user_id: str) -> Optional[dict]:
+        """Trả về dict token hoặc None nếu chưa có."""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT access_token, refresh_token, gmail_address, expiry "
+                "FROM oauth_tokens WHERE user_id=?",
+                (user_id,)
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "access_token":  row[0],
+            "refresh_token": row[1],
+            "gmail_address": row[2],
+            "expiry":        row[3],
+        }
+
+    def delete_oauth_token(self, user_id: str):
+        """Xóa token (khi revoke hoặc token hết hạn không thể refresh)."""
+        with self._conn() as c:
+            c.execute("DELETE FROM oauth_tokens WHERE user_id=?", (user_id,))
 
     # ----------------------------------------------------------------
     # Load tất cả embeddings (cho identification)

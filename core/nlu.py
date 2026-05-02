@@ -85,6 +85,54 @@ class GeminiNLU:
 
 
 # ==========================================================================
+# Gemini-based Answer Generation — dùng cho general_question handler
+# ==========================================================================
+class GeminiChat:
+    """Trả lời câu hỏi tổng quát bằng Gemini, ngắn gọn, tiếng Việt tự nhiên."""
+
+    _SYSTEM = (
+        "Bạn là trợ lý ảo thông minh, giao tiếp bằng tiếng Việt tự nhiên. "
+        "Trả lời ngắn gọn, rõ ràng (tối đa 3–4 câu). "
+        "Không dùng markdown, không gạch đầu dòng, không giải thích dài dòng. "
+        "Nếu không biết câu trả lời, nói thật một cách lịch sự."
+    )
+
+    def __init__(self, api_key: str = config.GEMINI_API_KEY,
+                 model_name: str = config.GEMINI_MODEL):
+        from google import genai
+        from google.genai import types
+        self._client = genai.Client(api_key=api_key)
+        self._model  = model_name
+        self._types  = types
+
+    def answer(self, question: str, user_name: str = "") -> str:
+        prompt = f"{user_name} hỏi: {question}" if user_name else question
+        try:
+            resp = self._client.models.generate_content(
+                model=self._model,
+                contents=prompt,
+                config=self._types.GenerateContentConfig(
+                    system_instruction=self._SYSTEM,
+                    temperature=0.7,
+                ),
+            )
+            return resp.text.strip()
+        except Exception:
+            return "Xin lỗi, mình chưa tra được thông tin lúc này. Thử lại sau nhé."
+
+
+_chat_instance: "GeminiChat | None" = None
+
+
+def get_chat() -> "GeminiChat | None":
+    """Singleton GeminiChat — trả về None nếu chưa có API key."""
+    global _chat_instance
+    if _chat_instance is None and config.GEMINI_API_KEY:
+        _chat_instance = GeminiChat()
+    return _chat_instance
+
+
+# ==========================================================================
 # Rule-based fallback (khi không có API key, hoặc dev offline)
 # ==========================================================================
 class RuleBasedNLU:

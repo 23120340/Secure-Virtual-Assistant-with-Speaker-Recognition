@@ -219,6 +219,41 @@
 <div id="toast"
      class="hidden fixed bottom-16 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white z-50"></div>
 
+<!-- ─── Google OAuth modal ─────────────────────────────────────── -->
+<div id="oauth-modal"
+     class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+
+    <div class="text-center mb-5">
+      <div class="text-4xl mb-2">📧</div>
+      <h3 class="font-bold text-lg text-slate-800">Xác thực Gmail</h3>
+      <p class="text-sm text-slate-500 mt-1">
+        Đăng nhập Google để gửi email trực tiếp từ tài khoản của bạn.
+        Email đã soạn sẽ được giữ nguyên.
+      </p>
+    </div>
+
+    <!-- Google sign-in button — href được set bởi JS khi modal mở -->
+    <a id="oauth-login-btn" href="#" target="_blank" rel="noopener"
+       onclick="startOAuthPolling()"
+       class="flex items-center justify-center gap-2.5 w-full py-3 px-4 rounded-xl
+              bg-blue-600 hover:bg-blue-700 active:bg-blue-800
+              text-white text-sm font-semibold transition-all mb-3 select-none">
+      <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 48 48">
+        <path fill="#fff" d="M44.5 20H24v8.5h11.8C34.7 33.9 29.8 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/>
+      </svg>
+      Đăng nhập với Google
+    </a>
+
+    <p id="oauth-poll-status" class="text-xs text-center text-slate-400 min-h-[1.25rem]"></p>
+
+    <button id="oauth-cancel-btn"
+            class="mt-3 w-full py-1.5 text-xs text-slate-400 hover:text-slate-600 transition">
+      Hủy — gửi email sau
+    </button>
+  </div>
+</div>
+
 <script>
 // ════════════════════════════════════════════════════════════
 // PTT recording state
@@ -416,7 +451,9 @@ document.getElementById("panel-close").onclick = hidePanel;
 // SHARED ACTION HANDLER  (voice + text mode)
 // ════════════════════════════════════════════════════════════
 function handleTurnAction(data) {
-  if (data.action_type === "play_music") {
+  if (data.action_type === "oauth_required") {
+    showOAuthModal(data.action_data.auth_url, data.identified_user_id);
+  } else if (data.action_type === "play_music") {
     const ad = data.action_data;
     if (ad.mode === "user_tracks") {
       const tracks = ad.tracks.map(name => ({
@@ -437,6 +474,60 @@ function handleTurnAction(data) {
     onFilesVerified(data.action_data);
   }
 }
+
+// ════════════════════════════════════════════════════════════
+// Google OAuth modal
+// ════════════════════════════════════════════════════════════
+let _oauthUserId = null;
+let _oauthTimer  = null;
+
+function showOAuthModal(authUrl, userId) {
+  _oauthUserId = userId;
+  // Dùng route /auth/google của server — server tính đúng redirect_uri từ config
+  const safeId = encodeURIComponent(userId || "");
+  document.getElementById("oauth-login-btn").href = `/auth/google?user_id=${safeId}`;
+  document.getElementById("oauth-poll-status").textContent = "";
+  document.getElementById("oauth-modal").classList.remove("hidden");
+}
+
+function startOAuthPolling() {
+  if (_oauthTimer) clearInterval(_oauthTimer);
+  const $status = document.getElementById("oauth-poll-status");
+  $status.textContent = "⏳ Đang chờ xác thực…";
+  _oauthTimer = setInterval(_checkOAuthDone, 2000);
+}
+
+async function _checkOAuthDone() {
+  if (!_oauthUserId) return;
+  try {
+    const r = await fetch(`/api/oauth/status/${_oauthUserId}`);
+    const d = await r.json();
+    if (d.authenticated) _onOAuthSuccess(d.gmail);
+  } catch (_) {}
+}
+
+function _onOAuthSuccess(gmail) {
+  if (_oauthTimer) { clearInterval(_oauthTimer); _oauthTimer = null; }
+  const $status = document.getElementById("oauth-poll-status");
+  $status.textContent = `✅ Đã xác thực: ${gmail}`;
+  setTimeout(() => {
+    document.getElementById("oauth-modal").classList.add("hidden");
+    addMsg("bot", `✅ Gmail đã xác thực (${gmail}). Nói "có" để gửi email.`);
+    $tts.src = `/api/tts?text=${encodeURIComponent("Xác thực Gmail thành công. Nói có để gửi email.")}`;
+    $tts.play().catch(() => {});
+  }, 1200);
+}
+
+// Tab callback gửi postMessage về khi xác thực xong → không cần chờ polling
+window.addEventListener("message", e => {
+  if (e.data?.type === "oauth_done" && _oauthUserId) _checkOAuthDone();
+});
+
+document.getElementById("oauth-cancel-btn").addEventListener("click", () => {
+  if (_oauthTimer) { clearInterval(_oauthTimer); _oauthTimer = null; }
+  document.getElementById("oauth-modal").classList.add("hidden");
+  addMsg("bot", "Đã hủy. Email đã soạn vẫn còn — nói \"có\" để thử lại sau khi đăng nhập.");
+});
 
 async function buildYtQueue(artist, genre) {
   const $sb = document.getElementById("music-search-btn");
