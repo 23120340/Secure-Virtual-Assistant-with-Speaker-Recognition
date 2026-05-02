@@ -68,6 +68,7 @@ def create_app():
                 static_folder="static")
     app.secret_key = "dev-secret-change-in-production"
     app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB cho upload audio
+    app.jinja_env.auto_reload = True  # reload template khi file thay đổi (dev)
 
     # Eager-load các model — startup chậm 1 chút nhưng request sẽ nhanh
     print("=" * 60)
@@ -1160,6 +1161,7 @@ def register_routes(app):
             "background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
             "Đóng ngay</button>"
             "<script>"
+            "try{new BroadcastChannel('oauth').postMessage({type:'oauth_done'});}catch(_){}"
             "if(window.opener){try{window.opener.postMessage({type:'oauth_done'},'*');}catch(_){}}"
             "let s=3;const t=setInterval(()=>{s--;document.getElementById('cnt').textContent=s;"
             "if(s<=0){clearInterval(t);window.close();}},1000);"

@@ -518,7 +518,12 @@ function _onOAuthSuccess(gmail) {
   }, 1200);
 }
 
-// Tab callback gửi postMessage về khi xác thực xong → không cần chờ polling
+// BroadcastChannel — hoạt động ngay cả khi window.opener bị null do Google COOP
+try {
+  const _bc = new BroadcastChannel("oauth");
+  _bc.onmessage = (e) => { if (e.data?.type === "oauth_done" && _oauthUserId) _checkOAuthDone(); };
+} catch (_) {}
+// postMessage fallback
 window.addEventListener("message", e => {
   if (e.data?.type === "oauth_done" && _oauthUserId) _checkOAuthDone();
 });

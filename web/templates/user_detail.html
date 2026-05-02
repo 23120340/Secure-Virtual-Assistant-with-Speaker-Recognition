@@ -115,8 +115,13 @@
   </div>
 </div>
 
+<script type="application/json" id="__page_data__">
+{"userId": {{ user.user_id | tojson }}, "contacts": {{ user.preferences.get('contacts', []) | tojson }}}
+</script>
+
 <script>
-const userId = {{ user.user_id | tojson }};
+const __d     = JSON.parse(document.getElementById("__page_data__").textContent);
+const userId  = __d.userId;
 
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -130,7 +135,7 @@ document.getElementById("pw-eye").onclick = function() {
 };
 
 // ── Danh bạ ──────────────────────────────────────────────
-let _contacts = {{ user.preferences.get('contacts', []) | tojson }};
+let _contacts = __d.contacts;
 
 function renderContacts() {
   const list = document.getElementById("contacts-list");
@@ -247,26 +252,35 @@ document.getElementById("oauth-auth-btn").onclick = () => {
   window.open(`/auth/google?user_id=${encodeURIComponent(userId)}`, "_blank");
   $oauthMsg.textContent = "Đang chờ xác thực...";
 
+  function _onDone() {
+    clearInterval(_oauthPollTimer);
+    _oauthPollTimer = null;
+    $oauthMsg.textContent = "";
+    loadOAuthStatus();
+  }
+
+  // BroadcastChannel — hoạt động ngay cả khi window.opener bị null (COOP)
+  let _bc = null;
+  try {
+    _bc = new BroadcastChannel("oauth");
+    _bc.onmessage = (e) => { if (e.data?.type === "oauth_done") { _bc.close(); _onDone(); } };
+  } catch (_) {}
+
+  // postMessage fallback (nếu browser không hỗ trợ BroadcastChannel)
+  window.addEventListener("message", function handler(e) {
+    if (e.data && e.data.type === "oauth_done") {
+      window.removeEventListener("message", handler);
+      if (_bc) _bc.close();
+      _onDone();
+    }
+  });
+
+  // Polling fallback — đảm bảo luôn hoạt động dù cả hai cơ chế trên thất bại
   _oauthPollTimer = setInterval(async () => {
     const res  = await fetch(`/api/oauth/status/${userId}`);
     const data = await res.json();
-    if (data.authenticated) {
-      clearInterval(_oauthPollTimer);
-      _oauthPollTimer = null;
-      $oauthMsg.textContent = "";
-      loadOAuthStatus();
-    }
+    if (data.authenticated) { _onDone(); }
   }, 2000);
-
-  window.addEventListener("message", function handler(e) {
-    if (e.data && e.data.type === "oauth_done") {
-      clearInterval(_oauthPollTimer);
-      _oauthPollTimer = null;
-      window.removeEventListener("message", handler);
-      document.getElementById("oauth-msg").textContent = "";
-      loadOAuthStatus();
-    }
-  });
 };
 
 document.getElementById("oauth-revoke-btn").onclick = async () => {
