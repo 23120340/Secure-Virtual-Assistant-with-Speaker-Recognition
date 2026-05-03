@@ -47,7 +47,7 @@ class Router:
             audio: raw audio đã trim VAD (dùng cho SID + SV)
             transcript: text từ ASR
             nlu_result: {intent, entities} từ NLU
-            extra_context: kwargs forwarded to handlers (db, smtp_config, ...)
+            extra_context: kwargs forwarded to handlers (db, ...)
         """
         intent = nlu_result["intent"]
         entities = nlu_result["entities"]

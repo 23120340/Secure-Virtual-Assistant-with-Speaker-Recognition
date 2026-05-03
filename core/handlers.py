@@ -1,7 +1,7 @@
 """Handlers cho từng intent. Mỗi handler nhận:
     entities: dict
     user: dict | None  (None = guest)
-    **kwargs: extra context (db, smtp_config, ...)
+    **kwargs: extra context (db, ...)
 Trả về: response_text (str)
 """
 import random
@@ -139,7 +139,23 @@ def handle_send_email(entities, user, **kwargs) -> str:
         return (f"Đã gửi email thành công đến "
                 f"{recipient_name or recipient_email}!{from_note}")
     except Exception as e:
-        return f"Gửi email thất bại: {e}"
+        detail = str(e)
+        try:
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                err_json = resp.json().get("error", {})
+                msg      = err_json.get("message", "")
+                reasons  = [x.get("reason", "") for x in err_json.get("errors", [])]
+                reason   = next((r for r in reasons if r), "")
+                if msg:
+                    detail = msg
+                if reason == "insufficientPermissions":
+                    detail += " — token thiếu scope gmail.send. Vào trang quản lý để Hủy xác thực rồi Xác thực Gmail lại."
+                elif reason == "forbidden":
+                    detail += " — tài khoản không được phép dùng Gmail API (kiểm tra Test Users trên Google Cloud)."
+        except Exception:
+            pass
+        return f"Gửi email thất bại: {detail}"
 
 
 def handle_check_balance(entities, user, **kwargs) -> str:

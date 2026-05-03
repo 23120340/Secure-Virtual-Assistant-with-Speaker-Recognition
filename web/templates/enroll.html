@@ -116,11 +116,33 @@
     </button>
     <div id="result" class="mt-3 text-sm"></div>
   </section>
+
+  <!-- Step 4: Gmail OAuth — hiện sau khi đăng ký thành công -->
+  <section id="oauth-section" class="hidden">
+    <h2 class="font-semibold mb-2">4. Xác thực Gmail <span class="text-slate-400 font-normal text-sm">(tuỳ chọn)</span></h2>
+    <p class="text-xs text-slate-400 mb-3">
+      Kết nối tài khoản Google để gửi email qua trợ lý. Bạn có thể thực hiện sau trong phần sửa thông tin.
+    </p>
+    <div class="flex items-center gap-3 flex-wrap">
+      <span id="enroll-oauth-status" class="text-sm text-slate-400">Chưa xác thực</span>
+      <a id="enroll-oauth-btn" href="#" target="_blank"
+         onclick="startEnrollOAuth()"
+         class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 cursor-pointer">
+        🔗 Xác thực Gmail
+      </a>
+      <span id="enroll-oauth-msg" class="text-xs text-slate-400"></span>
+    </div>
+  </section>
 </div>
 
+<script type="application/json" id="__enroll_cfg__">
+{"numSamples": {{ num_samples }}, "durationSec": {{ duration }}}
+</script>
+
 <script>
-const NUM_SAMPLES = {{ num_samples }};
-const DURATION_MS = {{ duration }} * 1000;
+const __cfg__    = JSON.parse(document.getElementById("__enroll_cfg__").textContent);
+const NUM_SAMPLES = __cfg__.numSamples;
+const DURATION_MS = __cfg__.durationSec * 1000;
 const PROMPTS = [
   "Trợ lý ơi, hôm nay thời tiết thế nào?",
   "Phát một bản nhạc tôi yêu thích đi.",
@@ -306,6 +328,11 @@ $submit.onclick = async () => {
         <a href="/users/${data.user_id}" class="text-emerald-700 underline">Xem chi tiết</a>
       </div>
     `;
+    // Hiện section xác thực Gmail với user_id vừa tạo
+    _enrolledUserId = data.user_id;
+    document.getElementById("enroll-oauth-btn").href =
+      `/auth/google?user_id=${encodeURIComponent(data.user_id)}`;
+    document.getElementById("oauth-section").classList.remove("hidden");
   } catch (e) {
     $result.innerHTML = `<span class="text-rose-600">Lỗi mạng: ${e.message}</span>`;
     $submit.disabled = false;
@@ -313,5 +340,54 @@ $submit.onclick = async () => {
 };
 
 updatePrompt();
+
+// ── Gmail OAuth (sau đăng ký) ─────────────────────────────
+let _enrolledUserId = null;
+let _enrollOAuthTimer = null;
+
+function startEnrollOAuth() {
+  if (!_enrolledUserId) return;
+  const $msg = document.getElementById("enroll-oauth-msg");
+  $msg.textContent = "Đang chờ xác thực...";
+
+  function _onDone() {
+    clearInterval(_enrollOAuthTimer);
+    _enrollOAuthTimer = null;
+    $msg.textContent = "";
+    loadEnrollOAuthStatus();
+  }
+
+  try {
+    const _bc = new BroadcastChannel("oauth");
+    _bc.onmessage = (e) => { if (e.data?.type === "oauth_done") { _bc.close(); _onDone(); } };
+  } catch (_) {}
+
+  window.addEventListener("message", function h(e) {
+    if (e.data?.type === "oauth_done") { window.removeEventListener("message", h); _onDone(); }
+  });
+
+  _enrollOAuthTimer = setInterval(async () => {
+    const r = await fetch(`/api/oauth/status/${_enrolledUserId}`);
+    const d = await r.json();
+    if (d.authenticated) _onDone();
+  }, 2000);
+}
+
+async function loadEnrollOAuthStatus() {
+  if (!_enrolledUserId) return;
+  const r = await fetch(`/api/oauth/status/${_enrolledUserId}`);
+  const d = await r.json();
+  const $st  = document.getElementById("enroll-oauth-status");
+  const $btn = document.getElementById("enroll-oauth-btn");
+  if (d.authenticated) {
+    $st.innerHTML = `✅ Đã xác thực: <strong>${d.gmail}</strong>`;
+    $st.className = "text-sm text-emerald-600";
+    $btn.classList.add("hidden");
+  } else {
+    $st.textContent = "Chưa xác thực Gmail";
+    $st.className = "text-sm text-slate-400";
+    $btn.classList.remove("hidden");
+  }
+}
 </script>
 {% endblock %}

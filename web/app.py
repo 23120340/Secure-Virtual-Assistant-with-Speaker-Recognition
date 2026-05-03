@@ -301,13 +301,6 @@ def register_routes(app):
 
         from urllib.parse import quote as _quote
 
-        smtp_cfg = {
-            "host":     config.SMTP_HOST,
-            "port":     config.SMTP_PORT,
-            "user":     config.SMTP_USER,
-            "password": config.SMTP_PASS,
-        }
-
         # ── Email flow: tiếp tục nếu đang trong luồng soạn email ──────────
         if "email_flow" in session:
             flow_state = session["email_flow"]
@@ -327,7 +320,7 @@ def register_routes(app):
                     "subject":         new_state["subject"],
                     "body":            new_state["body"],
                 }
-                resp = _send_email(ents, _user, db=db, smtp_config=smtp_cfg)
+                resp = _send_email(ents, _user, db=db)
                 if resp.startswith(_OA):
                     _auth_url, _, resp = resp[len(_OA):].partition('\n')
                     resp = resp.strip()
@@ -368,7 +361,7 @@ def register_routes(app):
 
         nlu_result = nlu.parse(transcript)
         result = router.handle_turn(audio, transcript, nlu_result,
-                                    extra_context={"db": db, "smtp_config": smtp_cfg})
+                                    extra_context={"db": db})
 
         # Nếu send_email vừa pass SV → bắt đầu flow thay vì gửi ngay
         if result.intent == "send_email" and not result.blocked:
@@ -477,13 +470,6 @@ def register_routes(app):
         db  = app.config["db"]
         nlu = app.config["nlu"]
 
-        smtp_cfg = {
-            "host":     config.SMTP_HOST,
-            "port":     config.SMTP_PORT,
-            "user":     config.SMTP_USER,
-            "password": config.SMTP_PASS,
-        }
-
         # ── Email flow: tiếp tục nếu đang trong luồng soạn email ──────────
         if "email_flow" in session:
             flow_state = session["email_flow"]
@@ -502,7 +488,7 @@ def register_routes(app):
                     "subject":         new_state["subject"],
                     "body":            new_state["body"],
                 }
-                resp = _send_email(ents, _user, db=db, smtp_config=smtp_cfg)
+                resp = _send_email(ents, _user, db=db)
                 if resp.startswith(_OA):
                     _auth_url, _, resp = resp[len(_OA):].partition('\n')
                     resp = resp.strip()
@@ -596,7 +582,7 @@ def register_routes(app):
 
         if not blocked:
             handler  = _h.HANDLERS.get(intent, _h.handle_unknown)
-            response = handler(entities, user, db=db, smtp_config=smtp_cfg)
+            response = handler(entities, user, db=db)
 
         payload = {
             "transcript":           text,
@@ -666,10 +652,19 @@ def register_routes(app):
         text = request.args.get("text", "").strip()
         if not text:
             return jsonify({"error": "Thiếu param 'text'"}), 400
+        # gTTS không xử lý tốt newline → thay bằng dấu cách
+        text = " ".join(text.split())
+        # Giới hạn độ dài để tránh timeout (gTTS vẫn xử lý ổn với ~500 ký tự)
+        if len(text) > 500:
+            text = text[:497] + "..."
         try:
             mp3 = app.config["tts"].synthesize_to_mp3_bytes(text)
-        except Exception as e:
-            return jsonify({"error": f"TTS fail: {e}"}), 500
+        except Exception:
+            # Trả về silent MP3 thay vì 500 để frontend không bị lỗi
+            return send_file(
+                io.BytesIO(b"\xff\xe3\x18\xc4" + b"\x00" * 128),
+                mimetype="audio/mpeg", as_attachment=False
+            )
         return send_file(io.BytesIO(mp3), mimetype="audio/mpeg",
                          as_attachment=False)
 
@@ -1178,6 +1173,19 @@ def register_routes(app):
             "authenticated": tok is not None,
             "gmail":         tok["gmail_address"] if tok else "",
         })
+
+    @app.route("/api/oauth/debug/<user_id>")
+    def api_oauth_debug(user_id):
+        """Kiểm tra token có scope gmail.send không — chỉ dùng khi debug."""
+        _db = app.config["db"]
+        tok = _db.get_oauth_token(user_id)
+        if not tok:
+            return jsonify({"error": "Chưa có token"}), 404
+        import requests as _req
+        r = _req.get(
+            "https://www.googleapis.com/oauth2/v1/tokeninfo",
+            params={"access_token": tok["access_token"]}, timeout=5)
+        return jsonify({"tokeninfo": r.json(), "status": r.status_code})
 
     @app.route("/api/oauth/revoke/<user_id>", methods=["POST"])
     def api_oauth_revoke(user_id):

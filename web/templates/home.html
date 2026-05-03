@@ -255,6 +255,29 @@
 <audio id="audio-el"   preload="none"></audio>
 <audio id="tts-player" class="hidden"></audio>
 
+<!-- Gmail OAuth modal -->
+<div id="oauth-modal"
+     class="hidden fixed inset-0 z-50 flex items-center justify-center"
+     style="background:rgba(0,0,0,.55);backdrop-filter:blur(4px)">
+  <div class="enroll-card" style="max-width:380px;width:90%;padding:1.75rem 2rem;border-radius:1.25rem">
+    <h3 style="font-size:1.05rem;font-weight:700;margin-bottom:.35rem">🔐 Xác thực Gmail</h3>
+    <p style="font-size:.82rem;color:var(--txt-2);margin-bottom:1.1rem;line-height:1.5">
+      Để gửi email, bạn cần đăng nhập với tài khoản Google. Tab mới sẽ mở — sau khi xác thực hãy quay lại đây và nói <b>"có"</b>.
+    </p>
+    <a id="oauth-login-btn" href="#" target="_blank" rel="noopener"
+       onclick="startOAuthPolling()"
+       style="display:flex;align-items:center;justify-content:center;gap:.6rem;width:100%;padding:.7rem 1rem;border-radius:.75rem;background:#1a73e8;color:#fff;font-size:.88rem;font-weight:600;text-decoration:none;margin-bottom:.75rem">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+      Đăng nhập Google
+    </a>
+    <p id="oauth-poll-status" style="font-size:.78rem;color:var(--txt-2);text-align:center;min-height:1.2em"></p>
+    <button id="oauth-cancel-btn"
+            style="width:100%;margin-top:.6rem;padding:.5rem;border-radius:.65rem;border:1px solid rgba(255,255,255,.12);background:transparent;font-size:.82rem;cursor:pointer;color:var(--txt-2)">
+      Hủy
+    </button>
+  </div>
+</div>
+
 {# ─────────────────────────────────────────────────────────
    SECTION 2 — USERS
    ───────────────────────────────────────────────────────── #}
@@ -325,6 +348,18 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
             </div>
+          </label>
+          <label class="block">
+            <span style="font-size:.8rem;color:var(--txt-2)">Nhập lại mật khẩu <span style="color:#f43f5e">*</span></span>
+            <div style="position:relative;margin-top:.35rem">
+              <input id="enroll-confirm-pw" type="password" class="glass-input" style="padding-right:2.5rem"
+                     placeholder="Nhập lại mật khẩu"/>
+              <button type="button" id="enroll-confirm-pw-eye"
+                      style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;display:flex;align-items:center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <p id="enroll-pw-match-msg" style="font-size:.75rem;margin-top:.25rem;display:none"></p>
           </label>
         </div>
 
@@ -537,6 +572,30 @@
             <button id="modal-change-pw-btn" class="btn-primary" style="white-space:nowrap">Đổi</button>
           </div>
           <div id="modal-pw-msg" style="margin-top:.35rem;font-size:.82rem;display:none"></div>
+        </div>
+
+        <!-- Gmail OAuth -->
+        <div class="modal-section">
+          <p class="modal-section-label">Xác thực Gmail</p>
+          <p style="font-size:.75rem;color:var(--txt-2);margin-bottom:.5rem">
+            Cần xác thực để trợ lý có thể gửi email thay bạn.
+          </p>
+          <div id="modal-oauth-status-text" style="font-size:.82rem;margin-bottom:.5rem;color:var(--txt-2)">
+            Đang kiểm tra...
+          </div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <a id="modal-oauth-auth-btn" href="#" target="_blank" rel="noopener"
+               onclick="startModalOAuth()"
+               style="display:inline-flex;align-items:center;gap:.4rem;padding:.45rem 1rem;font-size:.82rem;font-weight:600;background:var(--c-violet);color:#fff;border-radius:.75rem;text-decoration:none;cursor:pointer">
+              🔐 Xác thực Gmail
+            </a>
+            <button id="modal-oauth-revoke-btn" class="hidden"
+                    onclick="revokeModalOAuth()"
+                    style="padding:.45rem 1rem;font-size:.82rem;font-weight:600;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.25);border-radius:.75rem;cursor:pointer">
+              Hủy xác thực
+            </button>
+          </div>
+          <div id="modal-oauth-msg" style="font-size:.78rem;margin-top:.35rem;color:var(--txt-2);display:none"></div>
         </div>
 
         <!-- Danger zone -->
@@ -1036,7 +1095,9 @@ document.getElementById("panel-close").onclick = hidePanel;
 // SHARED ACTION HANDLER  (voice + text mode)
 // ════════════════════════════════════════════════════════════
 function handleTurnAction(data) {
-  if (data.action_type === "play_music") {
+  if (data.action_type === "oauth_required") {
+    showOAuthModal(data.identified_user_id);
+  } else if (data.action_type === "play_music") {
     const ad = data.action_data;
     _modalMode = false;
     resetMusicPanel();
@@ -1070,6 +1131,141 @@ function handleTurnAction(data) {
     onFilesVerified(data.action_data);
   }
 }
+
+// ════════════════════════════════════════════════════════════
+// Gmail OAuth — user modal (edit user)
+// ════════════════════════════════════════════════════════════
+let _modalOAuthTimer = null;
+
+function loadModalOAuth(uid) {
+  const $status  = document.getElementById("modal-oauth-status-text");
+  const $authBtn = document.getElementById("modal-oauth-auth-btn");
+  const $revBtn  = document.getElementById("modal-oauth-revoke-btn");
+  const $msg     = document.getElementById("modal-oauth-msg");
+  $status.textContent = "Đang kiểm tra...";
+  $authBtn.href = `/auth/google?user_id=${encodeURIComponent(uid)}`;
+  $msg.style.display = "none";
+  fetch(`/api/oauth/status/${encodeURIComponent(uid)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.authenticated) {
+        $status.textContent = `✅ Đã xác thực: ${d.gmail}`;
+        $authBtn.classList.add("hidden");
+        $revBtn.classList.remove("hidden");
+      } else {
+        $status.textContent = "⚠ Chưa xác thực Gmail";
+        $authBtn.classList.remove("hidden");
+        $revBtn.classList.add("hidden");
+      }
+    })
+    .catch(() => { $status.textContent = "Không thể kiểm tra trạng thái"; });
+}
+
+function startModalOAuth() {
+  if (_modalOAuthTimer) clearInterval(_modalOAuthTimer);
+  const $msg = document.getElementById("modal-oauth-msg");
+  $msg.textContent = "⏳ Đang chờ xác thực...";
+  $msg.style.display = "block";
+  _modalOAuthTimer = setInterval(async () => {
+    if (!_modalUid) return;
+    try {
+      const r = await fetch(`/api/oauth/status/${encodeURIComponent(_modalUid)}`);
+      const d = await r.json();
+      if (d.authenticated) _onModalOAuthSuccess(d.gmail);
+    } catch (_) {}
+  }, 2000);
+}
+
+function _onModalOAuthSuccess(gmail) {
+  if (_modalOAuthTimer) { clearInterval(_modalOAuthTimer); _modalOAuthTimer = null; }
+  const $status  = document.getElementById("modal-oauth-status-text");
+  const $authBtn = document.getElementById("modal-oauth-auth-btn");
+  const $revBtn  = document.getElementById("modal-oauth-revoke-btn");
+  const $msg     = document.getElementById("modal-oauth-msg");
+  $status.textContent = `✅ Đã xác thực: ${gmail}`;
+  $authBtn.classList.add("hidden");
+  $revBtn.classList.remove("hidden");
+  $msg.style.display = "none";
+}
+
+async function revokeModalOAuth() {
+  if (!_modalUid) return;
+  const $status  = document.getElementById("modal-oauth-status-text");
+  const $authBtn = document.getElementById("modal-oauth-auth-btn");
+  const $revBtn  = document.getElementById("modal-oauth-revoke-btn");
+  $status.textContent = "Đang hủy...";
+  try {
+    await fetch(`/api/oauth/revoke/${encodeURIComponent(_modalUid)}`, {method: "POST"});
+  } catch (_) {}
+  $status.textContent = "⚠ Chưa xác thực Gmail";
+  $authBtn.href = `/auth/google?user_id=${encodeURIComponent(_modalUid)}`;
+  $authBtn.classList.remove("hidden");
+  $revBtn.classList.add("hidden");
+}
+
+// ════════════════════════════════════════════════════════════
+// Gmail OAuth modal (assistant flow)
+// ════════════════════════════════════════════════════════════
+let _oauthUserId = null;
+let _oauthTimer  = null;
+
+function showOAuthModal(userId) {
+  _oauthUserId = userId;
+  const safeId = encodeURIComponent(userId || "");
+  document.getElementById("oauth-login-btn").href = `/auth/google?user_id=${safeId}`;
+  document.getElementById("oauth-poll-status").textContent = "";
+  document.getElementById("oauth-modal").classList.remove("hidden");
+}
+
+function startOAuthPolling() {
+  if (_oauthTimer) clearInterval(_oauthTimer);
+  document.getElementById("oauth-poll-status").textContent = "⏳ Đang chờ xác thực…";
+  _oauthTimer = setInterval(async () => {
+    if (!_oauthUserId) return;
+    try {
+      const r = await fetch(`/api/oauth/status/${_oauthUserId}`);
+      const d = await r.json();
+      if (d.authenticated) _onOAuthSuccess(d.gmail);
+    } catch (_) {}
+  }, 2000);
+}
+
+function _onOAuthSuccess(gmail) {
+  if (_oauthTimer) { clearInterval(_oauthTimer); _oauthTimer = null; }
+  document.getElementById("oauth-poll-status").textContent = `✅ Đã xác thực: ${gmail}`;
+  setTimeout(() => {
+    document.getElementById("oauth-modal").classList.add("hidden");
+    addMsg("bot", `✅ Gmail đã xác thực (${gmail}). Nói "có" để gửi email.`);
+    const $tts = document.getElementById("tts-player");
+    $tts.src = `/api/tts?text=${encodeURIComponent("Xác thực Gmail thành công. Nói có để gửi email.")}`;
+    $tts.play().catch(() => {});
+  }, 1200);
+}
+
+// BroadcastChannel — hoạt động ngay cả khi window.opener bị null do Google COOP
+function _handleOAuthSignal() {
+  if (_oauthUserId) {
+    clearInterval(_oauthTimer); _oauthTimer = null;
+    fetch(`/api/oauth/status/${_oauthUserId}`).then(r=>r.json()).then(d=>{ if(d.authenticated) _onOAuthSuccess(d.gmail); });
+  }
+  if (_modalUid && _modalOAuthTimer) {
+    clearInterval(_modalOAuthTimer); _modalOAuthTimer = null;
+    fetch(`/api/oauth/status/${encodeURIComponent(_modalUid)}`).then(r=>r.json()).then(d=>{ if(d.authenticated) _onModalOAuthSuccess(d.gmail); });
+  }
+}
+try {
+  const _bc = new BroadcastChannel("oauth");
+  _bc.onmessage = (e) => { if (e.data?.type === "oauth_done") _handleOAuthSignal(); };
+} catch (_) {}
+window.addEventListener("message", e => {
+  if (e.data?.type === "oauth_done") _handleOAuthSignal();
+});
+
+document.getElementById("oauth-cancel-btn").addEventListener("click", () => {
+  if (_oauthTimer) { clearInterval(_oauthTimer); _oauthTimer = null; }
+  document.getElementById("oauth-modal").classList.add("hidden");
+  addMsg("bot", "Đã hủy. Nói \"có\" để thử lại sau khi đăng nhập.");
+});
 
 // ════════════════════════════════════════════════════════════
 // BUILD YOUTUBE QUEUE  (artist → 5 songs, then genre → fill 10)
@@ -1591,21 +1787,36 @@ function buildEnrollPreferences() {
 }
 
 function enrollCheckReady() {
-  const uid  = document.getElementById("enroll-user_id").value.trim();
-  const name = document.getElementById("enroll-name").value.trim();
-  const pw   = document.getElementById("enroll-password").value.trim();
-  $eSubmit.disabled = !(uid && name && pw && enrollSamples.length >= 2);
+  const uid     = document.getElementById("enroll-user_id").value.trim();
+  const name    = document.getElementById("enroll-name").value.trim();
+  const pw      = document.getElementById("enroll-password").value.trim();
+  const confirm = document.getElementById("enroll-confirm-pw").value.trim();
+  const $msg    = document.getElementById("enroll-pw-match-msg");
+  if (pw && confirm) {
+    const match = pw === confirm;
+    $msg.textContent  = match ? "✅ Mật khẩu khớp" : "❌ Mật khẩu không khớp";
+    $msg.style.color  = match ? "#22c55e" : "#ef4444";
+    $msg.style.display = "block";
+  } else {
+    $msg.style.display = "none";
+  }
+  $eSubmit.disabled = !(uid && name && pw && confirm && pw === confirm && enrollSamples.length >= 2);
 }
 
-["enroll-user_id","enroll-name","enroll-password"].forEach(id =>
+["enroll-user_id","enroll-name","enroll-password","enroll-confirm-pw"].forEach(id =>
   document.getElementById(id).addEventListener("input", enrollCheckReady));
 
 $eSubmit.onclick = async () => {
   const user_id = document.getElementById("enroll-user_id").value.trim();
   const name    = document.getElementById("enroll-name").value.trim();
   const pw      = document.getElementById("enroll-password").value.trim();
-  if (!user_id || !name || !pw) {
+  const confirm = document.getElementById("enroll-confirm-pw").value.trim();
+  if (!user_id || !name || !pw || !confirm) {
     $eResult.innerHTML = '<span style="color:#ef4444">Cần nhập đầy đủ user_id, name và password.</span>';
+    return;
+  }
+  if (pw !== confirm) {
+    $eResult.innerHTML = '<span style="color:#ef4444">Mật khẩu nhập lại không khớp.</span>';
     return;
   }
   $eSubmit.disabled = true;
@@ -1629,8 +1840,9 @@ $eSubmit.onclick = async () => {
     // Append new card to grid
     addUserCard(data.user_id, data.name);
     // Reset form fields
-    ["enroll-user_id","enroll-name","enroll-password","enroll-pref_email"].forEach(id =>
+    ["enroll-user_id","enroll-name","enroll-password","enroll-confirm-pw","enroll-pref_email"].forEach(id =>
       document.getElementById(id).value = "");
+    document.getElementById("enroll-pw-match-msg").style.display = "none";
     enrollSamples = []; enrollRenderSamples(); enrollUpdatePrompt();
     $eBtn.disabled = false; $eBtn.innerHTML = `${ICON_MIC_SM} Bắt đầu thu mẫu 1/${NUM_SAMPLES}`;
   } catch(e) {
@@ -1643,8 +1855,9 @@ function addUserCard(uid, name) {
   if (!_allUsers.some(u => u.id === uid)) _allUsers.push({ id: uid, name });
 }
 
-// Password eye toggle for enroll form
-document.getElementById("enroll-pw-eye").onclick = function() { togglePwEye("enroll-password", this); };
+// Password eye toggles for enroll form
+document.getElementById("enroll-pw-eye").onclick         = function() { togglePwEye("enroll-password",   this); };
+document.getElementById("enroll-confirm-pw-eye").onclick = function() { togglePwEye("enroll-confirm-pw", this); };
 
 enrollUpdatePrompt();
 
@@ -1717,11 +1930,13 @@ async function openModal(uid, name) {
   } catch(_) {}
 
   switchModalTab("info");
+  loadModalOAuth(uid);
   document.getElementById("user-modal").classList.remove("hidden");
 }
 
 function closeModal() {
   document.getElementById("user-modal").classList.add("hidden");
+  if (_modalOAuthTimer) { clearInterval(_modalOAuthTimer); _modalOAuthTimer = null; }
   _modalUid = null; _modalPw = ""; _modalFilesReady = false;
   _modalMode = false; _modalContacts = [];
 }
