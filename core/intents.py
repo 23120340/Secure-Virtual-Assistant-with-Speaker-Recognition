@@ -52,7 +52,7 @@ INTENTS = {
     "send_email": {
         "level": AuthLevel.IMPORTANT,
         "desc": "Gửi email cho ai đó",
-        "entities": ["recipient", "content"],
+        "entities": ["recipient", "recipient_email", "subject", "body", "content"],
         "examples": ["gửi email cho sếp", "soạn mail báo cáo"],
     },
     "check_balance": {

@@ -186,7 +186,7 @@ function checkReady() {
   } else {
     $msg.textContent = "";
   }
-  $submit.disabled = !(uid && nm && pw && pw === pw2 && samples.length >= 2);
+  $submit.disabled = !(uid && nm && pw && pw === pw2 && samples.length >= NUM_SAMPLES);
 }
 
 function renderSamples() {
@@ -201,7 +201,8 @@ function renderSamples() {
     `;
     div.querySelector("button").onclick = (e) => {
       const idx = +e.target.dataset.i;
-      samples.splice(idx, 1);
+      const removed = samples.splice(idx, 1)[0];
+      if (removed && removed.url) URL.revokeObjectURL(removed.url);
       renderSamples();
       updatePrompt();
       $btn.disabled = false;
@@ -214,14 +215,23 @@ function renderSamples() {
 ["user_id","name","password","password2"].forEach(id =>
   document.getElementById(id).addEventListener("input", checkReady));
 
+// Cap an toàn — tránh user lỡ tay nói 30s, audio quá lớn cho server xử lý.
+const MAX_DURATION_MS = Math.max(DURATION_MS, 8000);
+let _cdTimer = null;
+
+function _stopRecordingNow() {
+  if (recording && mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+  }
+}
+
 async function startRecording() {
   if (samples.length >= NUM_SAMPLES) {
     $status.textContent = "Đã đủ số mẫu yêu cầu.";
     return;
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({audio: true});
-    // Browser sẽ chọn codec phù hợp (webm/opus thường)
+    const stream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false, sampleRate:16000, channelCount:1}});
     mediaRecorder = new MediaRecorder(stream);
     chunks = [];
 
@@ -229,6 +239,7 @@ async function startRecording() {
       if (e.data.size > 0) chunks.push(e.data);
     };
     mediaRecorder.onstop = () => {
+      if (_cdTimer) { clearInterval(_cdTimer); _cdTimer = null; }
       const blob = new Blob(chunks, {type: mediaRecorder.mimeType});
       const url = URL.createObjectURL(blob);
       samples.push({blob, url});
@@ -245,22 +256,31 @@ async function startRecording() {
 
     mediaRecorder.start();
     recording = true;
-    $btn.textContent = "⏺ Đang thu... (tự dừng sau " + (DURATION_MS/1000) + "s)";
-    $status.textContent = "Đọc câu mẫu rõ ràng vào microphone.";
 
-    // Auto stop sau DURATION_MS
-    setTimeout(() => {
-      if (recording && mediaRecorder.state === "recording") {
-        mediaRecorder.stop();
-      }
-    }, DURATION_MS);
+    // Countdown realtime + nút Dừng giữa chừng
+    let elapsedMs = 0;
+    $btn.textContent = "⏹ Dừng ngay";
+    $status.textContent = "Đọc câu mẫu rõ ràng vào microphone... (0.0s)";
+    _cdTimer = setInterval(() => {
+      elapsedMs += 100;
+      const secs = (elapsedMs / 1000).toFixed(1);
+      $status.textContent = `Đọc câu mẫu rõ ràng vào microphone... (${secs}s)`;
+      if (elapsedMs >= MAX_DURATION_MS) _stopRecordingNow();
+    }, 100);
 
   } catch (err) {
     $status.textContent = "Lỗi mic: " + err.message;
   }
 }
 
-$btn.onclick = startRecording;
+$btn.onclick = () => {
+  // Toggle start/stop: bấm lần 1 thu, lần 2 dừng
+  if (recording) {
+    _stopRecordingNow();
+  } else {
+    startRecording();
+  }
+};
 
 function buildPreferences() {
   const prefs = {};
@@ -271,7 +291,10 @@ function buildPreferences() {
   const sched   = document.getElementById("pref_schedule").value.trim();
   if (genre)   prefs.favorite_genre   = genre;
   if (artist)  prefs.favorite_artist  = artist;
-  if (balance) prefs.balance          = Number(balance);
+  if (balance) {
+    const n = Number(balance.replace(/[,\s.]/g, ""));
+    if (!isNaN(n) && n >= 0) prefs.balance = n;
+  }
   if (notes)   prefs.notes    = notes.split("\n").map(s => s.trim()).filter(Boolean);
   if (sched)   prefs.schedule = sched.split("\n").map(s => s.trim()).filter(Boolean);
   return prefs;

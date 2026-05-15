@@ -1,11 +1,14 @@
 """Audio capture, file I/O, và VAD-based trimming."""
 import io
+import logging
 from pathlib import Path
 import numpy as np
 import soundfile as sf
 import torch
 
 from . import config
+
+_log = logging.getLogger("secva.audio")
 
 # sounddevice chỉ cần khi chạy CLI có mic. Flask server thường không có audio device.
 try:
@@ -23,7 +26,7 @@ def record(duration: float, sample_rate: int = config.SAMPLE_RATE) -> np.ndarray
     """Record từ default microphone, trả về float32 mono [N]."""
     if not _HAS_SD:
         raise RuntimeError("sounddevice không khả dụng. Dùng web UI hoặc --audio_files.")
-    print(f"  🎙  Recording {duration:.1f}s...")
+    _log.info("🎙  Recording %.1fs...", duration)
     audio = sd.rec(int(duration * sample_rate),
                    samplerate=sample_rate, channels=1, dtype="float32")
     sd.wait()
@@ -37,10 +40,17 @@ def decode_browser_audio(blob: bytes,
     seg = AudioSegment.from_file(io.BytesIO(blob))
     seg = seg.set_frame_rate(target_sr).set_channels(1)
     samples = np.array(seg.get_array_of_samples(), dtype=np.float32)
-    if seg.sample_width == 2:
+    if seg.sample_width == 1:
+        # 8-bit PCM unsigned [0, 255] → normalize về [-1, 1]
+        samples = (samples - 128.0) / 128.0
+    elif seg.sample_width == 2:
         samples /= 32768.0
     elif seg.sample_width == 4:
         samples /= 2147483648.0
+    else:
+        # Sample width lạ → normalize bằng max abs để tránh clipping
+        max_val = float(np.abs(samples).max() or 1.0)
+        samples /= max_val
     return samples
 
 
@@ -64,27 +74,41 @@ def load_wav(path: Path, sample_rate: int = config.SAMPLE_RATE) -> np.ndarray:
 # ==========================================================================
 # VAD (Silero) — cắt bỏ khoảng lặng đầu/cuối
 # ==========================================================================
+import threading
+
+
 class SileroVAD:
-    """Wrapper cho silero-vad. Lazy load để tránh chậm khi import."""
+    """Wrapper cho silero-vad. Lazy load để tránh chậm khi import.
+
+    Dùng package PyPI `silero-vad` thay cho `torch.hub.load(snakers4/silero-vad)`
+    — torch.hub tải Python source + execute → supply-chain RCE nếu repo bị compromise.
+    Package PyPI đã có trong requirements.txt.
+    """
     _model = None
-    _utils = None
+    _lock = threading.Lock()
 
     @classmethod
     def _load(cls):
         if cls._model is None:
-            print("  Loading Silero VAD...")
-            cls._model, cls._utils = torch.hub.load(
-                "snakers4/silero-vad", "silero_vad", trust_repo=True
-            )
-        return cls._model, cls._utils
+            with cls._lock:
+                if cls._model is None:  # double-checked locking
+                    _log.info("Loading Silero VAD (from silero_vad pip package)...")
+                    from silero_vad import load_silero_vad
+                    cls._model = load_silero_vad()
+        return cls._model
 
     @classmethod
     def trim(cls, audio: np.ndarray,
              sample_rate: int = config.SAMPLE_RATE,
-             min_speech_ms: int = 250) -> np.ndarray:
-        """Giữ lại các đoạn có speech, ghép lại. Trả về audio đã trim."""
-        model, utils = cls._load()
-        get_speech_timestamps = utils[0]
+             min_speech_ms: int = 250,
+             return_speech_detected: bool = False):
+        """Giữ lại các đoạn có speech, ghép lại. Trả về audio đã trim.
+
+        Nếu return_speech_detected=True → trả tuple (audio, has_speech: bool).
+        has_speech=False khi VAD không tìm thấy đoạn nào → caller có thể reject
+        thay vì gọi encoder/ASR trên silence."""
+        from silero_vad import get_speech_timestamps
+        model = cls._load()
 
         wav_t = torch.from_numpy(audio).float()
         ts = get_speech_timestamps(
@@ -93,9 +117,14 @@ class SileroVAD:
             min_speech_duration_ms=min_speech_ms,
         )
         if not ts:
+            if return_speech_detected:
+                return audio, False
             return audio  # không detect được → trả về nguyên
         chunks = [wav_t[t["start"]:t["end"]] for t in ts]
-        return torch.cat(chunks).numpy()
+        result = torch.cat(chunks).numpy()
+        if return_speech_detected:
+            return result, True
+        return result
 
 
 # ==========================================================================

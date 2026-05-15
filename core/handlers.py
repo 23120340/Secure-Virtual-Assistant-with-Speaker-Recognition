@@ -2,12 +2,51 @@
     entities: dict
     user: dict | None  (None = guest)
     **kwargs: extra context (db, ...)
-Trả về: response_text (str)
+Trả về: response_text (str) HOẶC HandlerResult (cho intent cần signal action).
 """
 import random
+import time
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, Optional
 
-from .oauth import OAUTH_RESP_PREFIX, build_auth_url
+from .oauth import build_auth_url
+
+
+@dataclass
+class HandlerResult:
+    """Structured return type cho handler cần signal extra action.
+
+    Caller (web/app.py) check isinstance(r, HandlerResult) → unpack action_*.
+    Handlers cũ chỉ return str vẫn hoạt động bình thường (backward compat).
+    """
+    text: str
+    action_type: Optional[str] = None
+    action_data: Optional[dict] = None
+
+
+# Email rate limit: max EMAIL_RATE_MAX email / EMAIL_RATE_WINDOW giây / user.
+# User authenticated có thể gửi từ Gmail API → chống spam nếu account bị compromise.
+EMAIL_RATE_MAX    = 10
+EMAIL_RATE_WINDOW = 3600  # 1 giờ
+_email_sent_log: dict = defaultdict(list)
+
+
+def _email_rate_check(user_id: str) -> tuple[bool, int]:
+    """Returns (allowed, remaining). allowed=False → từ chối, có quota khi nào."""
+    now = time.time()
+    log = _email_sent_log[user_id]
+    log[:] = [t for t in log if now - t < EMAIL_RATE_WINDOW]
+    if len(log) >= EMAIL_RATE_MAX:
+        oldest = log[0]
+        wait_min = int((oldest + EMAIL_RATE_WINDOW - now) / 60) + 1
+        return False, wait_min
+    return True, 0
+
+
+def _email_rate_record(user_id: str):
+    _email_sent_log[user_id].append(time.time())
 
 
 # ==========================================================================
@@ -19,10 +58,12 @@ def handle_get_time(entities, user, **kwargs) -> str:
 
 
 def handle_get_weather(entities, user, **kwargs) -> str:
+    # Demo mode — chưa tích hợp API thời tiết thật (OpenWeatherMap / Visual Crossing).
     location = entities.get("location", "đây")
     conditions = ["nắng đẹp", "có mưa nhẹ", "nhiều mây", "trời quang"]
     temp = random.randint(22, 33)
-    return f"Thời tiết ở {location} hiện tại {random.choice(conditions)}, nhiệt độ khoảng {temp} độ C."
+    return (f"[Demo] Thời tiết ở {location} hiện tại {random.choice(conditions)}, "
+            f"nhiệt độ khoảng {temp} độ C.")
 
 
 def handle_tell_joke(entities, user, **kwargs) -> str:
@@ -44,13 +85,18 @@ def handle_general_question(entities, user, **kwargs) -> str:
         return (f"Câu hỏi hay đấy, nhưng mình chưa được kết nối AI để trả lời. "
                 "Cần cấu hình GEMINI_API_KEY.")
     user_name = user["name"] if user else ""
-    return chat.answer(query, user_name)
+    try:
+        return chat.answer(query, user_name)
+    except Exception:
+        return "Mình tạm thời không trả lời được. Bạn thử lại sau nhé."
 
 
 # ==========================================================================
 # IMPORTANT handlers — chỉ chạy SAU khi SV pass
 # ==========================================================================
 def handle_read_notes(entities, user, **kwargs) -> str:
+    if user is None:
+        return "Chưa xác thực được người dùng."
     name = user["name"]
     notes = user["preferences"].get("notes", [])
     if not notes:
@@ -68,12 +114,17 @@ def handle_send_email(entities, user, **kwargs) -> str:
     if user is None:
         return "Mình chưa nhận ra giọng bạn nên không thể gửi email."
 
-    import time
     from .oauth import refresh_access_token
     from .gmail_api import send_email as _gmail_send
 
     db      = kwargs.get("db")
     user_id = user["user_id"]
+
+    # Rate limit: chặn trước khi tốn cycle (lookup recipient, OAuth refresh, ...)
+    allowed, wait_min = _email_rate_check(user_id)
+    if not allowed:
+        return (f"Bạn đã gửi {EMAIL_RATE_MAX} email trong giờ vừa qua. "
+                f"Vui lòng đợi khoảng {wait_min} phút rồi thử lại.")
 
     # ── 1. Kiểm tra OAuth token ─────────────────────────────────────────────
     token_data = db.get_oauth_token(user_id) if db else None
@@ -83,9 +134,12 @@ def handle_send_email(entities, user, **kwargs) -> str:
             auth_url = build_auth_url(state=user_id)
         except RuntimeError as e:
             return f"Chưa cấu hình Gmail OAuth: {e}"
-        return (f"{OAUTH_RESP_PREFIX}{auth_url}\n"
-                f"{user['name']} ơi, bạn chưa xác thực Gmail. "
-                "Nhấn nút 'Đăng nhập Google' trên màn hình để tiếp tục.")
+        return HandlerResult(
+            text=(f"{user['name']} ơi, bạn chưa xác thực Gmail. "
+                  "Nhấn nút 'Đăng nhập Google' trên màn hình để tiếp tục."),
+            action_type="oauth_required",
+            action_data={"auth_url": auth_url},
+        )
 
     # ── 2. Refresh nếu access_token hết hạn ────────────────────────────────
     if time.time() > token_data.get("expiry", 0):
@@ -101,8 +155,11 @@ def handle_send_email(entities, user, **kwargs) -> str:
                 auth_url = build_auth_url(state=user_id)
             except RuntimeError:
                 return "Token Gmail hết hạn và không thể làm mới. Kiểm tra cấu hình OAuth."
-            return (f"{OAUTH_RESP_PREFIX}{auth_url}\n"
-                    "Token Gmail hết hạn. Vui lòng đăng nhập lại.")
+            return HandlerResult(
+                text="Token Gmail hết hạn. Vui lòng đăng nhập lại.",
+                action_type="oauth_required",
+                action_data={"auth_url": auth_url},
+            )
 
     access_token  = token_data["access_token"]
     gmail_address = token_data.get("gmail_address", "")
@@ -114,16 +171,15 @@ def handle_send_email(entities, user, **kwargs) -> str:
     body    = entities.get("body", entities.get("content", ""))
 
     if not recipient_email and db and recipient_name:
-        for u in db.list_users():
-            full = db.get_user(u["user_id"])
-            if full and recipient_name.lower() in full["name"].lower():
-                recipient_email = full["preferences"].get("email", "")
-                break
+        match = db.find_user_by_name_substring(recipient_name)
+        if match:
+            recipient_email = match["preferences"].get("email", "")
 
     if not recipient_email:
         if recipient_name:
             return (f"Không tìm thấy email của '{recipient_name}' trong hệ thống. "
-                    "Hãy đảm bảo người đó đã đăng ký email trong hồ sơ.")
+                    "Hãy đảm bảo người đó đã đăng ký email trong hồ sơ "
+                    "(hoặc nói tên đầy đủ nếu trùng tên).")
         return "Bạn muốn gửi email cho ai? Hãy nói tên người nhận."
 
     # ── 4. Gửi qua Gmail API ────────────────────────────────────────────────
@@ -135,6 +191,7 @@ def handle_send_email(entities, user, **kwargs) -> str:
             body=body or f"Email từ {user['name']} qua Trợ lý Ảo.",
             from_name=user["name"],
         )
+        _email_rate_record(user_id)
         from_note = f" (từ {gmail_address})" if gmail_address else ""
         return (f"Đã gửi email thành công đến "
                 f"{recipient_name or recipient_email}!{from_note}")
@@ -159,16 +216,53 @@ def handle_send_email(entities, user, **kwargs) -> str:
 
 
 def handle_check_balance(entities, user, **kwargs) -> str:
-    balance = user["preferences"].get("balance", 12_500_000)
-    return f"Số dư tài khoản của {user['name']} là {balance:,} đồng."
+    if user is None:
+        return "Mình chưa nhận ra giọng bạn nên không kiểm tra được số dư."
+    balance = user["preferences"].get("balance")
+    if balance is None:
+        return f"{user['name']} chưa thiết lập số dư trong hồ sơ."
+    return f"Số dư của {user['name']} là {balance:,} đồng."
+
+
+_DELETABLE_TARGETS = {
+    "ghi chú": "notes", "ghi chu": "notes",
+    "lịch": "schedule", "lich": "schedule",
+    "tất cả": "all", "tat ca": "all",
+}
 
 
 def handle_delete_data(entities, user, **kwargs) -> str:
-    target = entities.get("target", "dữ liệu")
-    return f"Đã xác thực thành công. Mình sẽ xóa {target} của {user['name']}."
+    if user is None:
+        return "Chưa nhận ra giọng — không thể xóa dữ liệu."
+
+    raw = entities.get("target", "").lower().strip()
+    target_key = _DELETABLE_TARGETS.get(raw)
+    if not target_key:
+        return (f"Mình không hiểu '{raw or 'dữ liệu'}'. "
+                "Bạn muốn xóa: ghi chú, lịch, hay tất cả?")
+
+    db = kwargs.get("db")
+    if db is None:
+        return "Không thể xóa dữ liệu — thiếu kết nối database."
+
+    prefs = dict(user["preferences"])
+    if target_key == "notes":
+        prefs.pop("notes", None)
+        label = "ghi chú"
+    elif target_key == "schedule":
+        prefs.pop("schedule", None)
+        label = "lịch"
+    else:  # all
+        prefs.clear()
+        label = "toàn bộ dữ liệu cá nhân"
+
+    db.update_preferences(user["user_id"], prefs)
+    return f"Đã xóa {label} của {user['name']}."
 
 
 def handle_open_files(entities, user, **kwargs) -> str:
+    if user is None:
+        return "Chưa xác thực được người dùng — không thể mở file."
     return f"Đã xác thực thành công. Đang mở file của {user['name']}."
 
 

@@ -19,30 +19,72 @@ Chạy:
     python -m web.app
     # → http://localhost:5000
 """
+import hmac
 import io
 import json
+import logging
+import os
 import re
+import secrets
 import sys
+import time
 import uuid
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
+from functools import wraps
 from pathlib import Path
+from urllib.parse import quote as _quote
+
+# Cấu hình logging cho toàn bộ app — INFO trên stdout, format gọn cho dev.
+# Production có thể override qua env LOG_LEVEL=WARNING / ERROR.
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+_log = logging.getLogger("secva.app")
 
 from flask import (Flask, render_template, request, jsonify, send_file,
                    redirect, url_for, flash, session)
 
 
-def _safe_filename(filename: str) -> str:
-    """Unicode-safe sanitizer — giữ ký tự tiếng Việt, loại bỏ path traversal."""
-    filename = filename.strip()
-    # Xóa ký tự nguy hiểm (path sep, shell special, null)
-    filename = re.sub(r'[/\\:*?"<>|\x00-\x1f\x7f]', '_', filename)
-    # Thu gọn dấu cách/gạch dưới liên tiếp
-    filename = re.sub(r'[_\s]+', '_', filename).strip('_')
-    return filename or "file"
+import unicodedata as _unicodedata
 
 
 AUDIO_EXTS = {'.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac', '.wma', '.opus'}
+DOC_EXTS = {'.pdf', '.doc', '.docx', '.txt', '.md', '.jpg', '.jpeg', '.png',
+            '.gif', '.zip', '.rar', '.csv', '.xlsx', '.xls'}
+
+
+def _safe_filename(filename: str,
+                   max_stem_len: int = 100,
+                   allowed_exts: set | None = None) -> tuple[str, bool]:
+    """Unicode-safe sanitizer — giữ ký tự tiếng Việt, loại bỏ path traversal.
+
+    Returns (safe_name, is_allowed_ext).
+    - Normalize Unicode NFC để tránh tấn công homograph qua composed/decomposed.
+    - Xóa path separator, shell special, control, null byte.
+    - Cắt stem ≤ max_stem_len ký tự (Windows path limit ~260 char total).
+    - allowed_exts=None bỏ qua check ext; nếu set → trả về False khi không khớp.
+    """
+    name = _unicodedata.normalize("NFC", (filename or "").strip())
+    # Xóa ký tự nguy hiểm (path sep, shell special, control, null)
+    name = re.sub(r'[/\\:*?"<>|\x00-\x1f\x7f]', '_', name)
+    # Chống path traversal: ".." → "."
+    name = re.sub(r'\.\.+', '.', name)
+    # Thu gọn dấu cách/gạch dưới liên tiếp
+    name = re.sub(r'[_\s]+', '_', name).strip('_. ')
+
+    if "." in name:
+        stem, ext = name.rsplit(".", 1)
+        ext = "." + ext.lower()[:10]
+    else:
+        stem, ext = name, ""
+
+    stem = stem[:max_stem_len] if stem else "file"
+    safe = f"{stem}{ext}".rstrip(".")
+    is_allowed = (allowed_exts is None or ext in allowed_exts)
+    return safe or "file", is_allowed
 
 # Thêm project root vào path để import được core/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -50,9 +92,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core import audio_io, config
 from core.asr import get_asr, correct_transcript
 from core import email_flow as _ef
+from core import handlers as _h_module
 from core.handlers import handle_send_email as _send_email
-from core.oauth import (OAUTH_RESP_PREFIX as _OA,
-                        build_auth_url, exchange_code, get_user_email)
+from core.oauth import (build_auth_url, exchange_code, gen_pkce_pair,
+                        get_user_email)
 from core.tts import get_tts
 from core.nlu import get_nlu
 from core.database import UserDB, SpeakerManager
@@ -66,21 +109,31 @@ def create_app():
     app = Flask(__name__,
                 template_folder="templates",
                 static_folder="static")
-    app.secret_key = "dev-secret-change-in-production"
-    app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB cho upload audio
-    app.jinja_env.auto_reload = True  # reload template khi file thay đổi (dev)
+    # Secret key từ env, fallback random nếu chưa set (sessions invalidate mỗi restart)
+    flask_secret = os.environ.get("FLASK_SECRET", "").strip()
+    if not flask_secret:
+        _log.warning("FLASK_SECRET chưa set — dùng random key, sessions sẽ invalidate mỗi restart")
+        flask_secret = secrets.token_hex(32)
+    app.secret_key = flask_secret
+    # Global hard cap 60MB — per-route giới hạn nhỏ hơn qua @max_size(...).
+    # Vừa đủ cho upload file/music + buffer; chống DoS POST rác lớn.
+    app.config["MAX_CONTENT_LENGTH"] = 60 * 1024 * 1024
+    app.permanent_session_lifetime = timedelta(minutes=30)
+    # Jinja auto_reload: chỉ bật khi FLASK_DEBUG=1 (development). Production có
+    # auto_reload=True làm tăng I/O mỗi request — không cần thiết.
+    app.jinja_env.auto_reload = os.environ.get("FLASK_DEBUG", "").strip() in ("1", "true", "True")
 
     # Eager-load các model — startup chậm 1 chút nhưng request sẽ nhanh
-    print("=" * 60)
-    print("Loading models (lần đầu mất 30-60s)...")
+    _log.info("=" * 60)
+    _log.info("Loading models (lần đầu mất 30-60s)...")
     db = UserDB()
     spk_mgr = SpeakerManager(db)
     asr = get_asr()
     tts = get_tts()
     nlu = get_nlu()
     router = Router(spk_mgr)
-    print("✓ Tất cả model đã sẵn sàng.")
-    print("=" * 60)
+    _log.info("✓ Tất cả model đã sẵn sàng.")
+    _log.info("=" * 60)
 
     # Lưu vào app context để các handler dùng
     app.config["db"] = db
@@ -95,9 +148,192 @@ def create_app():
 
 
 # ==========================================================================
+# Request size limit (per-route)
+# ==========================================================================
+def _list_user_files(uid: str) -> list:
+    """Liệt kê file của user (dùng cho intent open_files trong cả turn/text mode)."""
+    user_dir = config.USER_FILES_DIR / uid
+    files = []
+    if user_dir.exists():
+        for _f in sorted(user_dir.iterdir()):
+            if _f.is_file():
+                files.append({
+                    "name": _f.name,
+                    "size": _f.stat().st_size,
+                    "modified": datetime.fromtimestamp(
+                        _f.stat().st_mtime).strftime("%d/%m/%Y %H:%M"),
+                })
+    return files
+
+
+def _list_user_music_tracks(uid: str) -> list:
+    """Liệt kê file nhạc user đã upload."""
+    music_dir = config.USER_FILES_DIR / uid / "music"
+    if not music_dir.exists():
+        return []
+    return [f.name for f in music_dir.iterdir()
+            if f.is_file() and f.suffix.lower() in AUDIO_EXTS]
+
+
+def _attach_action_data(payload: dict, intent: str, blocked: bool,
+                        uid: str | None, user_name: str,
+                        entities: dict, user_prefs: dict,
+                        auth_method: str) -> dict:
+    """Gắn action_type + action_data + set_file_session cho intent play_music / open_files.
+
+    Dùng chung cho api_assistant_turn (auth_method='voice') và api_assistant_text
+    (auth_method='password'). Trước đây ~80 dòng duplicate giữa 2 routes.
+    """
+    if blocked:
+        return payload
+
+    if intent == "play_music":
+        user_tracks = _list_user_music_tracks(uid) if uid else []
+        if user_tracks and uid:
+            _set_file_session(uid, user_name, auth_method)
+            payload["action_type"] = "play_music"
+            payload["action_data"] = {
+                "mode": "user_tracks",
+                "user_id": uid,
+                "tracks": sorted(user_tracks),
+            }
+        else:
+            genre  = entities.get("genre") or user_prefs.get("favorite_genre", "") or "v-pop"
+            artist = user_prefs.get("favorite_artist", "")
+            payload["action_type"] = "play_music"
+            payload["action_data"] = {
+                "mode": "youtube",
+                "artist": artist,
+                "genre": genre,
+                "uid": uid or "",
+            }
+
+    elif intent == "open_files" and uid:
+        files = _list_user_files(uid)
+        _set_file_session(uid, user_name, auth_method)
+        payload["action_type"] = "show_files"
+        payload["action_data"] = {
+            "files": files,
+            "user_name": user_name,
+            "user_id": uid,
+        }
+
+    return payload
+
+
+def _json_body() -> dict:
+    """Parse request body as JSON, return {} nếu thiếu hoặc invalid.
+    Tránh pattern verbose `_json_body()` lặp lại 7 lần."""
+    return request.get_json(silent=True) or {}
+
+
+def max_size(mb: float):
+    """Decorator giới hạn size request cho từng route. Audio turn ≈ 100KB, không
+    cần cho phép 50MB như global. Chống DoS upload rác lên /api/assistant/turn.
+    """
+    limit_bytes = int(mb * 1024 * 1024)
+
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            cl = request.content_length
+            if cl is not None and cl > limit_bytes:
+                return jsonify({"error": f"Yêu cầu quá lớn (giới hạn {mb}MB)"}), 413
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+# ==========================================================================
+# Session helpers
+# ==========================================================================
+# Phiên file/music sống tối đa 30 phút sau khi xác thực; sau đó người dùng phải
+# xác thực lại để truy cập file riêng. Session cookie cũng được set permanent
+# với timedelta(minutes=30) ở create_app — đây là check thêm phía server-side.
+SESSION_LIFETIME_SEC = 30 * 60
+
+
+def _set_file_session(uid: str, user_name: str, auth_method: str):
+    """Đánh dấu phiên đã xác thực với phương thức cụ thể.
+
+    auth_method: 'voice' nếu qua SID+SV, 'password' nếu qua mật khẩu.
+    Bao gồm timestamp để middleware có thể tự expire phiên.
+    """
+    session["file_uid"]          = uid
+    session["file_name"]         = user_name
+    session["file_auth_method"]  = auth_method
+    session["file_verified_at"]  = time.time()
+    session.permanent            = True
+
+
+def _clear_file_session():
+    for k in ("file_uid", "file_name", "file_auth_method", "file_verified_at"):
+        session.pop(k, None)
+
+
+def _get_authed_uid(level: str = "any") -> str | None:
+    """Lấy uid đã xác thực, hoặc None nếu chưa/đã hết hạn.
+
+    level='any'      → cả voice và password đều ok (cho file/music).
+    level='voice'    → chỉ voice (cho IMPORTANT intent kiểu read_notes/send_email
+                       — không dùng password làm bypass biometric).
+    """
+    uid = session.get("file_uid")
+    if not uid:
+        return None
+    verified_at = session.get("file_verified_at", 0)
+    if time.time() - verified_at > SESSION_LIFETIME_SEC:
+        _clear_file_session()
+        return None
+    if level == "voice" and session.get("file_auth_method") != "voice":
+        return None
+    return uid
+
+
+# ==========================================================================
 # Routes
 # ==========================================================================
 def register_routes(app):
+
+    # ----- CSRF + Security headers -----
+    @app.before_request
+    def csrf_protect():
+        """Yêu cầu header X-Requested-With cho mọi state-changing request.
+
+        Trình duyệt không cho phép cross-origin form gửi header tùy chỉnh trong
+        request đơn giản → kiểm tra header này chặn phần lớn CSRF.
+        OAuth callback (/auth/google/callback) là GET nên không bị chặn.
+        """
+        if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+            return None
+        # OAuth callback từ Google: cũng GET, không vào đây.
+        # Browser native form không thể set custom header.
+        if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+            return jsonify({
+                "error": "CSRF: thiếu header X-Requested-With"
+            }), 403
+
+    # Content-Security-Policy — defence-in-depth chống XSS. 'unsafe-inline' cho
+    # script vẫn cần vì code inline đầy template; refactor extract sang static .js
+    # rồi có thể bỏ unsafe-inline để tăng độ an toàn.
+    _CSP = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.cdnfonts.com; "
+        "font-src https://fonts.gstatic.com https://fonts.cdnfonts.com data:; "
+        "img-src 'self' data: https://i.ytimg.com https://*.deezer.com https://*.dzcdn.net; "
+        "media-src 'self' blob: https://*.googlevideo.com; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none';"
+    )
+
+    @app.after_request
+    def set_security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        response.headers.setdefault("Content-Security-Policy", _CSP)
+        return response
 
     # ----- Pages -----
     @app.route("/")
@@ -128,6 +364,7 @@ def register_routes(app):
 
     # ----- API: Enrollment -----
     @app.route("/api/enroll", methods=["POST"])
+    @max_size(20)
     def api_enroll():
         """Body multipart:
            - user_id: text
@@ -146,6 +383,8 @@ def register_routes(app):
             return jsonify({"error": "user_id không hợp lệ (không trống, không space)"}), 400
         if not name:
             return jsonify({"error": "Thiếu name"}), 400
+        if not password or len(password) < 6:
+            return jsonify({"error": "Mật khẩu phải có ít nhất 6 ký tự"}), 400
         try:
             preferences = json.loads(prefs_str)
         except json.JSONDecodeError:
@@ -156,38 +395,52 @@ def register_routes(app):
         if db.get_user(user_id):
             return jsonify({"error": f"User '{user_id}' đã tồn tại"}), 409
 
-        # Decode + VAD trim từng sample
+        # Decode + VAD trim từng sample. Lưu WAV vào TEMP dir, chỉ move sang vị trí
+        # cuối cùng khi DB commit thành công — tránh trường hợp 4 sample đầu thành công,
+        # sample 5 fail VAD → 4 file rác kẹt lại trong data/enroll_audio/<user_id>/.
+        import tempfile, shutil
         audios = []
-        sample_dir = config.ENROLL_AUDIO_DIR / user_id
-        sample_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="enroll_") as _tmp_str:
+            tmp_dir = Path(_tmp_str)
 
-        for key in sorted(request.files.keys()):
-            if not key.startswith("sample_"):
-                continue
-            blob = request.files[key].read()
-            try:
-                audio = audio_io.decode_browser_audio(blob)
-            except Exception as e:
-                return jsonify({"error": f"Decode {key} fail: {e}"}), 400
+            for key in sorted(request.files.keys()):
+                if not key.startswith("sample_"):
+                    continue
+                blob = request.files[key].read()
+                try:
+                    audio = audio_io.decode_browser_audio(blob)
+                except Exception as e:
+                    return jsonify({"error": f"Giải mã {key} thất bại: {e}"}), 400
 
-            audio = audio_io.SileroVAD.trim(audio)
-            if audio.size < config.SAMPLE_RATE:  # < 1s
+                audio, has_speech = audio_io.SileroVAD.trim(
+                    audio, return_speech_detected=True)
+                _min_enroll = int(config.SAMPLE_RATE * config.MIN_AUDIO_SEC_ENROLL)
+                if not has_speech or audio.size < _min_enroll:
+                    return jsonify({
+                        "error": f"{key} quá ngắn sau VAD ({audio.size/config.SAMPLE_RATE:.2f}s, "
+                                 f"cần ≥ {config.MIN_AUDIO_SEC_ENROLL}s). "
+                                 "Hãy đảm bảo nói rõ ràng đủ thời lượng."
+                    }), 400
+
+                audio_io.save_wav(audio, tmp_dir / f"{key}.wav")
+                audios.append(audio)
+
+            if len(audios) < config.ENROLL_NUM_SAMPLES:
                 return jsonify({
-                    "error": f"{key} quá ngắn sau VAD ({audio.size/16000:.2f}s). "
-                             "Hãy đảm bảo nói rõ ràng đủ thời lượng."
+                    "error": f"Cần đủ {config.ENROLL_NUM_SAMPLES} mẫu, chỉ có {len(audios)}"
                 }), 400
 
-            audio_io.save_wav(audio, sample_dir / f"{key}.wav")
-            audios.append(audio)
+            # Enroll (sẽ commit DB nếu thành công)
+            try:
+                centroid = spk_mgr.enroll(user_id, name, audios, preferences, password)
+            except Exception as e:
+                return jsonify({"error": f"Đăng ký giọng thất bại: {e}"}), 500
 
-        if len(audios) < 2:
-            return jsonify({"error": f"Cần ít nhất 2 mẫu, chỉ có {len(audios)}"}), 400
-
-        # Enroll
-        try:
-            centroid = spk_mgr.enroll(user_id, name, audios, preferences, password)
-        except Exception as e:
-            return jsonify({"error": f"Enroll fail: {e}"}), 500
+            # DB commit OK → move WAV từ tmp sang vị trí cuối cùng.
+            sample_dir = config.ENROLL_AUDIO_DIR / user_id
+            sample_dir.mkdir(parents=True, exist_ok=True)
+            for wav_file in tmp_dir.iterdir():
+                shutil.move(str(wav_file), sample_dir / wav_file.name)
 
         return jsonify({
             "ok": True,
@@ -233,7 +486,7 @@ def register_routes(app):
         db = app.config["db"]
         if not db.get_user(user_id):
             return jsonify({"error": "User không tồn tại"}), 404
-        data = request.get_json() or {}
+        data = _json_body()
         password = data.get("password", "")
         if not db.check_password(user_id, password):
             return jsonify({"error": "Sai mật khẩu"}), 403
@@ -250,7 +503,7 @@ def register_routes(app):
         db = app.config["db"]
         if not db.get_user(user_id):
             return jsonify({"error": "User không tồn tại"}), 404
-        data = request.get_json() or {}
+        data = _json_body()
         password = data.get("password", "")
         if not db.check_password(user_id, password):
             return jsonify({"error": "Sai mật khẩu"}), 403
@@ -262,6 +515,7 @@ def register_routes(app):
 
     # ----- API: Assistant turn -----
     @app.route("/api/assistant/turn", methods=["POST"])
+    @max_size(5)
     def api_assistant_turn():
         """Body: multipart với file 'audio' (WebM hoặc wav).
 
@@ -281,11 +535,12 @@ def register_routes(app):
         try:
             audio = audio_io.decode_browser_audio(blob)
         except Exception as e:
-            return jsonify({"error": f"Decode audio fail: {e}"}), 400
+            return jsonify({"error": f"Giải mã audio thất bại: {e}"}), 400
 
-        audio = audio_io.SileroVAD.trim(audio)
-        if audio.size < config.SAMPLE_RATE // 2:
-            return jsonify({"error": "Audio quá ngắn / không có speech"}), 400
+        audio, has_speech = audio_io.SileroVAD.trim(audio, return_speech_detected=True)
+        _min_turn = int(config.SAMPLE_RATE * config.MIN_AUDIO_SEC_TURN)
+        if not has_speech or audio.size < _min_turn:
+            return jsonify({"error": "Audio quá ngắn hoặc không có giọng nói"}), 400
 
         # ASR → NLU → Router
         db     = app.config["db"]
@@ -299,9 +554,11 @@ def register_routes(app):
 
         transcript = correct_transcript(transcript)
 
-        from urllib.parse import quote as _quote
-
         # ── Email flow: tiếp tục nếu đang trong luồng soạn email ──────────
+        flow_state = None
+        uid = None
+        _user = None
+        contacts = []
         if "email_flow" in session:
             flow_state = session["email_flow"]
             uid   = flow_state.get("user_id")
@@ -309,6 +566,19 @@ def register_routes(app):
             contacts = (_user["preferences"].get("contacts", [])
                         if _user else [])
 
+            # Intent guard: nếu user nói intent khác (vd "phát nhạc đi"), thoát flow
+            # và xử lý intent mới như bình thường. Tránh trường hợp câu đó bị nuốt
+            # thành subject/body.
+            if flow_state.get("step") in ("recipient", "subject", "body"):
+                _quick_nlu = nlu.parse(transcript)
+                _new_intent = _quick_nlu.get("intent", "unknown")
+                _email_safe = {"send_email", "unknown", "general_question"}
+                if _new_intent not in _email_safe:
+                    session.pop("email_flow", None)
+                    # Fall through xuống NLU/Router thông thường — không continue_flow
+                    flow_state = None
+
+        if flow_state is not None and "email_flow" in session:
             resp, new_state, is_done = _ef.continue_flow(
                 transcript, flow_state, contacts)
 
@@ -320,15 +590,16 @@ def register_routes(app):
                     "subject":         new_state["subject"],
                     "body":            new_state["body"],
                 }
-                resp = _send_email(ents, _user, db=db)
-                if resp.startswith(_OA):
-                    _auth_url, _, resp = resp[len(_OA):].partition('\n')
-                    resp = resp.strip()
+                _send_result = _send_email(ents, _user, db=db)
+                # Handler trả HandlerResult nếu cần OAuth, str nếu đã gửi xong
+                if isinstance(_send_result, _h_module.HandlerResult):
+                    resp = _send_result.text
                     session["email_flow"] = new_state   # giữ để retry sau khi auth
                     flow_active = True
-                    _oauth_extras = {"action_type": "oauth_required",
-                                     "action_data": {"auth_url": _auth_url.strip()}}
+                    _oauth_extras = {"action_type": _send_result.action_type,
+                                     "action_data": _send_result.action_data}
                 else:
+                    resp = _send_result
                     session.pop("email_flow", None)
                     flow_active = False
             elif new_state is None:
@@ -351,7 +622,6 @@ def register_routes(app):
                 "sv_score":             None,
                 "response":             resp,
                 "blocked":              False,
-                "action_url":           None,
                 "flow_active":          flow_active,
                 "tts_url":              f"/api/tts?text={_quote(resp)}",
                 **_oauth_extras,
@@ -385,77 +655,27 @@ def register_routes(app):
         payload["flow_active"] = False
 
         # action_type + action_data cho frontend mở panel tương ứng
-        if result.intent == "play_music" and not result.blocked:
-            uid   = result.identified_user_id
-            _user = app.config["db"].get_user(uid) if uid else None
-            _prefs = _user["preferences"] if _user else {}
-
-            # Kiểm tra user có nhạc upload chưa
-            user_tracks: list = []
-            if uid:
-                music_dir = config.USER_FILES_DIR / uid / "music"
-                if music_dir.exists():
-                    user_tracks = [
-                        f.name for f in music_dir.iterdir()
-                        if f.is_file() and f.suffix.lower() in AUDIO_EXTS
-                    ]
-
-            if user_tracks:
-                # User có nhạc tải lên → đặt session rồi play
-                session["file_uid"]  = uid
-                session["file_name"] = _user["name"] if _user else uid
-                payload["action_type"] = "play_music"
-                payload["action_data"] = {
-                    "mode": "user_tracks",
-                    "user_id": uid,
-                    "tracks": sorted(user_tracks),
-                }
-            else:
-                # Guest hoặc user chưa upload → YouTube theo artist/genre
-                genre  = result.entities.get("genre") or _prefs.get("favorite_genre", "") or "v-pop"
-                artist = _prefs.get("favorite_artist", "")
-                payload["action_type"] = "play_music"
-                payload["action_data"] = {
-                    "mode": "youtube",
-                    "artist": artist,
-                    "genre": genre,
-                    "uid": uid or "",
-                }
-
-        elif result.intent == "open_files" and not result.blocked:
-            uid = result.identified_user_id
-            user_dir = config.USER_FILES_DIR / uid
-            files = []
-            if user_dir.exists():
-                for _f in sorted(user_dir.iterdir()):
-                    if _f.is_file():
-                        files.append({
-                            "name": _f.name,
-                            "size": _f.stat().st_size,
-                            "modified": datetime.fromtimestamp(
-                                _f.stat().st_mtime).strftime("%d/%m/%Y %H:%M"),
-                        })
-            # Cấp quyền session cho panel files
-            session["file_uid"]  = uid
-            session["file_name"] = result.identified_user_name
-            payload["action_type"] = "show_files"
-            payload["action_data"] = {
-                "files": files,
-                "user_name": result.identified_user_name,
-                "user_id": uid,
-            }
+        _uid = result.identified_user_id
+        _user = db.get_user(_uid) if _uid else None
+        _prefs = _user["preferences"] if _user else {}
+        _attach_action_data(
+            payload, result.intent, result.blocked,
+            _uid, result.identified_user_name,
+            result.entities, _prefs, auth_method="voice",
+        )
 
         return jsonify(payload)
 
     # ----- API: Text mode (không cần micro) -----
     @app.route("/api/assistant/text", methods=["POST"])
+    @max_size(1)
     def api_assistant_text():
         """Chế độ nhập văn bản thay vì giọng nói.
         Body JSON: { text, user_id (optional), password (optional) }
         - NORMAL/PERSONAL: không cần password
         - IMPORTANT: cần user_id + password (thay thế SV)
         """
-        data     = request.get_json() or {}
+        data     = _json_body()
         text     = data.get("text", "").strip()
         user_id  = data.get("user_id", "").strip()
         password = data.get("password", "")
@@ -464,13 +684,16 @@ def register_routes(app):
             return jsonify({"error": "Thiếu nội dung lệnh"}), 400
 
         from core.intents import INTENTS, AuthLevel
-        from core import handlers as _h
-        from urllib.parse import quote as _q
+        _h = _h_module  # alias dùng trong scope route
 
         db  = app.config["db"]
         nlu = app.config["nlu"]
 
         # ── Email flow: tiếp tục nếu đang trong luồng soạn email ──────────
+        flow_state = None
+        uid = None
+        _user = None
+        contacts = []
         if "email_flow" in session:
             flow_state = session["email_flow"]
             uid   = flow_state.get("user_id")
@@ -478,6 +701,16 @@ def register_routes(app):
             contacts = (_user["preferences"].get("contacts", [])
                         if _user else [])
 
+            # Intent guard (xem api_assistant_turn): cho phép thoát flow bằng intent khác.
+            if flow_state.get("step") in ("recipient", "subject", "body"):
+                _quick_nlu = nlu.parse(text)
+                _new_intent = _quick_nlu.get("intent", "unknown")
+                _email_safe = {"send_email", "unknown", "general_question"}
+                if _new_intent not in _email_safe:
+                    session.pop("email_flow", None)
+                    flow_state = None
+
+        if flow_state is not None and "email_flow" in session:
             resp, new_state, is_done = _ef.continue_flow(text, flow_state, contacts)
 
             _oauth_extras = {}
@@ -488,15 +721,16 @@ def register_routes(app):
                     "subject":         new_state["subject"],
                     "body":            new_state["body"],
                 }
-                resp = _send_email(ents, _user, db=db)
-                if resp.startswith(_OA):
-                    _auth_url, _, resp = resp[len(_OA):].partition('\n')
-                    resp = resp.strip()
+                _send_result = _send_email(ents, _user, db=db)
+                # Handler trả HandlerResult nếu cần OAuth, str nếu đã gửi xong
+                if isinstance(_send_result, _h_module.HandlerResult):
+                    resp = _send_result.text
                     session["email_flow"] = new_state   # giữ để retry sau khi auth
                     flow_active = True
-                    _oauth_extras = {"action_type": "oauth_required",
-                                     "action_data": {"auth_url": _auth_url.strip()}}
+                    _oauth_extras = {"action_type": _send_result.action_type,
+                                     "action_data": _send_result.action_data}
                 else:
+                    resp = _send_result
                     session.pop("email_flow", None)
                     flow_active = False
             elif new_state is None:
@@ -520,7 +754,7 @@ def register_routes(app):
                 "response":             resp,
                 "blocked":              False,
                 "flow_active":          flow_active,
-                "tts_url":              f"/api/tts?text={_q(resp)}",
+                "tts_url":              f"/api/tts?text={_quote(resp)}",
                 **_oauth_extras,
             }
             return jsonify(payload)
@@ -576,7 +810,7 @@ def register_routes(app):
                 "response":             question,
                 "blocked":              False,
                 "flow_active":          True,
-                "tts_url":              f"/api/tts?text={_q(question)}",
+                "tts_url":              f"/api/tts?text={_quote(question)}",
             }
             return jsonify(payload)
 
@@ -598,51 +832,14 @@ def register_routes(app):
             "response":             response,
             "blocked":              blocked,
             "flow_active":          False,
-            "tts_url":              f"/api/tts?text={_q(response)}",
+            "tts_url":              f"/api/tts?text={_quote(response)}",
         }
 
-        if intent == "play_music" and not blocked:
-            _prefs = user["preferences"] if user else {}
-            user_tracks: list = []
-            if uid:
-                music_dir = config.USER_FILES_DIR / uid / "music"
-                if music_dir.exists():
-                    user_tracks = [f.name for f in music_dir.iterdir()
-                                   if f.is_file() and f.suffix.lower() in AUDIO_EXTS]
-            if user_tracks:
-                session["file_uid"]  = uid
-                session["file_name"] = name
-                payload["action_type"] = "play_music"
-                payload["action_data"] = {
-                    "mode": "user_tracks", "user_id": uid,
-                    "tracks": sorted(user_tracks),
-                }
-            else:
-                genre  = entities.get("genre") or _prefs.get("favorite_genre", "") or "v-pop"
-                artist = _prefs.get("favorite_artist", "")
-                payload["action_type"] = "play_music"
-                payload["action_data"] = {
-                    "mode": "youtube", "artist": artist, "genre": genre, "uid": uid or "",
-                }
-
-        elif intent == "open_files" and not blocked:
-            user_dir = config.USER_FILES_DIR / uid
-            files = []
-            if user_dir.exists():
-                for _f in sorted(user_dir.iterdir()):
-                    if _f.is_file():
-                        files.append({
-                            "name": _f.name,
-                            "size": _f.stat().st_size,
-                            "modified": datetime.fromtimestamp(
-                                _f.stat().st_mtime).strftime("%d/%m/%Y %H:%M"),
-                        })
-            session["file_uid"]  = uid
-            session["file_name"] = name
-            payload["action_type"] = "show_files"
-            payload["action_data"] = {
-                "files": files, "user_name": name, "user_id": uid,
-            }
+        _prefs = user["preferences"] if user else {}
+        _attach_action_data(
+            payload, intent, blocked,
+            uid, name, entities, _prefs, auth_method="password",
+        )
 
         return jsonify(payload)
 
@@ -660,11 +857,9 @@ def register_routes(app):
         try:
             mp3 = app.config["tts"].synthesize_to_mp3_bytes(text)
         except Exception:
-            # Trả về silent MP3 thay vì 500 để frontend không bị lỗi
-            return send_file(
-                io.BytesIO(b"\xff\xe3\x18\xc4" + b"\x00" * 128),
-                mimetype="audio/mpeg", as_attachment=False
-            )
+            # gTTS lỗi (mất mạng, rate limit...). Trả về 204 No Content thay vì
+            # bytes giả "\xff\xe3..." (không phải MP3 hợp lệ, gây lỗi audio player).
+            return ("", 204)
         return send_file(io.BytesIO(mp3), mimetype="audio/mpeg",
                          as_attachment=False)
 
@@ -729,7 +924,7 @@ def register_routes(app):
         user = db.get_user(user_id)
         if not user:
             return jsonify({"error": "User không tồn tại"}), 404
-        track_id = (request.get_json() or {}).get("id")
+        track_id = (_json_body()).get("id")
         playlist = [t for t in user["preferences"].get("playlist", [])
                     if t["id"] != track_id]
         db.update_preferences(user_id, {**user["preferences"], "playlist": playlist})
@@ -756,22 +951,23 @@ def register_routes(app):
 
     @app.route("/api/music/user-tracks/<user_id>")
     def api_user_tracks_list(user_id):
-        if session.get("file_uid") != user_id:
-            return jsonify({"error": "Chưa xác thực"}), 403
+        if _get_authed_uid("any") != user_id:
+            return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         return jsonify({"tracks": _list_tracks(user_id)})
 
     @app.route("/api/music/user-tracks/<user_id>/upload", methods=["POST"])
+    @max_size(50)
     def api_user_tracks_upload(user_id):
-        if session.get("file_uid") != user_id:
-            return jsonify({"error": "Chưa xác thực"}), 403
+        if _get_authed_uid("any") != user_id:
+            return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         uploaded = []
         for key in request.files:
             f = request.files[key]
             if not f.filename:
                 continue
-            if Path(f.filename).suffix.lower() not in AUDIO_EXTS:
+            fname, is_audio = _safe_filename(f.filename, allowed_exts=AUDIO_EXTS)
+            if not is_audio:
                 continue
-            fname = _safe_filename(f.filename)
             f.save(_music_dir(user_id) / fname)
             uploaded.append(fname)
         if not uploaded:
@@ -782,8 +978,8 @@ def register_routes(app):
     @app.route("/api/music/user-tracks/<user_id>/delete/<path:filename>",
                methods=["POST"])
     def api_user_tracks_delete(user_id, filename):
-        if session.get("file_uid") != user_id:
-            return jsonify({"error": "Chưa xác thực"}), 403
+        if _get_authed_uid("any") != user_id:
+            return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         base = _music_dir(user_id).resolve()
         fpath = (base / filename).resolve()
         if not str(fpath).startswith(str(base)):
@@ -796,8 +992,8 @@ def register_routes(app):
     @app.route("/api/music/user-tracks/<user_id>/stream/<path:filename>")
     def api_user_tracks_stream(user_id, filename):
         """Stream audio file — yêu cầu file session hoặc query token."""
-        if session.get("file_uid") != user_id:
-            return jsonify({"error": "Chưa xác thực"}), 403
+        if _get_authed_uid("any") != user_id:
+            return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         base = _music_dir(user_id).resolve()
         fpath = (base / filename).resolve()
         if not str(fpath).startswith(str(base)) or not fpath.exists():
@@ -874,8 +1070,9 @@ def register_routes(app):
         """Extract YouTube audio stream URL via yt-dlp and redirect to it."""
         import yt_dlp
         video_id = request.args.get("v", "").strip()
-        if not video_id or not re.match(r'^[a-zA-Z0-9_-]{1,20}$', video_id):
-            return jsonify({"error": "Invalid video id"}), 400
+        # YouTube video ID luôn 11 ký tự — cố định độ dài chống injection
+        if not video_id or not re.match(r'^[a-zA-Z0-9_-]{11}$', video_id):
+            return jsonify({"error": "Video ID không hợp lệ"}), 400
         try:
             ydl_opts = _ydl_base_opts(
                 format="bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
@@ -895,7 +1092,7 @@ def register_routes(app):
             if not url:
                 url = info.get("url")
             if not url:
-                return jsonify({"error": "No audio stream found"}), 404
+                return jsonify({"error": "Không tìm thấy luồng audio"}), 404
             return redirect(url)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -908,6 +1105,7 @@ def register_routes(app):
         return render_template("files.html")
 
     @app.route("/api/files/verify", methods=["POST"])
+    @max_size(5)
     def api_files_verify():
         if "audio" not in request.files:
             return jsonify({"error": "Thiếu audio"}), 400
@@ -915,9 +1113,9 @@ def register_routes(app):
         try:
             aud = audio_io.decode_browser_audio(blob)
         except Exception as e:
-            return jsonify({"error": f"Decode fail: {e}"}), 400
-        aud = audio_io.SileroVAD.trim(aud)
-        if aud.size < config.SAMPLE_RATE // 2:
+            return jsonify({"error": f"Giải mã audio thất bại: {e}"}), 400
+        aud, has_speech = audio_io.SileroVAD.trim(aud, return_speech_detected=True)
+        if not has_speech or aud.size < int(config.SAMPLE_RATE * config.MIN_AUDIO_SEC_TURN):
             return jsonify({"error": "Audio quá ngắn / không có giọng nói"}), 400
         spk_mgr = app.config["spk_mgr"]
         uid, name, sid_score = spk_mgr.identify(aud)
@@ -930,15 +1128,14 @@ def register_routes(app):
             return jsonify({"ok": False,
                             "error": f"Xác thực thất bại (score={sv_score:.2f}). "
                                      "Giọng không khớp với dữ liệu đã đăng ký."}), 403
-        session["file_uid"] = uid
-        session["file_name"] = name
+        _set_file_session(uid, name, "voice")
         return jsonify({"ok": True, "user_id": uid, "user_name": name,
                         "sid_score": round(sid_score, 3),
                         "sv_score": round(sv_score, 3)})
 
     @app.route("/api/files/verify-password", methods=["POST"])
     def api_files_verify_password():
-        data = request.get_json() or {}
+        data = _json_body()
         user_id = data.get("user_id", "")
         password = data.get("password", "")
         db = app.config["db"]
@@ -947,8 +1144,7 @@ def register_routes(app):
             return jsonify({"error": "User không tồn tại"}), 404
         if not db.check_password(user_id, password):
             return jsonify({"error": "Sai mật khẩu"}), 403
-        session["file_uid"] = user_id
-        session["file_name"] = user.get("name", user_id)
+        _set_file_session(user_id, user.get("name", user_id), "password")
         return jsonify({"ok": True, "user_name": user.get("name", user_id)})
 
     @app.route("/api/users/<user_id>/unlock", methods=["POST"])
@@ -959,27 +1155,25 @@ def register_routes(app):
         user = db.get_user(user_id)
         if not user:
             return jsonify({"error": "User không tồn tại"}), 404
-        data = request.get_json() or {}
+        data = _json_body()
         password = data.get("password", "")
         if not db.check_password(user_id, password):
             return jsonify({"error": "Sai mật khẩu"}), 403
-        session["file_uid"]  = user_id
-        session["file_name"] = user["name"]
+        _set_file_session(user_id, user["name"], "password")
         result = dict(user)
         result["has_password"] = db.has_password(user_id)
         return jsonify({"ok": True, "user": result})
 
     @app.route("/api/files/logout", methods=["POST"])
     def api_files_logout():
-        session.pop("file_uid", None)
-        session.pop("file_name", None)
+        _clear_file_session()
         return jsonify({"ok": True})
 
     @app.route("/api/files/list")
     def api_files_list():
-        uid = session.get("file_uid")
+        uid = _get_authed_uid("any")
         if not uid:
-            return jsonify({"error": "Chưa xác thực"}), 403
+            return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         user_dir = config.USER_FILES_DIR / uid
         files = []
         if user_dir.exists():
@@ -996,29 +1190,41 @@ def register_routes(app):
                         "user_id": uid})
 
     @app.route("/api/files/upload", methods=["POST"])
+    @max_size(50)
     def api_files_upload():
-        uid = session.get("file_uid")
+        uid = _get_authed_uid("any")
         if not uid:
-            return jsonify({"error": "Chưa xác thực"}), 403
+            return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         uploaded = []
+        rejected = []
         for key in request.files:
             f = request.files[key]
             if not f.filename:
                 continue
-            fname = _safe_filename(f.filename)
+            # Cho phép file văn bản/ảnh/zip thông thường — chặn .exe/.bat/.html (SVG XSS, etc.)
+            fname, is_allowed = _safe_filename(f.filename, allowed_exts=DOC_EXTS)
+            if not is_allowed:
+                rejected.append(f.filename)
+                continue
             user_dir = config.USER_FILES_DIR / uid
             user_dir.mkdir(parents=True, exist_ok=True)
             f.save(user_dir / fname)
             uploaded.append(fname)
         if not uploaded:
-            return jsonify({"error": "Không có file hợp lệ"}), 400
-        return jsonify({"ok": True, "uploaded": uploaded})
+            msg = "Không có file hợp lệ"
+            if rejected:
+                msg += f" (định dạng không hỗ trợ: {', '.join(rejected[:3])})"
+            return jsonify({"error": msg}), 400
+        resp = {"ok": True, "uploaded": uploaded}
+        if rejected:
+            resp["rejected"] = rejected
+        return jsonify(resp)
 
     @app.route("/api/files/download/<path:filename>")
     def api_files_download(filename):
-        uid = session.get("file_uid")
+        uid = _get_authed_uid("any")
         if not uid:
-            return jsonify({"error": "Chưa xác thực"}), 403
+            return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         base = (config.USER_FILES_DIR / uid).resolve()
         fpath = (base / filename).resolve()
         if not str(fpath).startswith(str(base)):
@@ -1029,9 +1235,9 @@ def register_routes(app):
 
     @app.route("/api/files/delete/<path:filename>", methods=["POST"])
     def api_files_delete(filename):
-        uid = session.get("file_uid")
+        uid = _get_authed_uid("any")
         if not uid:
-            return jsonify({"error": "Chưa xác thực"}), 403
+            return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         base = (config.USER_FILES_DIR / uid).resolve()
         fpath = (base / filename).resolve()
         if not str(fpath).startswith(str(base)):
@@ -1043,9 +1249,12 @@ def register_routes(app):
 
     # ----- Admin -----
     @app.route("/api/admin/verify", methods=["POST"])
+    @max_size(0.01)
     def api_admin_verify():
-        data = request.get_json() or {}
-        if not config.ADMIN_PASS or data.get("password") != config.ADMIN_PASS:
+        data = _json_body()
+        supplied = data.get("password", "")
+        if (not config.ADMIN_PASS or
+                not hmac.compare_digest(str(supplied), config.ADMIN_PASS)):
             return jsonify({"error": "Sai mật khẩu quản trị"}), 403
         users = app.config["db"].list_users()
         return jsonify({
@@ -1068,14 +1277,27 @@ def register_routes(app):
     def auth_google():
         """Redirect user đến Google consent screen.
 
-        Query param: user_id (bắt buộc) — dùng làm OAuth state để bind
-        authorization code về đúng speaker profile.
+        Query param: user_id (bắt buộc) — bind authorization code về đúng speaker profile.
+        State được generate ngẫu nhiên + lưu vào session để chống CSRF
+        (kẻ tấn công không thể gọi /auth/google?user_id=victim trên máy họ
+        rồi callback gắn Gmail attacker vào profile victim).
         """
         user_id = request.args.get("user_id", "").strip()
         if not user_id:
             return "Thiếu user_id", 400
+        # Random nonce làm OAuth state, lưu cùng pending user_id vào session.
+        # PKCE: gửi code_challenge qua URL, giữ code_verifier server-side. Khi
+        # callback exchange code → server gửi verifier kèm → Google verify
+        # SHA256(verifier) == challenge. Attacker intercept code không có verifier
+        # → không đổi được token.
+        nonce = secrets.token_urlsafe(24)
+        verifier, challenge = gen_pkce_pair()
+        session["oauth_nonce"]         = nonce
+        session["oauth_pending_uid"]   = user_id
+        session["oauth_code_verifier"] = verifier
+        session.permanent = True
         try:
-            url = build_auth_url(state=user_id)
+            url = build_auth_url(state=nonce, code_challenge=challenge)
         except RuntimeError as e:
             return str(e), 500
         return redirect(url)
@@ -1085,15 +1307,26 @@ def register_routes(app):
         """Google redirect về đây với code + state sau khi user đồng ý.
 
         Flow:
-          1. Trao đổi code lấy access_token + refresh_token
-          2. Lấy Gmail address của user
-          3. Lưu token vào DB (oauth_tokens table)
-          4. Cập nhật user preferences với Gmail address
-          5. Trả về trang thành công (user có thể đóng tab)
+          1. Validate state khớp với nonce trong session (CSRF check)
+          2. Trao đổi code lấy access_token + refresh_token
+          3. Lấy Gmail address của user
+          4. Lưu token vào DB (oauth_tokens table)
+          5. Cập nhật user preferences với Gmail address
+          6. Trả về trang thành công (user có thể đóng tab)
         """
-        error   = request.args.get("error")
-        code    = request.args.get("code")
-        user_id = request.args.get("state")
+        error          = request.args.get("error")
+        code           = request.args.get("code")
+        received_state = request.args.get("state", "")
+
+        # Lấy nonce + user_id + verifier từ session (đã set trong auth_google)
+        expected_nonce = session.pop("oauth_nonce", None)
+        user_id        = session.pop("oauth_pending_uid", None)
+        code_verifier  = session.pop("oauth_code_verifier", None)
+
+        # CSRF check: state phải khớp với nonce server-side
+        if (expected_nonce is None or
+                not hmac.compare_digest(str(received_state), str(expected_nonce))):
+            return "<h3>State không hợp lệ (CSRF detected hoặc session expired)</h3>", 400
 
         # Lỗi từ Google (vd: user từ chối, redirect_uri_mismatch)
         if error:
@@ -1121,7 +1354,7 @@ def register_routes(app):
             return f"<h3>Không tìm thấy user '{user_id}'</h3>", 404
 
         try:
-            tokens     = exchange_code(code)
+            tokens     = exchange_code(code, code_verifier=code_verifier)
             gmail_addr = get_user_email(tokens["access_token"])
             tokens["gmail_address"] = gmail_addr
             _db.save_oauth_token(user_id, tokens)
@@ -1174,9 +1407,19 @@ def register_routes(app):
             "gmail":         tok["gmail_address"] if tok else "",
         })
 
-    @app.route("/api/oauth/debug/<user_id>")
+    @app.route("/api/oauth/debug/<user_id>", methods=["POST"])
+    @max_size(0.01)
     def api_oauth_debug(user_id):
-        """Kiểm tra token có scope gmail.send không — chỉ dùng khi debug."""
+        """Kiểm tra token có scope gmail.send không — chỉ admin xem được.
+
+        Endpoint cũ GET public sẽ leak tokeninfo. Yêu cầu admin password trong
+        body JSON {password} để dùng.
+        """
+        data = _json_body()
+        supplied = data.get("password", "")
+        if (not config.ADMIN_PASS
+                or not hmac.compare_digest(str(supplied), config.ADMIN_PASS)):
+            return jsonify({"error": "Yêu cầu mật khẩu quản trị"}), 403
         _db = app.config["db"]
         tok = _db.get_oauth_token(user_id)
         if not tok:
@@ -1192,14 +1435,14 @@ def register_routes(app):
         """Thu hồi token và xóa khỏi DB — user đăng xuất Gmail."""
         _db = app.config["db"]
         tok = _db.get_oauth_token(user_id)
-        if tok:
-            from core.oauth import revoke_token
-            try:
-                revoke_token(tok.get("access_token", ""))
-            except Exception:
-                pass
-            _db.delete_oauth_token(user_id)
-        return jsonify({"ok": True})
+        if not tok:
+            return jsonify({"ok": True, "note": "Không có token để revoke"})
+        from core.oauth import revoke_token
+        google_ok = revoke_token(tok.get("access_token", ""))
+        # Luôn xóa token local kể cả khi Google revoke fail (network down...) — quyết
+        # định an toàn: ưu tiên không giữ token chưa thu hồi trên máy. Báo cho client biết.
+        _db.delete_oauth_token(user_id)
+        return jsonify({"ok": True, "google_revoked": google_ok})
 
     # ----- Misc -----
     @app.route("/api/health")
@@ -1232,12 +1475,14 @@ if __name__ == "__main__":
         key_path  = Path(__file__).parent / "key.pem"
         if cert_path.exists() and key_path.exists():
             ssl_context = (str(cert_path), str(key_path))
-            print(f"✓ HTTPS enabled (persistent cert) — truy cập qua https://<IP>:{args.port}")
+            _log.info("✓ HTTPS enabled (persistent cert) — truy cập qua https://<IP>:%s", args.port)
         else:
-            print("⚠ Chưa có cert.pem / key.pem — dùng adhoc (cert thay đổi mỗi lần restart)")
-            print("  Tạo cert cố định: python web/gen_cert.py")
+            _log.warning("⚠ Chưa có cert.pem / key.pem — dùng adhoc (cert thay đổi mỗi lần restart)")
+            _log.warning("  Tạo cert cố định: python web/gen_cert.py")
             ssl_context = "adhoc"
 
-    # threaded=False vì model torch không thread-safe theo default
+    # threaded=True: I/O routes (static, /api/health, file upload/download) chạy
+    # song song. Các model torch (ASR/encoder/VAD) đã có threading.Lock riêng để
+    # serialize forward pass, tránh race condition khi nhiều request đến cùng lúc.
     app.run(host="0.0.0.0", port=args.port, debug=False,
-            threaded=False, ssl_context=ssl_context)
+            threaded=True, ssl_context=ssl_context)

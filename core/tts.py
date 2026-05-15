@@ -1,8 +1,11 @@
 """TTS module với gTTS — đơn giản, online, hỗ trợ tiếng Việt."""
 import io
+import logging
 import os
 import tempfile
 from pathlib import Path
+
+_log = logging.getLogger("secva.tts")
 
 # Thêm ffmpeg vào PATH TRƯỚC khi import pydub (pydub check PATH lúc import)
 _FFMPEG_BIN_HINTS = [
@@ -65,15 +68,15 @@ class TTS:
         try:
             import sounddevice as _sd
         except (ImportError, OSError):
-            print(f"  [TTS skipped — no audio device] {text}")
+            _log.info("[TTS skipped — no audio device] %s", text)
             return
-        print(f"  🔊 Speaking: {text}")
+        _log.info("🔊 Speaking: %s", text)
         try:
             audio = self.synthesize(text)
             _sd.play(audio, config.SAMPLE_RATE)
             _sd.wait()
         except Exception as e:
-            print(f"  [TTS error: {e}] Falling back to text-only")
+            _log.warning("TTS error: %s — fall back to text-only", e)
 
 
 _tts_instance = None

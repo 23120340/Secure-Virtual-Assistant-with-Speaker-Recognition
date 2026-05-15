@@ -8,11 +8,14 @@ Chiến lược:
     {"intent": "<intent_name>", "entities": {"key": "value", ...}}
 """
 import json
+import logging
 import re
 from typing import Dict, Any
 
 from . import config
 from .intents import INTENTS
+
+_log = logging.getLogger("secva.nlu")
 
 
 # ==========================================================================
@@ -50,6 +53,9 @@ def _build_system_prompt() -> str:
 # Gemini-based NLU
 # ==========================================================================
 class GeminiNLU:
+    # Class-level fallback singleton — không tạo RuleBasedNLU mới mỗi lần Gemini fail.
+    _fallback: "RuleBasedNLU | None" = None
+
     def __init__(self, api_key: str = config.GEMINI_API_KEY,
                  model_name: str = config.GEMINI_MODEL):
         from google import genai
@@ -72,16 +78,20 @@ class GeminiNLU:
             )
             data = json.loads(resp.text)
         except Exception as e:
-            print(f"  [NLU error: {e}] → fallback rule-based")
-            return RuleBasedNLU().parse(text)
+            _log.warning("NLU error: %s → fallback rule-based", e)
+            if GeminiNLU._fallback is None:
+                GeminiNLU._fallback = RuleBasedNLU()
+            return GeminiNLU._fallback.parse(text)
 
         intent = data.get("intent", "unknown")
         if intent not in INTENTS:
             intent = "unknown"
-        return {
-            "intent": intent,
-            "entities": data.get("entities", {}) or {},
-        }
+        # Sanitize entities: chỉ giữ key được khai báo trong INTENTS[intent]["entities"]
+        # (prompt injection defense — Gemini có thể bị lừa trả entities lạ).
+        allowed = set(INTENTS[intent].get("entities", []) or [])
+        raw_entities = data.get("entities", {}) or {}
+        entities = {k: v for k, v in raw_entities.items() if k in allowed}
+        return {"intent": intent, "entities": entities}
 
 
 # ==========================================================================
@@ -138,19 +148,25 @@ def get_chat() -> "GeminiChat | None":
 class RuleBasedNLU:
     """Pattern matching đơn giản. Match keyword trong câu input."""
 
+    # First-match-wins: cụ thể đặt trước generic.
+    # "xóa" raw quá broad — "xóa file" phải match open_files, không phải delete_data.
     KEYWORD_MAP = [
-        # (intent, keyword list — match nếu có 1 trong các keyword)
         ("get_time", ["mấy giờ", "giờ rồi", "giờ hiện tại"]),
-        ("get_weather", ["thời tiết", "trời", "mưa", "nắng"]),
+        ("get_weather", ["thời tiết", "mưa", "nắng"]),
         ("tell_joke", ["chuyện cười", "kể cười", "câu cười"]),
-        ("read_notes", ["đọc ghi chú", "mở nhật ký", "đọc nhật ký"]),
-        ("send_email", ["gửi email", "gửi mail", "soạn mail"]),
-        ("check_balance", ["số dư", "bao nhiêu tiền", "tài khoản"]),
-        ("delete_data", ["xóa", "xoá"]),
-        ("open_files", ["mở file", "xem file", "file của tôi", "danh sách file"]),
+        ("read_notes", ["đọc ghi chú", "mở nhật ký", "đọc nhật ký", "ghi chú của tôi"]),
+        ("send_email", ["gửi email", "gửi mail", "soạn mail", "viết mail", "viết email"]),
+        ("check_balance", ["số dư", "bao nhiêu tiền", "kiểm tra tài khoản"]),
+        # open_files đặt TRƯỚC delete_data: "xóa file" phải match open_files (giả định
+        # user muốn vào panel files để xóa, không phải xóa preferences/notes).
+        ("open_files", ["mở file", "xem file", "file của tôi", "danh sách file",
+                        "xóa file", "xoá file"]),
+        ("delete_data", ["xóa ghi chú", "xoá ghi chú", "xóa lịch", "xoá lịch",
+                         "xóa dữ liệu", "xoá dữ liệu", "xóa thông tin", "xoá thông tin",
+                         "xóa tất cả", "xoá tất cả"]),
         ("greet", ["xin chào", "chào bạn", "hello", "hi"]),
         ("play_music", ["mở nhạc", "phát nhạc", "bật nhạc", "nghe nhạc"]),
-        ("show_schedule", ["lịch", "việc gì", "nhắc việc"]),
+        ("show_schedule", ["lịch hôm nay", "lịch của tôi", "việc gì", "nhắc việc"]),
     ]
 
     def parse(self, text: str) -> Dict[str, Any]:
@@ -167,9 +183,22 @@ class RuleBasedNLU:
             if m:
                 return {"location": m.group(1).strip()}
         if intent == "play_music":
-            for genre in ["rock", "pop", "ballad", "edm", "jazz", "rap"]:
+            for genre in ["rock", "pop", "ballad", "edm", "jazz", "rap", "v-pop", "vpop"]:
                 if genre in text:
                     return {"genre": genre}
+        if intent == "send_email":
+            # "gửi email cho anh Tuấn" / "soạn mail tới lan@gmail.com"
+            m = re.search(r"(?:cho|tới|đến|gửi)\s+([^.,!?\n]+?)(?:\s+về|\s+với|\s+nội dung|$)",
+                          text)
+            if m:
+                recipient = m.group(1).strip()
+                if "@" in recipient:
+                    return {"recipient_email": recipient}
+                return {"recipient": recipient}
+        if intent == "delete_data":
+            for target in ("ghi chú", "ghi chu", "lịch", "lich", "tất cả", "tat ca"):
+                if target in text:
+                    return {"target": target}
         return {}
 
 
@@ -183,9 +212,9 @@ def get_nlu():
     global _nlu_instance
     if _nlu_instance is None:
         if config.GEMINI_API_KEY:
-            print("  Loading Gemini NLU...")
+            _log.info("Loading Gemini NLU...")
             _nlu_instance = GeminiNLU()
         else:
-            print("  GEMINI_API_KEY chưa set → dùng rule-based NLU")
+            _log.info("GEMINI_API_KEY chưa set → dùng rule-based NLU")
             _nlu_instance = RuleBasedNLU()
     return _nlu_instance

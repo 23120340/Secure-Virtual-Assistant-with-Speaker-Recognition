@@ -106,7 +106,7 @@ async function startVerify() {
   _vPendingStop = false;
   $vStatus.textContent = "Đang yêu cầu mic...";
   try {
-    _vStream = await navigator.mediaDevices.getUserMedia({audio: true});
+    _vStream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false, sampleRate:16000, channelCount:1}});
     if (_vPendingStop) {
       _vStream.getTracks().forEach(t => t.stop());
       _vStarting = false; _vPendingStop = false;

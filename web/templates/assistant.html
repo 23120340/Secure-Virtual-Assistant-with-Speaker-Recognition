@@ -298,7 +298,7 @@ async function startRec() {
   if (_starting) return;
   _starting = true; _pendingStop = false;
   try {
-    _stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    _stream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false, sampleRate:16000, channelCount:1}});
     if (_pendingStop) {
       _stream.getTracks().forEach(t=>t.stop());
       _starting = false; _pendingStop = false;
@@ -340,8 +340,28 @@ $btn.addEventListener("touchstart", e=>{ e.preventDefault(); startRec(); });
 $btn.addEventListener("touchend",   e=>{ e.preventDefault(); stopRec(); });
 
 let spaceDown = false;
+const _IGNORE_SPACE_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT", "BUTTON"]);
+
+let _autoplayBlocked = false;
+function _playTts() {
+  // Browser block autoplay nếu user chưa tương tác → catch + báo user click bất kỳ
+  // đâu để mở khoá. Chỉ hiển thị 1 lần.
+  const p = $tts.play();
+  if (!p || !p.catch) return;
+  p.catch(() => {
+    if (_autoplayBlocked) return;
+    _autoplayBlocked = true;
+    try { showToast("Bấm bất kỳ đâu để bật âm thanh", false); } catch (_) {}
+    document.addEventListener("click", () => {
+      _autoplayBlocked = false;
+      $tts.play().catch(() => {});
+    }, { once: true });
+  });
+}
 window.addEventListener("keydown", e=>{
-  if (e.code==="Space" && !spaceDown && document.activeElement.tagName!=="INPUT") {
+  if (e.code==="Space" && !spaceDown
+      && !_IGNORE_SPACE_TAGS.has(document.activeElement?.tagName)
+      && !document.activeElement?.isContentEditable) {
     e.preventDefault(); spaceDown=true; startRec();
   }
 });
@@ -371,7 +391,7 @@ async function sendAudio(blob) {
 
     if (data.tts_url) {
       $tts.src = data.tts_url;
-      $tts.play().catch(()=>{});
+      _playTts();
     }
 
     document.getElementById("flow-indicator")
@@ -400,8 +420,8 @@ function addMeta(r) {
   const sv = r.sv_required
     ? ` · SV ${r.sv_passed?"✓":"✗"}(${r.sv_score?.toFixed(2)})`
     : "";
-  m.innerHTML = `<span class="bg-slate-100 rounded px-1">${r.intent}</span>
-    [${r.auth_level}] · 👤 <b>${r.identified_user_name}</b>(${r.sid_score.toFixed(2)})${sv}
+  m.innerHTML = `<span class="bg-slate-100 rounded px-1">${esc(r.intent)}</span>
+    [${esc(r.auth_level)}] · 👤 <b>${esc(r.identified_user_name)}</b>(${r.sid_score.toFixed(2)})${sv}
     ${r.blocked?"<span class='text-rose-500 font-bold'>⛔</span>":""}`;
   $chat.appendChild(m);
 }
@@ -480,6 +500,13 @@ function handleTurnAction(data) {
 // ════════════════════════════════════════════════════════════
 let _oauthUserId = null;
 let _oauthTimer  = null;
+let _oauthAttempts = 0;
+const _OAUTH_MAX_ATTEMPTS = 60; // 60 * 2s = 2 phút
+
+function _stopOAuthPolling() {
+  if (_oauthTimer) { clearInterval(_oauthTimer); _oauthTimer = null; }
+  _oauthAttempts = 0;
+}
 
 function showOAuthModal(authUrl, userId) {
   _oauthUserId = userId;
@@ -491,10 +518,19 @@ function showOAuthModal(authUrl, userId) {
 }
 
 function startOAuthPolling() {
-  if (_oauthTimer) clearInterval(_oauthTimer);
+  _stopOAuthPolling();
   const $status = document.getElementById("oauth-poll-status");
   $status.textContent = "⏳ Đang chờ xác thực…";
-  _oauthTimer = setInterval(_checkOAuthDone, 2000);
+  _oauthAttempts = 0;
+  _oauthTimer = setInterval(() => {
+    _oauthAttempts++;
+    if (_oauthAttempts > _OAUTH_MAX_ATTEMPTS) {
+      _stopOAuthPolling();
+      $status.textContent = "⏰ Hết thời gian chờ. Đóng cửa sổ rồi thử lại.";
+      return;
+    }
+    _checkOAuthDone();
+  }, 2000);
 }
 
 async function _checkOAuthDone() {
@@ -507,14 +543,15 @@ async function _checkOAuthDone() {
 }
 
 function _onOAuthSuccess(gmail) {
-  if (_oauthTimer) { clearInterval(_oauthTimer); _oauthTimer = null; }
+  _stopOAuthPolling();
   const $status = document.getElementById("oauth-poll-status");
   $status.textContent = `✅ Đã xác thực: ${gmail}`;
   setTimeout(() => {
     document.getElementById("oauth-modal").classList.add("hidden");
     addMsg("bot", `✅ Gmail đã xác thực (${gmail}). Nói "có" để gửi email.`);
     $tts.src = `/api/tts?text=${encodeURIComponent("Xác thực Gmail thành công. Nói có để gửi email.")}`;
-    $tts.play().catch(() => {});
+    _playTts();
+    _oauthUserId = null;
   }, 1200);
 }
 
@@ -529,7 +566,8 @@ window.addEventListener("message", e => {
 });
 
 document.getElementById("oauth-cancel-btn").addEventListener("click", () => {
-  if (_oauthTimer) { clearInterval(_oauthTimer); _oauthTimer = null; }
+  _stopOAuthPolling();
+  _oauthUserId = null;
   document.getElementById("oauth-modal").classList.add("hidden");
   addMsg("bot", "Đã hủy. Email đã soạn vẫn còn — nói \"có\" để thử lại sau khi đăng nhập.");
 });
@@ -724,7 +762,7 @@ function makeTrackCard(t, idx, src) {
   card.dataset.queueSrc = src==="playlist"?0:1;
 
   const coverHtml = t.cover
-    ? `<img src="${t.cover}" class="w-8 h-8 rounded object-cover flex-shrink-0">`
+    ? `<img src="${esc(t.cover)}" class="w-8 h-8 rounded object-cover flex-shrink-0">`
     : `<div class="w-8 h-8 rounded bg-slate-200 flex-shrink-0 text-center leading-8 text-slate-400">♪</div>`;
 
   const addBtn  = src==="result" && _musicUserId
@@ -802,7 +840,7 @@ async function startFv() {
   if (_fvStarting) return;
   _fvStarting=true; _fvPending=false;
   try {
-    _fvStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    _fvStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:false, sampleRate:16000, channelCount:1}});
     if (_fvPending) {
       _fvStream.getTracks().forEach(t=>t.stop());
       _fvStarting=false; _fvPending=false;
@@ -861,13 +899,13 @@ function renderFileList(files) {
       <span class="text-base">${fileIcon(f.name)}</span>
       <div class="flex-1 min-w-0">
         <div class="font-medium truncate">${esc(f.name)}</div>
-        <div class="text-slate-400">${fmtSz(f.size)} · ${f.modified}</div>
+        <div class="text-slate-400">${fmtSz(f.size)} · ${esc(f.modified)}</div>
       </div>
-      <button onclick="downloadFile('/api/files/download/${encodeURIComponent(f.name)}','${esc(f.name)}')"
-              class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇</button>
-      <button data-name="${esc(f.name)}"
-              class="btn-fdel px-2 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100">🗑</button>
+      <button class="btn-fdown px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">⬇</button>
+      <button class="btn-fdel px-2 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100">🗑</button>
     `;
+    row.querySelector(".btn-fdown").onclick = () => downloadFile(
+      `/api/files/download/${encodeURIComponent(f.name)}`, f.name);
     row.querySelector(".btn-fdel").onclick = () => deleteFile(f.name);
     $list.appendChild(row);
   });
@@ -939,7 +977,8 @@ function fmtSz(b) {
 
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
-                  .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+                  .replace(/>/g,"&gt;").replace(/"/g,"&quot;")
+                  .replace(/'/g,"&#39;");
 }
 async function downloadFile(url, filename) {
   try {
@@ -1016,7 +1055,7 @@ function showToast(msg, isErr=false) {
       addMsg("user", "[Văn bản] " + data.transcript);
       addMeta(data);
       addMsg("bot", data.response);
-      if (data.tts_url) { $tts.src = data.tts_url; $tts.play().catch(() => {}); }
+      if (data.tts_url) { $tts.src = data.tts_url; _playTts(); }
 
       if (data.sv_required && data.blocked && data.identified_user_id) {
         $pwRow.classList.remove("hidden");

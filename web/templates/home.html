@@ -756,6 +756,7 @@
 
 {# Embed users data for JS (tránh Jinja inline trong JS) #}
 <script id="users-json-data" type="application/json">{{ users | tojson }}</script>
+<script id="enroll-config-data" type="application/json">{"numSamples": {{ num_samples }}, "durationSec": {{ duration }}}</script>
 
 {# ─────────────────────────────────────────────────────────
    JAVASCRIPT
@@ -955,7 +956,7 @@ async function startRec() {
   if (_starting) return;
   _starting = true; _pendingStop = false;
   try {
-    _stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    _stream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false, sampleRate:16000, channelCount:1}});
     if (_pendingStop) {
       _stream.getTracks().forEach(t => t.stop());
       _starting = false; _pendingStop = false;
@@ -995,7 +996,8 @@ $pttBtn.addEventListener("touchend",   e => { e.preventDefault(); stopRec(); });
 let _spaceDown = false;
 window.addEventListener("keydown", e => {
   const tag = document.activeElement.tagName;
-  if (e.code === "Space" && !_spaceDown && tag !== "INPUT" && tag !== "TEXTAREA") {
+  if (e.code === "Space" && !_spaceDown && tag !== "INPUT" && tag !== "TEXTAREA"
+      && tag !== "SELECT" && tag !== "BUTTON" && !document.activeElement?.isContentEditable) {
     e.preventDefault(); _spaceDown = true; startRec();
   }
 });
@@ -1572,7 +1574,7 @@ async function startFv() {
   if (_fvStarting) return;
   _fvStarting = true; _fvPending = false;
   try {
-    _fvStream = await navigator.mediaDevices.getUserMedia({audio: true});
+    _fvStream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false, sampleRate:16000, channelCount:1}});
     if (_fvPending) {
       _fvStream.getTracks().forEach(t => t.stop());
       _fvStarting = false; _fvPending = false;
@@ -1694,8 +1696,9 @@ function resetFilesPanel() {
 // ════════════════════════════════════════════════════════════
 // ENROLLMENT
 // ════════════════════════════════════════════════════════════
-const NUM_SAMPLES = {{ num_samples }};
-const DURATION_MS = {{ duration }} * 1000;
+const _enrollCfg = JSON.parse(document.getElementById("enroll-config-data").textContent || "{}");
+const NUM_SAMPLES = _enrollCfg.numSamples || 5;
+const DURATION_MS = (_enrollCfg.durationSec || 4) * 1000;
 const PROMPTS = [
   "Trợ lý ơi, hôm nay thời tiết thế nào?",
   "Phát một bản nhạc tôi yêu thích đi.",
@@ -1744,7 +1747,7 @@ function enrollRenderSamples() {
 async function enrollStartRecording() {
   if (enrollSamples.length >= NUM_SAMPLES) { $eStatus.textContent = "Đã đủ số mẫu yêu cầu."; return; }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    const stream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false, sampleRate:16000, channelCount:1}});
     enrollMR = new MediaRecorder(stream); enrollChunks = [];
     enrollMR.ondataavailable = e => { if (e.data.size > 0) enrollChunks.push(e.data); };
     enrollMR.onstop = () => {

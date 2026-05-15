@@ -7,6 +7,7 @@ Flow chính:
         └─ PERSONAL  → handler chạy với user info để cá nhân hóa
                        (nếu guest thì handler tự xử lý)
 """
+import logging
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import quote
@@ -15,6 +16,8 @@ import numpy as np
 from . import handlers
 from .intents import INTENTS, AuthLevel
 from .database import SpeakerManager
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -32,7 +35,9 @@ class TurnResult:
     sv_score: Optional[float]
     response: str
     blocked: bool                # True nếu SV fail
-    action_url: Optional[str] = None  # URL browser tự mở (vd: YouTube search)
+    # Optional action signal từ handler (vd: send_email cần OAuth)
+    action_type: Optional[str] = None
+    action_data: Optional[dict] = None
 
 
 class Router:
@@ -54,8 +59,11 @@ class Router:
         spec = INTENTS.get(intent, INTENTS["unknown"])
         level = spec["level"]
 
-        # ----- Bước 1: SID (luôn chạy để biết ai đang nói) -----
-        uid, name, sid_score = self.spk.identify(audio)
+        # ----- Bước 1: SID với margin check -----
+        # Margin = Top1 − Top2. Margin nhỏ → 2 user có giọng tương tự → ambiguous.
+        # Với IMPORTANT, ambiguous → block để chống mạo danh nhẹ (kẻ giả đủ tốt vượt
+        # threshold nhưng vẫn cạnh tranh với user thật khác).
+        uid, name, sid_score, margin = self.spk.identify_with_margin(audio)
         user = self.spk.db.get_user(uid) if uid else None
 
         # ----- Bước 2: gate theo auth level -----
@@ -68,8 +76,12 @@ class Router:
         if sv_required:
             # Important intent: phải verify
             if uid is None:
-                response = ("Đây là tác vụ quan trọng. Mình không nhận ra "
-                            "giọng bạn nên không thể thực hiện. Vui lòng đăng ký trước.")
+                if name == "Ambiguous":
+                    response = ("Mình nghe giọng bạn giống vài người trong hệ thống. "
+                                "Không thể chắc là ai để thực hiện tác vụ quan trọng này.")
+                else:
+                    response = ("Đây là tác vụ quan trọng. Mình không nhận ra "
+                                "giọng bạn nên không thể thực hiện. Vui lòng đăng ký trước.")
                 blocked = True
             else:
                 sv_passed, sv_score = self.spk.verify(audio, uid)
@@ -79,13 +91,25 @@ class Router:
                     blocked = True
 
         # ----- Bước 3: dispatch handler nếu chưa bị block -----
-        action_url = None
+        action_type = None
+        action_data = None
         if not blocked:
             handler = handlers.HANDLERS.get(intent, handlers.handle_unknown)
             ctx = extra_context or {}
-            response = handler(entities, user, **ctx)
-
-            # action_url không dùng nữa — xử lý ở app.py qua action_type/action_data
+            try:
+                raw = handler(entities, user, **ctx)
+            except Exception:
+                _log.exception("Handler %s failed (entities=%s)", intent, entities)
+                response = "Đã có lỗi khi xử lý lệnh này. Bạn thử lại sau nhé."
+                blocked = True
+            else:
+                # Handler có thể trả str (backward compat) hoặc HandlerResult
+                if isinstance(raw, handlers.HandlerResult):
+                    response    = raw.text
+                    action_type = raw.action_type
+                    action_data = raw.action_data
+                else:
+                    response = raw
 
         return TurnResult(
             transcript=transcript,
@@ -100,5 +124,6 @@ class Router:
             sv_score=sv_score,
             response=response,
             blocked=blocked,
-            action_url=action_url,
+            action_type=action_type,
+            action_data=action_data,
         )
