@@ -56,12 +56,50 @@ def decode_browser_audio(blob: bytes,
 
 def save_wav(audio: np.ndarray, path: Path,
              sample_rate: int = config.SAMPLE_RATE):
-    sf.write(str(path), audio, sample_rate)
+    """Lưu audio sang WAV. Khi `config.ENCRYPT_BIOMETRIC_WAV=true`, ghi
+    `<path>.enc` (Fernet ciphertext) thay vì plaintext WAV — bảo vệ mẫu giọng
+    người dùng ở filesystem (DB leak / backup leak không lộ audio gốc).
+
+    Cả `path.wav` và `path.wav.enc` đều được caller truyền dưới dạng `path`
+    với extension .wav. Wrapper thêm `.enc` khi encrypt mode bật.
+    """
+    if not config.ENCRYPT_BIOMETRIC_WAV:
+        sf.write(str(path), audio, sample_rate)
+        return
+    # Encrypt mode: encode → bytes → fernet → ghi .enc
+    buf = io.BytesIO()
+    sf.write(buf, audio, sample_rate, format="WAV", subtype="PCM_16")
+    buf.seek(0)
+    from .database import _encrypt
+    ciphertext = _encrypt(buf.read().decode("latin-1"))  # binary → latin-1 → str
+    enc_path = Path(str(path) + ".enc")
+    enc_path.write_text(ciphertext, encoding="ascii")
+    # Xoá plaintext nếu trùng tên — tránh inconsistency.
+    plain_path = Path(path)
+    if plain_path.exists() and plain_path != enc_path:
+        try:
+            plain_path.unlink()
+        except OSError:
+            pass
 
 
 def load_wav(path: Path, sample_rate: int = config.SAMPLE_RATE) -> np.ndarray:
-    """Load wav, resample về sample_rate, mono float32."""
-    audio, sr = sf.read(str(path), dtype="float32")
+    """Load wav, resample về sample_rate, mono float32.
+
+    Tự detect encrypted (.enc) — ưu tiên file `.enc` nếu tồn tại,
+    fallback `.wav` plaintext (backward compat với data cũ).
+    """
+    plain_path = Path(path)
+    enc_path = Path(str(path) + ".enc")
+    if enc_path.exists():
+        from .database import _decrypt
+        ciphertext = enc_path.read_text(encoding="ascii")
+        wav_bytes = _decrypt(ciphertext).encode("latin-1")
+        audio, sr = sf.read(io.BytesIO(wav_bytes), dtype="float32")
+    elif plain_path.exists():
+        audio, sr = sf.read(str(plain_path), dtype="float32")
+    else:
+        raise FileNotFoundError(f"Không tìm thấy {plain_path} (cũng đã thử {enc_path})")
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     if sr != sample_rate:

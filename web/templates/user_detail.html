@@ -12,6 +12,19 @@
   <a href="{{ url_for('home') }}" class="text-sm text-slate-600 hover:underline">← Quay lại</a>
 </div>
 
+{% if user.revoke_pending %}
+<div class="mb-4 p-4 rounded-lg border border-rose-300 bg-rose-50 text-rose-900 text-sm flex items-start gap-3">
+  <div class="text-xl">⚠</div>
+  <div class="flex-1">
+    <strong class="block mb-1">Vector giọng nói đã bị thu hồi</strong>
+    <p class="mb-1">
+      Admin đã thu hồi giọng nói của bạn. Các tác vụ <strong>IMPORTANT</strong> (đọc ghi chú, gửi email, …) bị khóa tới khi bạn đăng ký lại giọng.
+    </p>
+    <p class="text-xs">Cuộn xuống mục <em>"Quản lý giọng nói"</em>, nhập mật khẩu hiện tại và thu ít nhất 2 mẫu giọng mới rồi bấm <em>"Đăng ký lại"</em>.</p>
+  </div>
+</div>
+{% endif %}
+
 <div class="bg-white border rounded-lg p-6 space-y-5">
 
   <!-- Password unlock -->
@@ -100,6 +113,63 @@
       </button>
       <span id="oauth-msg" class="text-xs text-slate-400"></span>
     </div>
+  </div>
+
+  <!-- Đổi mật khẩu (self-service: old + new + confirm) -->
+  <div class="pt-4 border-t">
+    <h2 class="font-semibold mb-2">🔑 Đổi mật khẩu</h2>
+    <p class="text-xs text-slate-400 mb-3">
+      Cần mật khẩu cũ + mật khẩu mới (≥ 8 ký tự, khác mật khẩu cũ).
+      Admin không thể đặt password cho bạn — chỉ bạn tự đổi được.
+    </p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 max-w-2xl">
+      <input id="chg-old-pw" type="password" placeholder="Mật khẩu cũ"
+             class="border rounded px-3 py-2 text-sm"/>
+      <input id="chg-new-pw" type="password" placeholder="Mật khẩu mới"
+             class="border rounded px-3 py-2 text-sm"/>
+      <input id="chg-new-pw2" type="password" placeholder="Xác nhận"
+             class="border rounded px-3 py-2 text-sm"/>
+    </div>
+    <button id="chg-pw-btn"
+            class="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">
+      Đổi mật khẩu
+    </button>
+    <span id="chg-pw-msg" class="text-sm ml-2"></span>
+  </div>
+
+  <!-- Quản lý giọng nói: re-enroll + add samples -->
+  <div class="pt-4 border-t">
+    <h2 class="font-semibold mb-2">🎙 Quản lý giọng nói</h2>
+    <p class="text-xs text-slate-400 mb-3">
+      Đăng ký lại (replace centroid) khi giọng đổi rõ hoặc bị admin thu hồi.
+      Bổ sung mẫu (incremental average) khi muốn centroid robust hơn ở môi trường mới.
+      Cần mật khẩu hiện tại + ít nhất 2 mẫu cho re-enroll, 1 mẫu cho add.
+    </p>
+    <div class="flex items-center gap-3 flex-wrap mb-3">
+      <button id="voice-rec-btn" type="button"
+              class="px-4 py-2 bg-violet-100 text-violet-700 border border-violet-200 rounded text-sm hover:bg-violet-200">
+        🎙 Thu mẫu (~5s)
+      </button>
+      <button id="voice-clear-btn" type="button"
+              class="px-4 py-2 bg-slate-100 text-slate-700 rounded text-sm hover:bg-slate-200">
+        Xóa mẫu
+      </button>
+      <span id="voice-count" class="text-xs text-slate-400">0 mẫu</span>
+    </div>
+    <div id="voice-samples-list" class="space-y-1.5 mb-3"></div>
+    <div class="flex gap-2 flex-wrap">
+      <button id="voice-reenroll-btn"
+              class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
+              disabled>
+        🔄 Đăng ký lại (replace)
+      </button>
+      <button id="voice-add-btn"
+              class="px-4 py-2 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded text-sm hover:bg-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled>
+        ➕ Bổ sung mẫu (incremental)
+      </button>
+    </div>
+    <span id="voice-msg" class="text-sm block mt-2"></span>
   </div>
 
   <div class="flex gap-3 items-center pt-2 border-t">
@@ -287,6 +357,149 @@ document.getElementById("oauth-revoke-btn").onclick = async () => {
   if (!confirm("Hủy xác thực Gmail? Tính năng gửi email sẽ ngừng hoạt động.")) return;
   const res = await fetch(`/api/oauth/revoke/${userId}`, {method: "POST"});
   if (res.ok) loadOAuthStatus();
+};
+
+// ════════════════════════════════════════════════════════════
+// Change password (user self-service)
+// ════════════════════════════════════════════════════════════
+document.getElementById("chg-pw-btn").onclick = async () => {
+  const $msg  = document.getElementById("chg-pw-msg");
+  const oldPw = document.getElementById("chg-old-pw").value;
+  const newPw = document.getElementById("chg-new-pw").value;
+  const newPw2 = document.getElementById("chg-new-pw2").value;
+  function show(t, ok) {
+    $msg.textContent = t;
+    $msg.className = "text-sm ml-2 " + (ok ? "text-emerald-600" : "text-rose-600");
+  }
+  if (!oldPw) return show("Nhập mật khẩu cũ", false);
+  if (!newPw) return show("Nhập mật khẩu mới", false);
+  if (newPw !== newPw2) return show("Xác nhận không khớp", false);
+  if (newPw.length < 8) return show("Mật khẩu mới ≥ 8 ký tự", false);
+  if (newPw === oldPw)  return show("Mật khẩu mới phải khác mật khẩu cũ", false);
+
+  const r = await fetch(`/api/users/${userId}/change-password`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      old_password: oldPw, new_password: newPw, new_password_confirm: newPw2,
+    }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return show(d.error || "Đổi mật khẩu thất bại", false);
+  document.getElementById("chg-old-pw").value = "";
+  document.getElementById("chg-new-pw").value = "";
+  document.getElementById("chg-new-pw2").value = "";
+  show("✓ Đã đổi mật khẩu. Lần sau dùng mật khẩu mới.", true);
+};
+
+// ════════════════════════════════════════════════════════════
+// Voice management — re-enroll + add samples
+// ════════════════════════════════════════════════════════════
+let _voiceSamples = [];   // [{blob, durationSec}]
+let _voiceMR = null;
+let _voiceChunks = [];
+let _voiceTimer = null;
+
+function _renderVoiceSamples() {
+  const $list  = document.getElementById("voice-samples-list");
+  const $count = document.getElementById("voice-count");
+  $count.textContent = `${_voiceSamples.length} mẫu`;
+  if (!_voiceSamples.length) {
+    $list.innerHTML = `<p class="text-sm text-slate-400 italic">Chưa có mẫu nào.</p>`;
+  } else {
+    $list.innerHTML = "";
+    _voiceSamples.forEach((s, i) => {
+      const div = document.createElement("div");
+      div.className = "flex items-center gap-2 bg-violet-50 border border-violet-200 rounded px-3 py-1.5 text-sm";
+      div.innerHTML =
+        `<span>🎙 Mẫu ${i + 1}</span>` +
+        `<span class="text-slate-500 text-xs">(${s.durationSec.toFixed(1)}s)</span>` +
+        `<span class="flex-1"></span>` +
+        `<button data-i="${i}" class="text-rose-500 hover:text-rose-700 text-xs">✕</button>`;
+      div.querySelector("[data-i]").onclick = () => {
+        _voiceSamples.splice(i, 1);
+        _renderVoiceSamples();
+      };
+      $list.appendChild(div);
+    });
+  }
+  document.getElementById("voice-reenroll-btn").disabled = _voiceSamples.length < 2;
+  document.getElementById("voice-add-btn").disabled     = _voiceSamples.length < 1;
+}
+_renderVoiceSamples();
+
+document.getElementById("voice-rec-btn").onclick = async () => {
+  if (_voiceMR && _voiceMR.state === "recording") return;
+  const $btn = document.getElementById("voice-rec-btn");
+  const $msg = document.getElementById("voice-msg");
+  $msg.textContent = ""; $msg.className = "text-sm block mt-2";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false,
+              sampleRate:16000, channelCount:1}
+    });
+    _voiceMR = new MediaRecorder(stream);
+    _voiceChunks = [];
+    const startedAt = Date.now();
+    _voiceMR.ondataavailable = e => { if (e.data.size > 0) _voiceChunks.push(e.data); };
+    _voiceMR.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(_voiceChunks, {type: _voiceMR.mimeType});
+      const durationSec = (Date.now() - startedAt) / 1000;
+      _voiceSamples.push({blob, durationSec});
+      _renderVoiceSamples();
+      $btn.textContent = "🎙 Thu mẫu (~5s)";
+      $btn.className = "px-4 py-2 bg-violet-100 text-violet-700 border border-violet-200 rounded text-sm hover:bg-violet-200";
+    };
+    _voiceMR.start();
+    $btn.textContent = "⏺ Đang thu...";
+    $btn.className = "px-4 py-2 bg-rose-100 text-rose-700 border border-rose-200 rounded text-sm";
+    if (_voiceTimer) clearTimeout(_voiceTimer);
+    _voiceTimer = setTimeout(() => {
+      if (_voiceMR && _voiceMR.state === "recording") _voiceMR.stop();
+    }, 5000);
+  } catch (e) {
+    $msg.textContent = "Lỗi mic: " + e.message;
+    $msg.className = "text-sm block mt-2 text-rose-600";
+  }
+};
+
+document.getElementById("voice-clear-btn").onclick = () => {
+  _voiceSamples = [];
+  _renderVoiceSamples();
+};
+
+async function _submitVoice(endpoint, label) {
+  const $msg = document.getElementById("voice-msg");
+  function show(t, ok) {
+    $msg.textContent = t;
+    $msg.className = "text-sm block mt-2 " + (ok ? "text-emerald-600" : "text-rose-600");
+  }
+  const pw = document.getElementById("pw-input").value;
+  if (!pw) return show("Cần nhập mật khẩu ở mục trên cùng", false);
+  if (!_voiceSamples.length) return show("Cần ít nhất 1 mẫu", false);
+
+  const fd = new FormData();
+  fd.append("password", pw);
+  _voiceSamples.forEach((s, i) => fd.append(`sample_${i}`, s.blob, `s${i}.webm`));
+  show("Đang xử lý...", true);
+  const r = await fetch(`/api/users/${userId}${endpoint}`, {
+    method: "POST", body: fd,
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return show(`${label} thất bại: ${d.error || "không rõ"}`, false);
+  _voiceSamples = [];
+  _renderVoiceSamples();
+  const n = d.n_samples || d.n_samples_applied || "?";
+  show(`✓ ${label} thành công (${n} mẫu). ${d.revoke_cleared ? "Đã clear revoke flag — reload trang." : ""}`, true);
+  if (d.revoke_cleared) setTimeout(() => location.reload(), 1500);
+}
+
+document.getElementById("voice-reenroll-btn").onclick = () => {
+  if (!confirm("Đăng ký LẠI giọng nói? Centroid cũ bị thay thế hoàn toàn.")) return;
+  _submitVoice("/reenroll-voice", "Re-enroll");
+};
+document.getElementById("voice-add-btn").onclick = () => {
+  _submitVoice("/add-voice-samples", "Bổ sung mẫu");
 };
 </script>
 {% endblock %}

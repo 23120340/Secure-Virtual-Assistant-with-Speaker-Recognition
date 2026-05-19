@@ -134,45 +134,133 @@ def test_api_get_user_does_not_leak_preferences(client, app):
         db.delete_user("leak-test-uid")
 
 
-def test_admin_can_reset_user_password(client, app, reset_rate_limit):
-    """Forgot-password path: admin can replace a user's password, but never recover it."""
+def test_user_can_change_own_password(client, app, reset_rate_limit):
+    """User self-service change-password: cần old_password + new_password match."""
     import numpy as np
-    from core import config
-
     db = app.config["db"]
-    uid = "reset-pw-test"
-    old_admin = config.ADMIN_PASS
-    config.ADMIN_PASS = "admin-reset-secret"
+    uid = "chgpw-test"
     if db.get_user(uid) is None:
-        db.add_user(uid, "Reset Test", np.zeros(192, dtype=np.float32),
-                    preferences={}, password="old-password")
+        db.add_user(uid, "Test", np.zeros(192, dtype=np.float32),
+                    preferences={}, password="old-pw-12345")
     try:
+        # Wrong old password → 403
         r = client.post(
-            f"/api/admin/users/{uid}/reset-password",
-            json={"admin_password": "wrong", "new_password": "new-password-123"},
+            f"/api/users/{uid}/change-password",
+            json={"old_password": "wrong", "new_password": "new-pw-67890",
+                  "new_password_confirm": "new-pw-67890"},
             headers=_xhr_headers(),
         )
         assert r.status_code == 403
-        assert db.check_password(uid, "old-password") is True
+        assert db.check_password(uid, "old-pw-12345") is True
 
+        # Confirm mismatch → 400
         r = client.post(
-            f"/api/admin/users/{uid}/reset-password",
-            json={"admin_password": "admin-reset-secret", "new_password": "short"},
+            f"/api/users/{uid}/change-password",
+            json={"old_password": "old-pw-12345", "new_password": "new-pw-67890",
+                  "new_password_confirm": "different"},
             headers=_xhr_headers(),
         )
         assert r.status_code == 400
 
+        # New = old → 400
         r = client.post(
-            f"/api/admin/users/{uid}/reset-password",
-            json={"admin_password": "admin-reset-secret", "new_password": "new-password-123"},
+            f"/api/users/{uid}/change-password",
+            json={"old_password": "old-pw-12345", "new_password": "old-pw-12345",
+                  "new_password_confirm": "old-pw-12345"},
+            headers=_xhr_headers(),
+        )
+        assert r.status_code == 400
+
+        # Too short → 400
+        r = client.post(
+            f"/api/users/{uid}/change-password",
+            json={"old_password": "old-pw-12345", "new_password": "short",
+                  "new_password_confirm": "short"},
+            headers=_xhr_headers(),
+        )
+        assert r.status_code == 400
+
+        # Success
+        r = client.post(
+            f"/api/users/{uid}/change-password",
+            json={"old_password": "old-pw-12345", "new_password": "new-pw-67890",
+                  "new_password_confirm": "new-pw-67890"},
             headers=_xhr_headers(),
         )
         assert r.status_code == 200
-        body = r.get_json()
-        assert body["ok"] is True
-        assert body["user_id"] == uid
-        assert db.check_password(uid, "old-password") is False
-        assert db.check_password(uid, "new-password-123") is True
+        assert db.check_password(uid, "old-pw-12345") is False
+        assert db.check_password(uid, "new-pw-67890") is True
     finally:
+        db.delete_user(uid)
+
+
+def test_admin_info_masked_redacts_email(client, app, reset_rate_limit):
+    """Admin info endpoint phải mask email/name, không leak full PII."""
+    import numpy as np
+    from core import config
+    db = app.config["db"]
+    uid = "admin-mask-test"
+    old_admin = config.ADMIN_PASS
+    config.ADMIN_PASS = "admin-pw"
+    if db.get_user(uid) is None:
+        db.add_user(uid, "Nguyễn Văn Test",
+                    np.zeros(192, dtype=np.float32),
+                    preferences={"email": "nguyenvantest@gmail.com"},
+                    password="x")
+    try:
+        # Wrong admin pass → 403
+        r = client.post(f"/api/admin/users/{uid}/info-masked",
+                        json={"admin_password": "wrong"},
+                        headers=_xhr_headers())
+        assert r.status_code == 403
+
+        # Correct admin pass → masked info, NO password field, NO full email
+        r = client.post(f"/api/admin/users/{uid}/info-masked",
+                        json={"admin_password": "admin-pw"},
+                        headers=_xhr_headers())
+        assert r.status_code == 200
+        body = r.get_json()
+        assert "password" not in body
+        assert "password_hash" not in body
+        assert body["email_masked"].startswith("ngu")
+        assert body["email_masked"].endswith("@gmail.com")
+        assert "nguyenvantest" not in body["email_masked"]
+        assert body["name_masked"].startswith("Nguyễn")
+        assert "Test" not in body["name_masked"]
+        assert body["voice_status"] in ("Registered", "Not Registered")
+        assert body["revoke_pending"] is False
+    finally:
+        db.delete_user(uid)
+        config.ADMIN_PASS = old_admin
+
+
+def test_admin_revoke_voice_sets_flag(client, app, reset_rate_limit):
+    """Admin revoke-voice: xoá embedding + set revoke_pending=True."""
+    import numpy as np
+    from core import config
+    db = app.config["db"]
+    uid = "revoke-flag-test"
+    old_admin = config.ADMIN_PASS
+    config.ADMIN_PASS = "admin-pw"
+    if db.get_user(uid) is None:
+        db.add_user(uid, "Revoke Test",
+                    np.ones(192, dtype=np.float32) / (192 ** 0.5),
+                    password="user-pw")
+    try:
+        assert db.is_revoke_pending(uid) is False
+        r = client.post(f"/api/admin/users/{uid}/revoke-voice",
+                        json={"admin_password": "admin-pw", "reason": "Test revoke"},
+                        headers=_xhr_headers())
+        assert r.status_code == 200
+        assert db.is_revoke_pending(uid) is True
+        # Embedding should be gone for current backend.
+        spk_mgr = app.config["spk_mgr"]
+        cache = db.load_all_embeddings(
+            expected_dim=spk_mgr.encoder.embedding_dim,
+            backend_id=spk_mgr.encoder.backend_id,
+        )
+        assert uid not in cache
+    finally:
+        db.set_revoke_pending(uid, False)
         db.delete_user(uid)
         config.ADMIN_PASS = old_admin

@@ -25,8 +25,11 @@ Trợ lý ảo tiếng Việt có phân quyền bằng giọng nói, kết hợp
   - `ecapa` mặc định: dùng checkpoint tự train nếu có, fallback SpeechBrain pretrained nếu thiếu.
   - `wavlm`: dùng `microsoft/wavlm-base-plus-sv`.
 - **Web app Flask**: enrollment bằng trình duyệt, push-to-talk assistant, text mode, file manager, music player, admin panel, Google OAuth/Gmail send.
-- **Security/polish đã có**: password PBKDF2, OAuth PKCE + nonce, Fernet token encryption, rate limit, audit log JSONL, request ID, health/readiness endpoints, cascade delete, consent banner, data export, challenge-response opt-in.
-- **Test suite**: `97` unit/integration tests hiện pass với `pytest`.
+- **Security/polish đã có**: password PBKDF2 + self-service change, OAuth PKCE + nonce + diagnostic callback, Fernet token encryption, optional WAV encryption at-rest, rate limit, audit log JSONL, request ID, health/readiness endpoints, cascade delete, consent banner, data export, challenge-response opt-in, admin masking + Revoke & Re-enroll, JSON error handler cho `/api/*`, strict CSP (drop `'unsafe-inline'` cho script-src).
+- **Account management**: user tự đổi password, re-enroll giọng nói, hoặc bổ sung mẫu giọng. Admin chỉ xem masked info + revoke voice (không reset password trực tiếp).
+- **Robustness**: offline TTS fallback (pyttsx3) khi gTTS fail; retry + circuit breaker cho Gmail / OAuth; multi-language TTS qua `preferences.language`.
+- **Productivity intents**: bidirectional voice intents (`add_note`, `add_schedule`, `add_contact`, `set_reminder`, `list_reminders`) — voice-first task entry.
+- **Test suite**: `118` unit/integration tests hiện pass với `pytest`.
 
 ---
 
@@ -210,8 +213,10 @@ python cli/test_pipeline.py --audio data/enroll_audio/minh/sample_1.wav
 | Nhóm | Auth | Intent |
 |---|---|---|
 | `NORMAL` | Không cần xác thực | `get_time`, `get_weather`, `tell_joke`, `general_question` |
-| `IMPORTANT` | Speaker Verification | `read_notes`, `send_email`, `check_balance`, `delete_data`, `open_files`, `add_note`, `add_schedule`, `add_contact` |
-| `PERSONAL` | Speaker Identification | `greet`, `play_music`, `show_schedule` |
+| `IMPORTANT` | Speaker Verification | `read_notes`, `send_email`, `check_balance`, `delete_data`, `open_files`, `add_note`, `add_schedule`, `add_contact`, `set_reminder` |
+| `PERSONAL` | Speaker Identification | `greet`, `play_music`, `show_schedule`, `list_reminders` |
+
+**Reminder system**: `set_reminder` parse thời gian tiếng Việt (`30 phút nữa`, `9 giờ sáng mai`, `14:00 chiều nay`, `2 ngày nữa`...) và lưu vào `preferences.reminders`. `list_reminders` đọc danh sách (chia "đã đến hạn" + "sắp tới"). Frontend poll `GET /api/users/<id>/due-reminders` để hiện notification; `POST` cùng URL với `{ack_ids}` để mark fired. Cap 100 reminder/user.
 
 Lưu ý cho báo cáo:
 
@@ -225,13 +230,19 @@ Lưu ý cho báo cáo:
 ## Security Model Tóm Tắt
 
 - Password user/admin: PBKDF2-HMAC-SHA256, salt ngẫu nhiên.
-- Quên mật khẩu: không khôi phục password cũ; admin có thể reset password mới qua Admin Panel sau khi xác thực `ADMIN_PASS`.
+- **Password change**: user tự đổi qua `POST /api/users/<id>/change-password` (body `{old_password, new_password, new_password_confirm}`). Admin KHÔNG được set/reset password trực tiếp (no-recover policy theo big-tech standard). Admin có quy trình thay thế: xem masked info + **Revoke & Re-enroll**.
+- **Admin masking + Revoke**: `POST /api/admin/users/<id>/info-masked` trả về email/name đã masked (`ngu***@gmail.com`, `Nguyễn V***`) + `voice_status` + `revoke_pending`, KHÔNG có password/prefs. `POST /api/admin/users/<id>/revoke-voice` xoá embedding + set cờ `revoke_pending=True`; user phải `POST /api/users/<id>/reenroll-voice` với password + mẫu giọng mới để mở khóa lại IMPORTANT.
+- **Voice management**: user tự `reenroll-voice` (REPLACE centroid) hoặc `add-voice-samples` (incremental average vào centroid hiện tại) — cả 2 password-gated.
 - OAuth token: Fernet encryption; ưu tiên `TOKEN_ENCRYPTION_KEY`, fallback HKDF từ `FLASK_SECRET`.
-- OAuth flow: server-side nonce + PKCE, callback escape HTML.
+- OAuth flow: server-side nonce + PKCE, callback escape HTML. Callback error message giờ phân biệt `no_session_nonce` (cookie không tới) vs `state_mismatch` (CSRF/multiple tab) — kèm hint để user fix.
+- **WAV encryption at-rest** (opt-in qua `ENCRYPT_BIOMETRIC_WAV=true`): file mẫu giọng `data/enroll_audio/<user>/sample_N.wav.enc` (Fernet) thay vì plaintext `.wav`. Backup leak không lộ audio gốc.
+- **Offline TTS fallback**: nếu gTTS lỗi (mất mạng / rate limit), tự thử `pyttsx3` (SAPI5 Windows / NSSpeechSynthesizer macOS / espeak Linux). Chất lượng kém hơn nhưng giữ flow demo không crash.
+- **Strict CSP**: `script-src 'self' 'nonce-<per-request>' https://cdn.tailwindcss.com` — KHÔNG còn `'unsafe-inline'`. Tất cả inline `onclick` đã refactor thành `addEventListener` trong nonced `<script>`.
 - CSRF guard: yêu cầu `X-Requested-With` cho request thay đổi trạng thái.
 - Session cookie: `HttpOnly`, `SameSite=Lax`, `Secure` trừ khi `FLASK_DEV_HTTP=true`.
 - Rate limit: password endpoints, enroll, assistant text, challenge response.
-- Audit log: JSONL ở `data/audit.log`, không log nội dung nhạy cảm dài.
+- Audit log: JSONL ở `data/audit.log`, không log nội dung nhạy cảm dài. Events thêm: `auth.password_change` (actor=self/admin), `admin.access` (info_masked / revoke_voice), `admin.revoke_voice`, `speaker.reenroll`, `speaker.add_samples`.
+- **JSON error handler**: mọi exception trên `/api/*` trả JSON `{error, request_id}` thay vì HTML — tránh "Unexpected token '<'" trên client.
 - Turn log để train/debug: `data/turn_log.jsonl`, append mỗi lượt web/CLI với `schema_version`, transcript đã redact email/số điện thoại, intent/entity dự đoán, auth level, SID/SV score, trạng thái block và source.
 - Candidate NLU dataset: `data/nlu_training_candidates.jsonl`, dùng cho labeling thủ công. Export CSV bằng:
 

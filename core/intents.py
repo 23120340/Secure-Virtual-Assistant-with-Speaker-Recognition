@@ -251,6 +251,41 @@ INTENTS = {
             "gửi email cho Tuấn", "xoá Tuấn khỏi danh bạ",
         ],
     },
+    "set_reminder": {
+        "level": AuthLevel.IMPORTANT,
+        "desc": "Đặt nhắc việc với nội dung + thời gian (relative hoặc absolute). "
+                "Khác `add_schedule` ở chỗ reminder có thời điểm fire cụ thể, "
+                "khi đến giờ sẽ pop notification cho user",
+        "entities": ["content", "when"],
+        "examples": [
+            "nhắc tôi họp 9 giờ sáng mai",
+            "đặt nhắc 30 phút nữa uống thuốc",
+            "nhắc tôi 14:00 chiều nay gọi khách hàng",
+            "đặt reminder ngày mai 8 giờ đi tập gym",
+            "nhắc trong 2 tiếng nữa tắt máy",
+            "tạo reminder 25 tháng 12 lúc 19h liên hoan",
+            "nhắc tôi 10 phút nữa kiểm tra lò vi sóng",
+        ],
+        "counter_examples": [
+            "thêm lịch họp 9h", "lịch hôm nay", "xoá nhắc việc",
+        ],
+    },
+    "list_reminders": {
+        "level": AuthLevel.PERSONAL,
+        "desc": "Liệt kê nhắc việc đang chờ (chưa fire) hoặc đến hạn cho user",
+        "entities": [],
+        "examples": [
+            "có nhắc việc nào không",
+            "kiểm tra reminder",
+            "đọc danh sách nhắc",
+            "tôi có gì cần nhớ",
+            "show reminders",
+            "liệt kê các reminder của tôi",
+        ],
+        "counter_examples": [
+            "xoá reminder", "đặt nhắc 9 giờ",
+        ],
+    },
 
     # --- PERSONAL: cần SID để cá nhân hóa ---
     "greet": {

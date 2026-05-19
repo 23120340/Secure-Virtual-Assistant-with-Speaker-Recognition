@@ -265,7 +265,6 @@
       Để gửi email, bạn cần đăng nhập với tài khoản Google. Tab mới sẽ mở — sau khi xác thực hãy quay lại đây và nói <b>"có"</b>.
     </p>
     <a id="oauth-login-btn" href="#" target="_blank" rel="noopener"
-       onclick="startOAuthPolling()"
        style="display:flex;align-items:center;justify-content:center;gap:.6rem;width:100%;padding:.7rem 1rem;border-radius:.75rem;background:#1a73e8;color:#fff;font-size:.88rem;font-weight:600;text-decoration:none;margin-bottom:.75rem">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
       Đăng nhập Google
@@ -557,21 +556,73 @@
         <button id="modal-save-btn" class="btn-primary" style="width:100%;padding:.65rem">Lưu thay đổi</button>
         <div id="modal-save-msg" style="font-size:.82rem;display:none"></div>
 
-        <!-- Change password -->
+        <!-- Change password: user self-service (old/new/confirm) -->
         <div class="modal-section" style="margin-top:.25rem">
           <p class="modal-section-label">Đổi mật khẩu</p>
-          <div class="flex gap-2">
-            <div class="relative flex-1">
+          <p style="font-size:.75rem;color:var(--txt-2);margin-bottom:.5rem">
+            Nhập mật khẩu cũ + mật khẩu mới (≥ 8 ký tự, khác mật khẩu cũ).
+          </p>
+          <div style="display:flex;flex-direction:column;gap:.5rem">
+            <div class="relative">
+              <input id="modal-old-pw" type="password" placeholder="Mật khẩu cũ"
+                     class="glass-input" style="padding-right:2.5rem;width:100%"/>
+              <button type="button" id="modal-old-pw-eye"
+                      style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;display:flex;align-items:center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <div class="relative">
               <input id="modal-new-pw" type="password" placeholder="Mật khẩu mới"
-                     class="glass-input" style="padding-right:2.5rem"/>
+                     class="glass-input" style="padding-right:2.5rem;width:100%"/>
               <button type="button" id="modal-new-pw-eye"
                       style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;display:flex;align-items:center">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
             </div>
-            <button id="modal-change-pw-btn" class="btn-primary" style="white-space:nowrap">Đổi</button>
+            <div class="relative">
+              <input id="modal-new-pw2" type="password" placeholder="Xác nhận mật khẩu mới"
+                     class="glass-input" style="padding-right:2.5rem;width:100%"/>
+              <button type="button" id="modal-new-pw2-eye"
+                      style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;display:flex;align-items:center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <button id="modal-change-pw-btn" class="btn-primary" style="white-space:nowrap">Đổi mật khẩu</button>
           </div>
           <div id="modal-pw-msg" style="margin-top:.35rem;font-size:.82rem;display:none"></div>
+        </div>
+
+        <!-- Voice management: re-enroll + add samples -->
+        <div class="modal-section">
+          <p class="modal-section-label">Quản lý giọng nói</p>
+          <p style="font-size:.75rem;color:var(--txt-2);margin-bottom:.5rem">
+            Đăng ký lại (replace centroid) hoặc bổ sung mẫu giọng nói (giúp robust hơn).
+            Cần mật khẩu hiện tại + ít nhất 2 mẫu giọng.
+          </p>
+          <div id="modal-voice-revoke-banner" class="hidden"
+               style="margin-bottom:.7rem;padding:.6rem .75rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;font-size:.78rem;color:#b91c1c">
+            ⚠ Admin đã thu hồi vector giọng. Bạn phải <strong>Đăng ký lại</strong> trước khi
+            dùng được tác vụ IMPORTANT (đọc ghi chú, gửi email…).
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.5rem">
+            <div id="modal-voice-samples-list" style="display:flex;flex-direction:column;gap:.35rem"></div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <button id="modal-voice-rec-btn" type="button"
+                      style="display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .9rem;font-size:.82rem;font-weight:600;background:rgba(124,58,237,.1);color:var(--c-violet);border:1px solid rgba(124,58,237,.2);border-radius:.75rem;cursor:pointer">
+                🎙 Thu mẫu (~5s)
+              </button>
+              <button id="modal-voice-clear-btn" type="button"
+                      style="display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .9rem;font-size:.82rem;font-weight:600;background:rgba(148,163,184,.12);color:var(--txt-1);border:none;border-radius:.75rem;cursor:pointer">
+                Xóa mẫu
+              </button>
+            </div>
+            <button id="modal-voice-reenroll-btn" class="btn-primary" disabled
+                    style="opacity:.6">🔄 Đăng ký lại (replace)</button>
+            <button id="modal-voice-add-btn"
+                    style="padding:.55rem 1rem;font-size:.85rem;font-weight:600;background:rgba(16,185,129,.1);color:#047857;border:1px solid rgba(16,185,129,.2);border-radius:.75rem;cursor:pointer;opacity:.6"
+                    disabled>➕ Bổ sung mẫu (incremental)</button>
+          </div>
+          <div id="modal-voice-msg" style="margin-top:.5rem;font-size:.82rem;display:none"></div>
         </div>
 
         <!-- Gmail OAuth -->
@@ -585,12 +636,10 @@
           </div>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
             <a id="modal-oauth-auth-btn" href="#" target="_blank" rel="noopener"
-               onclick="startModalOAuth()"
                style="display:inline-flex;align-items:center;gap:.4rem;padding:.45rem 1rem;font-size:.82rem;font-weight:600;background:var(--c-violet);color:#fff;border-radius:.75rem;text-decoration:none;cursor:pointer">
               🔐 Xác thực Gmail
             </a>
             <button id="modal-oauth-revoke-btn" class="hidden"
-                    onclick="revokeModalOAuth()"
                     style="padding:.45rem 1rem;font-size:.82rem;font-weight:600;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.25);border-radius:.75rem;cursor:pointer">
               Hủy xác thực
             </button>
@@ -1163,6 +1212,15 @@ function loadModalOAuth(uid) {
     .catch(() => { $status.textContent = "Không thể kiểm tra trạng thái"; });
 }
 
+// Attach onclick programmatically — CSP no inline handler.
+{
+  const _l = document.getElementById("oauth-login-btn");
+  if (_l) _l.addEventListener("click", () => startOAuthPolling());
+  const _mAuth = document.getElementById("modal-oauth-auth-btn");
+  if (_mAuth) _mAuth.addEventListener("click", () => startModalOAuth());
+  const _mRev = document.getElementById("modal-oauth-revoke-btn");
+  if (_mRev) _mRev.addEventListener("click", () => revokeModalOAuth());
+}
 function startModalOAuth() {
   if (_modalOAuthTimer) clearInterval(_modalOAuthTimer);
   const $msg = document.getElementById("modal-oauth-msg");
@@ -1504,8 +1562,7 @@ function makeTrackCard(t, idx, src) {
     ? `<img src="${esc(t.cover)}" class="w-8 h-8 rounded object-cover flex-shrink-0">`
     : `<div class="w-8 h-8 rounded bg-slate-200 flex-shrink-0 text-center leading-8 text-slate-400">♪</div>`;
 
-  const addBtn = src === "result" && _musicUserId
-    ? `<button class="btn-add px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded hover:bg-emerald-100 hover:text-emerald-700 flex-shrink-0">+</button>` : "";
+  // Gợi ý nhạc (search result) chỉ play, không add vào playlist từ đây.
   const delBtn = src === "playlist"
     ? `<button class="btn-del px-1.5 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100 flex-shrink-0">✕</button>` : "";
 
@@ -1516,15 +1573,13 @@ function makeTrackCard(t, idx, src) {
       <div class="text-slate-500 truncate">${esc(t.artist)}</div>
     </div>
     <button class="btn-play px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex-shrink-0 flex items-center">${ICON_PLAY}</button>
-    ${addBtn}${delBtn}
+    ${delBtn}
   `;
   card.querySelector(".btn-play").onclick = () => {
     _queueFromUserData = (src === "playlist");
     queue = src === "playlist" ? [...userPlaylist] : [...searchResults];
     playAt(idx);
   };
-  if (src === "result" && _musicUserId)
-    card.querySelector(".btn-add").onclick = () => addToPlaylist(t);
   if (src === "playlist")
     card.querySelector(".btn-del").onclick = () => removeFromPlaylist(t.id, t.title);
   return card;
@@ -1637,11 +1692,11 @@ function renderFileList(files) {
         <div class="font-medium truncate">${esc(f.name)}</div>
         <div class="text-slate-400">${fmtSz(f.size)} · ${esc(f.modified)}</div>
       </div>
-      <button onclick="downloadFile('/api/files/download/${encodeURIComponent(f.name)}','${esc(f.name)}')"
-              class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex items-center gap-1">${ICON_DL}</button>
-      <button data-name="${esc(f.name)}"
-              class="btn-fdel px-2 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100 flex items-center">${ICON_TRASH}</button>
+      <button class="btn-fdown px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex items-center gap-1">${ICON_DL}</button>
+      <button class="btn-fdel px-2 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100 flex items-center">${ICON_TRASH}</button>
     `;
+    row.querySelector(".btn-fdown").onclick = () => downloadFile(
+      `/api/files/download/${encodeURIComponent(f.name)}`, f.name);
     row.querySelector(".btn-fdel").onclick = () => deletePanelFile(f.name);
     $list.appendChild(row);
   });
@@ -1958,6 +2013,13 @@ function populateModal(u) {
     Array.isArray(prefs.schedule) ? prefs.schedule.join("\n") : (prefs.schedule || "");
   _modalContacts = Array.isArray(prefs.contacts) ? [...prefs.contacts] : [];
   renderModalContacts();
+  // Show revoke banner nếu admin đã thu hồi giọng — user phải re-enroll trước
+  // khi dùng IMPORTANT (read_notes, send_email, ...).
+  const banner = document.getElementById("modal-voice-revoke-banner");
+  if (banner) {
+    if (u.revoke_pending) banner.classList.remove("hidden");
+    else banner.classList.add("hidden");
+  }
 }
 
 function switchModalTab(tab) {
@@ -2088,29 +2150,174 @@ document.getElementById("modal-save-btn").onclick = async () => {
   }
 };
 
-// Change password (standalone button)
+// Eye toggles for new password fields.
+document.getElementById("modal-old-pw-eye").onclick = function() { togglePwEye("modal-old-pw", this); };
+document.getElementById("modal-new-pw2-eye").onclick = function() { togglePwEye("modal-new-pw2", this); };
+
+// Change password (user self-service: old + new + confirm — calls /change-password endpoint)
 document.getElementById("modal-change-pw-btn").onclick = async () => {
-  const newPw = document.getElementById("modal-new-pw").value.trim();
-  const $msg  = document.getElementById("modal-pw-msg");
-  if (!newPw) {
-    $msg.textContent = "Nhập mật khẩu mới";
-    $msg.style.cssText = "margin-top:.35rem;font-size:.82rem;color:#ef4444;display:block"; return;
-  }
-  const r = await fetch(`/api/users/${_modalUid}/update-info`, {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({password: _modalPw, new_password: newPw})
-  });
-  const d = await r.json();
-  if (!r.ok) {
-    $msg.textContent = "Lỗi: " + (d.error || "Không rõ");
+  const oldPw  = document.getElementById("modal-old-pw").value;
+  const newPw  = document.getElementById("modal-new-pw").value;
+  const newPw2 = document.getElementById("modal-new-pw2").value;
+  const $msg   = document.getElementById("modal-pw-msg");
+  function showErr(t) {
+    $msg.textContent = t;
     $msg.style.cssText = "margin-top:.35rem;font-size:.82rem;color:#ef4444;display:block";
-  } else {
-    _modalPw = newPw;
-    document.getElementById("modal-new-pw").value = "";
-    $msg.textContent = "✓ Đã đổi mật khẩu";
-    $msg.style.cssText = "margin-top:.35rem;font-size:.82rem;color:#22c55e;display:block";
   }
+  if (!oldPw)  return showErr("Nhập mật khẩu cũ");
+  if (!newPw)  return showErr("Nhập mật khẩu mới");
+  if (newPw !== newPw2) return showErr("Mật khẩu mới + xác nhận không khớp");
+  if (newPw.length < 8) return showErr("Mật khẩu mới ≥ 8 ký tự");
+  if (newPw === oldPw)  return showErr("Mật khẩu mới phải khác mật khẩu cũ");
+
+  const r = await fetch(`/api/users/${_modalUid}/change-password`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      old_password: oldPw, new_password: newPw, new_password_confirm: newPw2,
+    }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return showErr(d.error || "Đổi mật khẩu thất bại");
+
+  _modalPw = newPw;
+  document.getElementById("modal-old-pw").value = "";
+  document.getElementById("modal-new-pw").value = "";
+  document.getElementById("modal-new-pw2").value = "";
+  $msg.textContent = "✓ Đã đổi mật khẩu. Lần sau dùng mật khẩu mới.";
+  $msg.style.cssText = "margin-top:.35rem;font-size:.82rem;color:#22c55e;display:block";
 };
+
+// ════════════════════════════════════════════════════════════
+// Voice management — re-enroll + add samples
+// ════════════════════════════════════════════════════════════
+let _modalVoiceSamples = [];   // [{ blob, durationSec }]
+let _modalVoiceMR = null;
+let _modalVoiceChunks = [];
+let _modalVoiceTimer = null;
+
+function _renderVoiceSamples() {
+  const $list = document.getElementById("modal-voice-samples-list");
+  if (!_modalVoiceSamples.length) {
+    $list.innerHTML = `<p style="font-size:.78rem;color:var(--txt-2);font-style:italic">Chưa có mẫu nào — bấm "Thu mẫu" để bắt đầu.</p>`;
+  } else {
+    $list.innerHTML = _modalVoiceSamples.map((s, i) =>
+      `<div style="display:flex;align-items:center;gap:.5rem;padding:.35rem .55rem;background:rgba(124,58,237,.06);border-radius:6px;font-size:.78rem">
+        <span>🎙 Mẫu ${i + 1}</span>
+        <span style="color:var(--txt-2)">(${s.durationSec.toFixed(1)}s)</span>
+        <span style="flex:1"></span>
+        <button data-idx="${i}" class="voice-sample-del" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:.78rem">✕</button>
+      </div>`
+    ).join("");
+    $list.querySelectorAll(".voice-sample-del").forEach(b => {
+      b.onclick = () => {
+        _modalVoiceSamples.splice(+b.dataset.idx, 1);
+        _renderVoiceSamples();
+      };
+    });
+  }
+  const hasEnough = _modalVoiceSamples.length >= 2;
+  const $reBtn  = document.getElementById("modal-voice-reenroll-btn");
+  const $addBtn = document.getElementById("modal-voice-add-btn");
+  $reBtn.disabled = !hasEnough;
+  $reBtn.style.opacity = hasEnough ? "1" : ".6";
+  $addBtn.disabled = !_modalVoiceSamples.length;
+  $addBtn.style.opacity = _modalVoiceSamples.length ? "1" : ".6";
+}
+
+async function _modalVoiceStartRecord() {
+  if (_modalVoiceMR && _modalVoiceMR.state === "recording") return;
+  const $btn = document.getElementById("modal-voice-rec-btn");
+  const $msg = document.getElementById("modal-voice-msg");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false,
+              sampleRate:16000, channelCount:1}
+    });
+    _modalVoiceMR = new MediaRecorder(stream);
+    _modalVoiceChunks = [];
+    const startedAt = Date.now();
+    _modalVoiceMR.ondataavailable = e => { if (e.data.size > 0) _modalVoiceChunks.push(e.data); };
+    _modalVoiceMR.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(_modalVoiceChunks, {type: _modalVoiceMR.mimeType});
+      const durationSec = (Date.now() - startedAt) / 1000;
+      _modalVoiceSamples.push({blob, durationSec});
+      _renderVoiceSamples();
+      $btn.textContent = "🎙 Thu mẫu (~5s)";
+      $btn.style.background = "rgba(124,58,237,.1)";
+      $btn.style.color = "var(--c-violet)";
+    };
+    _modalVoiceMR.start();
+    $btn.textContent = "⏺ Đang thu...";
+    $btn.style.background = "rgba(239,68,68,.15)";
+    $btn.style.color = "#b91c1c";
+    // Auto-stop sau 5s.
+    if (_modalVoiceTimer) clearTimeout(_modalVoiceTimer);
+    _modalVoiceTimer = setTimeout(() => {
+      if (_modalVoiceMR && _modalVoiceMR.state === "recording") _modalVoiceMR.stop();
+    }, 5000);
+    $msg.style.display = "none";
+  } catch (e) {
+    $msg.textContent = "Lỗi mic: " + e.message;
+    $msg.style.cssText = "margin-top:.5rem;font-size:.82rem;color:#ef4444;display:block";
+  }
+}
+
+document.getElementById("modal-voice-rec-btn").onclick = _modalVoiceStartRecord;
+document.getElementById("modal-voice-clear-btn").onclick = () => {
+  _modalVoiceSamples = [];
+  _renderVoiceSamples();
+};
+
+async function _submitVoiceFlow(endpoint, label) {
+  const $msg = document.getElementById("modal-voice-msg");
+  function show(t, ok) {
+    $msg.textContent = t;
+    $msg.style.cssText = `margin-top:.5rem;font-size:.82rem;color:${ok ? "#22c55e" : "#ef4444"};display:block`;
+  }
+  if (!_modalVoiceSamples.length) return show("Cần ít nhất 1 mẫu", false);
+  if (!_modalPw)
+    return show("Cần mở khóa modal bằng mật khẩu trước", false);
+
+  const fd = new FormData();
+  fd.append("password", _modalPw);
+  _modalVoiceSamples.forEach((s, i) => fd.append(`sample_${i}`, s.blob, `s${i}.webm`));
+  const r = await fetch(`/api/users/${_modalUid}${endpoint}`, {
+    method: "POST", body: fd,
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return show(`${label} thất bại: ${d.error || "không rõ"}`, false);
+  _modalVoiceSamples = [];
+  _renderVoiceSamples();
+  show(`✓ ${label} thành công (${d.n_samples || d.n_samples_applied} mẫu áp dụng)`, true);
+  // Nếu vừa re-enroll xong, ẩn banner revoke (nếu có).
+  const banner = document.getElementById("modal-voice-revoke-banner");
+  if (banner && d.revoke_cleared) banner.classList.add("hidden");
+}
+
+document.getElementById("modal-voice-reenroll-btn").onclick = () => {
+  if (!window.confirm("Đăng ký LẠI giọng nói? Centroid cũ sẽ bị thay thế hoàn toàn."))
+    return;
+  _submitVoiceFlow("/reenroll-voice", "Re-enroll");
+};
+document.getElementById("modal-voice-add-btn").onclick = () => {
+  _submitVoiceFlow("/add-voice-samples", "Bổ sung mẫu");
+};
+
+// Init voice samples list trên mỗi lần mở modal.
+const _modalOrigOpen = window.openModal;
+if (typeof _modalOrigOpen === "function") {
+  window.openModal = function(...args) {
+    _modalVoiceSamples = [];
+    _renderVoiceSamples();
+    // Show revoke banner nếu user.revoke_pending=true (set sau khi unlock).
+    const banner = document.getElementById("modal-voice-revoke-banner");
+    if (banner) banner.classList.add("hidden");
+    return _modalOrigOpen.apply(this, args);
+  };
+} else {
+  _renderVoiceSamples();
+}
 
 // Delete user
 document.getElementById("modal-delete-btn").onclick = async () => {
@@ -2181,11 +2388,11 @@ function renderModalFileList(files) {
         <div class="text-sm font-medium truncate">${esc(f.name)}</div>
         <div class="text-xs text-slate-400">${fmtSz(f.size)} · ${esc(f.modified)}</div>
       </div>
-      <button onclick="downloadFile('/api/files/download/${encodeURIComponent(f.name)}','${esc(f.name)}')"
-              class="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex items-center gap-1">${ICON_DL} Tải</button>
-      <button data-name="${esc(f.name)}"
-              class="btn-mfdel text-xs px-2 py-1 bg-rose-50 text-rose-600 rounded hover:bg-rose-100 flex items-center gap-1">${ICON_TRASH} Xóa</button>
+      <button class="btn-mfdown text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex items-center gap-1">${ICON_DL} Tải</button>
+      <button class="btn-mfdel text-xs px-2 py-1 bg-rose-50 text-rose-600 rounded hover:bg-rose-100 flex items-center gap-1">${ICON_TRASH} Xóa</button>
     `;
+    row.querySelector(".btn-mfdown").onclick = () => downloadFile(
+      `/api/files/download/${encodeURIComponent(f.name)}`, f.name);
     row.querySelector(".btn-mfdel").onclick = () => deleteModalFile(f.name);
     $list.appendChild(row);
   });
@@ -2501,35 +2708,116 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     renderAdminTable(d.users);
   }
 
-  async function resetUserPassword(userId, name) {
-    const p1 = window.prompt(`Nhập mật khẩu mới cho ${name || userId} (tối thiểu 8 ký tự):`);
-    if (p1 === null) return;
-    if (p1.length < 8) {
-      showToast("Mật khẩu mới phải có ít nhất 8 ký tự", true);
-      return;
-    }
-    const p2 = window.prompt("Nhập lại mật khẩu mới để xác nhận:");
-    if (p2 === null) return;
-    if (p1 !== p2) {
-      showToast("Hai mật khẩu không khớp", true);
-      return;
-    }
-    const ok = window.confirm(`Reset mật khẩu cho user "${userId}"? Mật khẩu cũ sẽ không thể khôi phục.`);
-    if (!ok) return;
-    const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+  // Admin xem info user dưới dạng masked (no PII full) + Revoke & Re-enroll.
+  // Big-tech policy: admin KHÔNG được set/reset password trực tiếp — chỉ thu hồi
+  // giọng nói, user phải tự re-enroll để mở khóa lại tác vụ IMPORTANT.
+  async function showMaskedInfo(userId, name) {
+    const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/info-masked`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Requested-With": "XMLHttpRequest",
       },
-      body: JSON.stringify({ admin_password: _adminPw, new_password: p1 }),
+      body: JSON.stringify({ admin_password: _adminPw }),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) {
-      showToast(d.error || "Reset mật khẩu thất bại", true);
+      showToast(d.error || "Không lấy được thông tin", true);
       return;
     }
-    showToast(`Đã reset mật khẩu cho ${name || userId}`);
+    const voiceBadge = d.voice_status === "Registered"
+      ? `<span style="background:rgba(16,185,129,.12);color:#047857;border:1px solid rgba(16,185,129,.25);padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:600">● ${esc(d.voice_status)}</span>`
+      : `<span style="background:rgba(148,163,184,.15);color:#475569;border:1px solid rgba(148,163,184,.3);padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:600">○ ${esc(d.voice_status)}</span>`;
+    const revokeBadge = d.revoke_pending
+      ? `<span style="background:rgba(239,68,68,.1);color:#b91c1c;border:1px solid rgba(239,68,68,.25);padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:600">⚠ Revoke pending</span>`
+      : "";
+    const pwBadge = d.has_password
+      ? `<span style="color:var(--txt-2);font-size:.78rem">🔐 has_password</span>`
+      : `<span style="color:#b91c1c;font-size:.78rem">⚠ no_password</span>`;
+    const html = `
+      <div style="font-size:.85rem;line-height:1.55">
+        <div style="margin-bottom:.4rem"><span style="color:var(--txt-2)">user_id:</span> <code style="background:rgba(124,58,237,.08);color:var(--c-violet);padding:1px 6px;border-radius:4px;font-size:.78rem">${esc(d.user_id)}</code></div>
+        <div style="margin-bottom:.4rem"><span style="color:var(--txt-2)">Tên (masked):</span> <strong>${esc(d.name_masked)}</strong></div>
+        <div style="margin-bottom:.4rem"><span style="color:var(--txt-2)">Email (masked):</span> <code style="background:rgba(148,163,184,.1);padding:1px 6px;border-radius:4px;font-size:.78rem">${esc(d.email_masked || "(chưa link Gmail)")}</code></div>
+        <div style="margin-bottom:.4rem"><span style="color:var(--txt-2)">Voice status:</span> ${voiceBadge} ${revokeBadge}</div>
+        <div style="margin-bottom:.4rem"><span style="color:var(--txt-2)">Backend:</span> <code style="background:rgba(148,163,184,.1);padding:1px 6px;border-radius:4px;font-size:.78rem">${esc(d.backend)}</code></div>
+        <div style="margin-bottom:.4rem">${pwBadge}</div>
+        <div style="margin-top:.7rem;padding:.6rem;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:6px;font-size:.78rem;color:#92400e">
+          ℹ Admin KHÔNG xem được password / preferences / token. Chính sách no-recover.
+          Nếu user mất quyền truy cập, dùng <strong>Revoke & Re-enroll</strong>:
+          xoá vector giọng → user phải tự đăng ký lại giọng để mở khóa IMPORTANT.
+        </div>
+      </div>`;
+    showAdminDialog(`Thông tin ${name || userId}`, html, [
+      { label: "Đóng", style: "secondary" },
+      { label: "🛑 Revoke & Re-enroll", style: "danger",
+        onClick: () => revokeAndReenroll(userId, name) },
+    ]);
+  }
+
+  async function revokeAndReenroll(userId, name) {
+    const reason = window.prompt(
+      `Lý do thu hồi giọng nói của "${name || userId}" (sẽ ghi vào audit log)?\n` +
+      `Sau khi revoke, user phải tự re-enroll giọng để mở khóa IMPORTANT.`,
+      "Yêu cầu re-verification"
+    );
+    if (reason === null) return;
+    if (!window.confirm(`Xác nhận thu hồi vector giọng của ${name || userId}?`)) return;
+    const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/revoke-voice`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ admin_password: _adminPw, reason: reason }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      showToast(d.error || "Revoke thất bại", true);
+      return;
+    }
+    showToast(`Đã thu hồi giọng nói của ${name || userId}. User phải tự re-enroll.`);
+    closeAdminDialog();
+  }
+
+  // Lightweight inline dialog cho admin actions — match style modal sẵn có.
+  function showAdminDialog(title, bodyHtml, buttons) {
+    let $dlg = document.getElementById("admin-action-dialog");
+    if (!$dlg) {
+      $dlg = document.createElement("div");
+      $dlg.id = "admin-action-dialog";
+      $dlg.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:60;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)";
+      document.body.appendChild($dlg);
+    }
+    const btnHtml = (buttons || []).map((b, i) => {
+      const baseStyle = "padding:.5rem 1.05rem;border-radius:var(--r-btn);border:none;cursor:pointer;font-weight:600;font-size:.85rem;";
+      let style;
+      if (b.style === "danger") {
+        style = baseStyle + "background:rgba(239,68,68,.1);color:#b91c1c;border:1px solid rgba(239,68,68,.25)";
+      } else if (b.style === "secondary") {
+        style = baseStyle + "background:rgba(148,163,184,.12);color:var(--txt-1)";
+      } else {
+        style = baseStyle + "background:var(--c-violet);color:#fff";
+      }
+      return `<button data-idx="${i}" style="${style}">${esc(b.label)}</button>`;
+    }).join(' ');
+    $dlg.innerHTML = `
+      <div style="background:#fff;border-radius:var(--r-card);box-shadow:0 24px 64px -12px rgba(15,23,42,.32);max-width:520px;width:92%;padding:1.5rem;display:flex;flex-direction:column;gap:1rem">
+        <h3 style="margin:0;font-size:1rem;font-weight:700">${esc(title)}</h3>
+        <div>${bodyHtml}</div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;flex-wrap:wrap">${btnHtml}</div>
+      </div>`;
+    (buttons || []).forEach((b, i) => {
+      const $b = $dlg.querySelector(`button[data-idx="${i}"]`);
+      $b.onclick = () => {
+        if (b.onClick) b.onClick();
+        else closeAdminDialog();
+      };
+    });
+  }
+  function closeAdminDialog() {
+    const $dlg = document.getElementById("admin-action-dialog");
+    if ($dlg) $dlg.remove();
   }
 
   function renderAdminTable(users) {
@@ -2547,11 +2835,11 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
         `<td style="padding:.65rem 1.1rem;font-weight:600">${esc(u.name)}</td>` +
         `<td style="padding:.65rem 1.1rem;color:var(--txt-2);font-size:.82rem">${esc(u.created_at)}</td>` +
         `<td style="padding:.65rem 1.1rem;text-align:right;white-space:nowrap">` +
-          `<button class="btn-admin-reset" style="font-size:.76rem;color:#b91c1c;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.18);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.45rem">Reset mật khẩu</button>` +
+          `<button class="btn-admin-info" style="font-size:.76rem;color:#4338ca;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.18);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.45rem">🔍 Xem (masked)</button>` +
           `<button class="btn-admin-edit btn-primary btn-sm">Sửa</button>` +
         `</td>`;
       tr.querySelector(".btn-admin-edit").onclick = () => openModal(u.user_id, u.name);
-      tr.querySelector(".btn-admin-reset").onclick = () => resetUserPassword(u.user_id, u.name);
+      tr.querySelector(".btn-admin-info").onclick = () => showMaskedInfo(u.user_id, u.name);
       $tbody.appendChild(tr);
     });
   }

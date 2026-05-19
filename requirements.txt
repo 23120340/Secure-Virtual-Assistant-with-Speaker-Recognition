@@ -28,6 +28,9 @@ scipy
 gTTS>=2.5.0
 pydub>=0.25.1
 audioop-lts>=0.2.1  # compatibility shim cho Python 3.13+ (audioop bị xóa khỏi stdlib)
+# Offline TTS fallback khi gTTS fail (mất mạng / rate limit). Optional —
+# có thể bỏ qua nếu không cần fallback offline.
+pyttsx3>=2.90
 
 # NLU
 google-genai>=1.0.0

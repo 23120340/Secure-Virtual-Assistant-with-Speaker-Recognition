@@ -230,6 +230,14 @@ class UserDB:
                 c.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''")
             except sqlite3.OperationalError:
                 pass
+            # `revoke_pending`: cờ admin set sau khi "Revoke & Re-enroll" — block
+            # tất cả tác vụ IMPORTANT cho tới khi user tự re-enroll giọng. Reset
+            # về 0 sau khi user upload mẫu mới qua /api/users/<id>/reenroll-voice.
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN revoke_pending "
+                          "INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
             c.execute("""
                 CREATE TABLE IF NOT EXISTS oauth_tokens (
                     user_id       TEXT PRIMARY KEY,
@@ -301,13 +309,19 @@ class UserDB:
     def get_user(self, user_id: str) -> Optional[dict]:
         with self._conn() as c:
             row = c.execute(
-                "SELECT name, created_at, preferences FROM users WHERE user_id=?",
+                "SELECT name, created_at, preferences, revoke_pending "
+                "FROM users WHERE user_id=?",
                 (user_id,)
             ).fetchone()
         if not row:
             return None
-        return {"user_id": user_id, "name": row[0],
-                "created_at": row[1], "preferences": json.loads(row[2])}
+        return {
+            "user_id": user_id,
+            "name": row[0],
+            "created_at": row[1],
+            "preferences": json.loads(row[2]),
+            "revoke_pending": bool(row[3]) if row[3] is not None else False,
+        }
 
     def update_preferences(self, user_id: str, preferences: dict):
         with self._conn() as c:
@@ -395,6 +409,40 @@ class UserDB:
         if row is None:
             return False
         return bool(row[0])
+
+    # ----------------------------------------------------------------
+    # Voice revocation flag (admin Revoke & Re-enroll workflow)
+    # ----------------------------------------------------------------
+    def set_revoke_pending(self, user_id: str, pending: bool):
+        """Admin flip cờ. True = user phải re-enroll giọng trước khi dùng
+        IMPORTANT. False = đã re-enroll xong, mở lại quyền."""
+        with self._conn() as c:
+            c.execute("UPDATE users SET revoke_pending=? WHERE user_id=?",
+                      (1 if pending else 0, user_id))
+
+    def is_revoke_pending(self, user_id: str) -> bool:
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT revoke_pending FROM users WHERE user_id=?",
+                (user_id,)
+            ).fetchone()
+        if not row:
+            return False
+        return bool(row[0])
+
+    def revoke_voice_embedding(self, user_id: str, backend_id: str | None = None):
+        """Xoá voice embedding của user — bước đầu của admin "Revoke & Re-enroll".
+
+        backend_id=None → xoá EMBEDDING tất cả backend của user này (cẩn thận).
+        Có backend_id → chỉ xoá embedding của backend đó (giữ backend khác).
+        Mặc định xoá hết — match semantics "thu hồi giọng nói" admin mong đợi.
+        """
+        with self._conn() as c:
+            if backend_id is None:
+                c.execute("DELETE FROM embeddings WHERE user_id=?", (user_id,))
+            else:
+                c.execute("DELETE FROM embeddings WHERE user_id=? AND backend_id=?",
+                          (user_id, backend_id))
 
     # ----------------------------------------------------------------
     # OAuth token storage

@@ -227,11 +227,15 @@ class RuleBasedNLU:
         ("tell_joke", ["chuyện cười", "kể cười", "câu cười"]),
         ("add_contact", ["thêm liên hệ", "lưu contact", "thêm contact",
                          "tạo contact", "thêm vào danh bạ"]),
+        ("set_reminder", ["nhắc tôi", "đặt nhắc", "đặt reminder", "tạo reminder",
+                          "nhắc trong", "nhắc lúc"]),
+        ("list_reminders", ["nhắc việc nào", "kiểm tra reminder", "đọc danh sách nhắc",
+                            "tôi có gì cần nhớ", "show reminders", "liệt kê reminder"]),
         ("add_note", ["thêm ghi chú", "tạo ghi chú", "lưu ghi chú", "tạo note",
                       "thêm note", "ghi chú mới", "note lại", "viết ghi chú",
                       "ghi vào note", "thêm vào ghi chú"]),
         ("add_schedule", ["thêm lịch", "đặt lịch", "lên lịch", "ghi vào lịch",
-                          "thêm cuộc hẹn", "thêm vào lịch", "tạo lịch", "đặt nhắc",
+                          "thêm cuộc hẹn", "thêm vào lịch", "tạo lịch",
                           "thêm task vào lịch"]),
         ("read_notes", ["đọc ghi chú", "mở nhật ký", "đọc nhật ký", "ghi chú của tôi"]),
         ("send_email", ["gửi email", "gửi mail", "soạn mail", "viết mail", "viết email"]),
@@ -327,6 +331,31 @@ class RuleBasedNLU:
             out = {}
             if name:  out["name"] = name
             if email: out["email"] = email
+            return out
+        if intent == "set_reminder":
+            # Tách time pattern (giống add_schedule) + content.
+            time_m = re.search(
+                r"(\d{1,2}\s*(?:giờ|h|:)\s*\d{0,2}\s*(?:sáng|chiều|tối|đêm|trưa)?|"
+                r"\d+\s*(?:phút|giờ|tiếng|ngày|tuần)\s*nữa|"
+                r"sáng mai|chiều mai|tối mai|đêm mai|"
+                r"sáng nay|chiều nay|tối nay|trưa nay|"
+                r"hôm nay|ngày mai|ngày kia)",
+                text, flags=re.IGNORECASE,
+            )
+            when_str = time_m.group(0).strip() if time_m else ""
+            content = text
+            for kw in ("nhắc tôi", "đặt nhắc", "đặt reminder", "tạo reminder",
+                       "nhắc trong", "nhắc lúc"):
+                idx = content.find(kw)
+                if idx >= 0:
+                    content = content[idx + len(kw):]
+                    break
+            if when_str:
+                content = content.replace(when_str, "", 1)
+            content = content.strip(" :,.-")
+            out: dict = {}
+            if content:  out["content"] = content
+            if when_str: out["when"]    = when_str
             return out
         return {}
 

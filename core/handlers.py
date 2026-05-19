@@ -337,6 +337,64 @@ def handle_add_schedule(entities, user, **kwargs) -> str:
     return f"Đã thêm vào lịch của {user['name']}: \"{entry}\"."
 
 
+def handle_set_reminder(entities, user, **kwargs) -> str:
+    """Đặt nhắc việc — parse thời gian VN + lưu vào preferences.reminders."""
+    if user is None:
+        return "Chưa nhận ra giọng — không thể đặt nhắc."
+    content = (entities.get("content") or "").strip()
+    when_text = (entities.get("when") or "").strip()
+    if not content:
+        return "Bạn muốn nhắc nội dung gì? Mình chưa nghe rõ."
+    if not when_text:
+        return "Bạn muốn nhắc lúc nào? Ví dụ: '9 giờ sáng mai', '30 phút nữa'."
+    db = kwargs.get("db")
+    if db is None:
+        return "Không thể lưu nhắc — thiếu kết nối database."
+
+    from . import reminders as _rm
+    item = _rm.make_reminder(content, when_text)
+    prefs = dict(user["preferences"])
+    prefs["reminders"] = _rm.append_reminder(prefs.get("reminders", []), item)
+    db.update_preferences(user["user_id"], prefs)
+
+    if item["when_iso"]:
+        from datetime import datetime
+        dt = datetime.fromisoformat(item["when_iso"])
+        when_str = dt.strftime("%H:%M ngày %d/%m")
+        return f"Đã đặt nhắc cho {user['name']}: \"{content}\" lúc {when_str}."
+    else:
+        # Parser fail → lưu raw, user vẫn thấy được khi list.
+        return (f"Đã ghi nhắc \"{content}\" với thời gian '{when_text}', "
+                f"nhưng mình chưa parse được giờ chính xác. Bạn có thể sửa "
+                f"trong trang Thông tin → preferences.reminders.")
+
+
+def handle_list_reminders(entities, user, **kwargs) -> str:
+    """Liệt kê reminder của user: pending + due. PERSONAL — dùng SID."""
+    if user is None:
+        return "Mình chưa nhận ra giọng nên không truy cập được nhắc việc."
+    reminders = user["preferences"].get("reminders") or []
+    if not reminders:
+        return f"{user['name']} ơi, bạn chưa có nhắc việc nào."
+
+    from . import reminders as _rm
+    due = _rm.due_reminders(reminders)
+    pending = [r for r in reminders if not r.get("fired")]
+    lines = []
+    if due:
+        lines.append(f"🔔 Đến hạn ({len(due)}):")
+        for r in due[:5]:
+            lines.append("  - " + _rm.format_reminder_for_speech(r))
+    not_due = [r for r in pending if r not in due]
+    if not_due:
+        lines.append(f"⏳ Sắp tới ({len(not_due)}):")
+        for r in not_due[:5]:
+            lines.append("  - " + _rm.format_reminder_for_speech(r))
+    if not lines:
+        return f"{user['name']} ơi, không có nhắc việc nào đang chờ."
+    return "\n".join(lines)
+
+
 def handle_add_contact(entities, user, **kwargs) -> str:
     """Thêm contact mới (name + email) vào preferences.contacts."""
     if user is None:
@@ -423,6 +481,8 @@ HANDLERS = {
     "add_note": handle_add_note,
     "add_schedule": handle_add_schedule,
     "add_contact": handle_add_contact,
+    "set_reminder": handle_set_reminder,
+    "list_reminders": handle_list_reminders,
     "greet": handle_greet,
     "play_music": handle_play_music,
     "show_schedule": handle_show_schedule,

@@ -99,6 +99,31 @@ def _resolve_child_path(base: Path, child: str) -> Path | None:
         return None
     return candidate
 
+
+def _mask_email(email: str) -> str:
+    """Mask email cho admin view — show first 3 char + ***@domain.
+    Vd: nguyenvanminh@gmail.com → ngu***@gmail.com.
+    Tránh dump PII cho admin nhưng vẫn cho admin nhận diện account.
+    """
+    if not email or "@" not in email:
+        return email or ""
+    local, _, domain = email.partition("@")
+    if len(local) <= 3:
+        masked_local = local[:1] + "***" if local else "***"
+    else:
+        masked_local = local[:3] + "***"
+    return f"{masked_local}@{domain}"
+
+
+def _mask_name(name: str) -> str:
+    """Mask tên user. Vd: Nguyễn Văn Minh → Nguyễn V*** M***."""
+    if not name:
+        return ""
+    parts = name.strip().split()
+    if len(parts) <= 1:
+        return parts[0][:1] + "***" if parts else "***"
+    return parts[0] + " " + " ".join(p[:1] + "***" for p in parts[1:])
+
 # Thêm project root vào path để import được core/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -459,6 +484,35 @@ def _continue_email_flow_if_active(text: str, db, nlu):
 # ==========================================================================
 def register_routes(app):
 
+    # ----- JSON error handler cho /api/* -----
+    # Bug history: routes /api/assistant/text khi gặp uncaught exception thì Flask
+    # trả HTML 500 mặc định → frontend làm `await r.json()` → "Unexpected token '<'"
+    # rất khó debug. Convert sang JSON 500 để frontend log/hiển thị lỗi đúng cách.
+    @app.errorhandler(Exception)
+    def _json_error_for_api(exc):
+        from werkzeug.exceptions import HTTPException
+        # Cho phép HTTPException (404, 403, 413, 429) đi qua handler riêng.
+        if isinstance(exc, HTTPException):
+            if request.path.startswith("/api/"):
+                resp = jsonify({"error": exc.description or exc.name,
+                                "code": exc.code})
+                resp.status_code = exc.code or 500
+                return resp
+            return exc  # non-API → Flask default HTML.
+        # Exception thật → log đầy đủ, response gọn (không leak stack).
+        _log.exception("Unhandled exception trên %s %s", request.method, request.path)
+        rid = getattr(g, "request_id", "")
+        if request.path.startswith("/api/"):
+            resp = jsonify({
+                "error": "Lỗi server. Vui lòng thử lại hoặc liên hệ admin.",
+                "request_id": rid,
+            })
+            resp.status_code = 500
+            return resp
+        # Non-API request lỗi → trang HTML đơn giản (không leak stack).
+        return ("<!doctype html><meta charset='utf-8'>"
+                f"<h2>Lỗi server (500)</h2><p>request_id={rid}</p>"), 500
+
     # ----- CSRF + Security headers -----
     @app.before_request
     def csrf_protect():
@@ -499,18 +553,15 @@ def register_routes(app):
         return {"csp_nonce": getattr(g, "csp_nonce", "")}
 
     def _build_csp(nonce: str) -> str:
-        # script-src: nonce + 'unsafe-inline'.
-        # - Nonce protects: full <script> blocks (đã sửa templates).
-        # - 'unsafe-inline' VẪN cần cho onclick='...' attributes trong template
-        #   + onclick string nội suy vào innerHTML từ JS (vd downloadFile).
-        # CSP3: khi có nonce-source, browser modern bỏ qua 'unsafe-inline' cho
-        # <script> blocks (vẫn enforce nonce) NHƯNG vẫn cho phép inline event
-        # handlers vì chúng không phải <script>. Trade-off chấp nhận được; full
-        # drop cần refactor onclick → addEventListener (P2 todo).
+        # script-src: chỉ nonce — đã refactor toàn bộ inline onclick handler
+        # sang addEventListener (mỗi <script> block đều có nonce). Bỏ
+        # 'unsafe-inline' để strict CSP, ngăn XSS chèn `<script>` không nonce
+        # hoặc gắn onclick attribute mới.
+        # style-src vẫn cần 'unsafe-inline' (Tailwind utility-class style + nhiều
+        # `style="..."` attribute inline trong template).
         return (
             "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}' 'unsafe-inline' https://cdn.tailwindcss.com; "
-            # style-src vẫn cần 'unsafe-inline' (Tailwind utility-class inline style)
+            f"script-src 'self' 'nonce-{nonce}' https://cdn.tailwindcss.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.cdnfonts.com; "
             "font-src https://fonts.gstatic.com https://fonts.cdnfonts.com data:; "
             "img-src 'self' data: https://i.ytimg.com https://*.deezer.com https://*.dzcdn.net; "
@@ -680,18 +731,232 @@ def register_routes(app):
         if not user:
             return jsonify({"error": "User không tồn tại"}), 404
         # Public payload: identification + auth-status only.
+        # `revoke_pending` được trả về public — user cần thấy ngay (kể cả trước
+        # khi unlock) để biết phải re-enroll giọng. Không leak PII.
         result = {
-            "user_id":      user["user_id"],
-            "name":         user["name"],
-            "created_at":   user["created_at"],
-            "has_password": db.has_password(user_id),
-            "preferences":  {},
+            "user_id":        user["user_id"],
+            "name":           user["name"],
+            "created_at":     user["created_at"],
+            "has_password":   db.has_password(user_id),
+            "revoke_pending": bool(user.get("revoke_pending")),
+            "preferences":    {},
         }
         # Authed session với chính user này → trả preferences đầy đủ
         # (file session đặt sau khi unlock; same auth scope dùng cho assistant).
         if _get_authed_uid("any") == user_id:
             result["preferences"] = user["preferences"]
         return jsonify(result)
+
+    def _decode_voice_samples_from_request(request):
+        """Decode multipart `sample_*` audio blobs → list[np.ndarray] sau VAD.
+
+        Dùng chung cho /api/enroll (lần đầu), /api/users/<id>/reenroll-voice
+        (admin Revoke flow), /api/users/<id>/add-voice-samples (incremental).
+        Trả về (audios, err_response). Nếu err_response không None, caller chỉ
+        cần `return err_response` ngay.
+        """
+        audios = []
+        for key in sorted(request.files.keys()):
+            if not key.startswith("sample_"):
+                continue
+            blob = request.files[key].read()
+            try:
+                audio = audio_io.decode_browser_audio(blob)
+            except Exception as e:
+                return None, (jsonify({"error": f"Giải mã {key} thất bại: {e}"}), 400)
+            audio, has_speech = audio_io.SileroVAD.trim(
+                audio, return_speech_detected=True)
+            _min_enroll = int(config.SAMPLE_RATE * config.MIN_AUDIO_SEC_ENROLL)
+            if not has_speech or audio.size < _min_enroll:
+                return None, (jsonify({
+                    "error": f"{key} quá ngắn sau VAD ({audio.size/config.SAMPLE_RATE:.2f}s, "
+                             f"cần ≥ {config.MIN_AUDIO_SEC_ENROLL}s). "
+                             "Hãy đảm bảo nói rõ ràng đủ thời lượng."
+                }), 400)
+            audios.append(audio)
+        return audios, None
+
+    @app.route("/api/users/<user_id>/reenroll-voice", methods=["POST"])
+    @max_size(20)
+    @rate_limit(max_attempts=3, window_sec=300,
+                scope="user-reenroll-voice", key_user_field="user_id")
+    def api_reenroll_voice(user_id):
+        """Đăng ký lại giọng nói toàn bộ (REPLACE centroid).
+
+        Dùng khi admin đã Revoke (revoke_pending=True) HOẶC user muốn refresh
+        toàn bộ template giọng (vd: bị cảm giọng đổi rõ).
+
+        Body multipart: password (form field) + sample_0..N (audio blobs).
+        Yêu cầu password current để chống attacker. Sau khi pass:
+        - Encode N audio mới → centroid mới.
+        - REPLACE embedding trong DB (KHÔNG average với old — vì old có thể đã xoá).
+        - Clear cờ revoke_pending.
+        - Replace WAV samples trên disk.
+        """
+        db = app.config["db"]
+        spk_mgr = app.config["spk_mgr"]
+        user = db.get_user(user_id)
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        password = request.form.get("password", "").strip()
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
+        if not db.check_password(user_id, password):
+            _audit("auth.password_check", user_id=user_id, scope="reenroll-voice",
+                   outcome="fail", ip=ip, ua=ua)
+            return jsonify({"error": "Sai mật khẩu"}), 403
+
+        audios, err = _decode_voice_samples_from_request(request)
+        if err is not None:
+            return err
+        if len(audios) < 2:
+            return jsonify({
+                "error": f"Cần ít nhất 2 mẫu (gửi được {len(audios)}). "
+                         f"Khuyến nghị {config.ENROLL_NUM_SAMPLES} mẫu."
+            }), 400
+
+        # Encode + REPLACE
+        try:
+            from core import audio_io as _aio
+            prepped = [_aio.preprocess_audio(a) for a in audios]
+            centroid = spk_mgr.encoder.encode_centroid(prepped)
+            db.upsert_embedding(user_id, centroid,
+                                backend_id=spk_mgr.encoder.backend_id)
+        except Exception as e:
+            return jsonify({"error": f"Re-enroll thất bại: {e}"}), 500
+
+        # Clear revoke flag — user đã chứng minh quyền sở hữu giọng nói.
+        db.set_revoke_pending(user_id, False)
+        spk_mgr.invalidate_cache()
+
+        # Replace WAV files trên disk.
+        import shutil, tempfile
+        sample_dir = config.ENROLL_AUDIO_DIR / user_id
+        # Wipe old + atomic move new in.
+        with tempfile.TemporaryDirectory(prefix="reenroll_") as _tmp_str:
+            tmp_dir = Path(_tmp_str)
+            for idx, a in enumerate(audios, start=1):
+                audio_io.save_wav(a, tmp_dir / f"sample_{idx}.wav")
+            if sample_dir.exists():
+                shutil.rmtree(sample_dir)
+            sample_dir.mkdir(parents=True, exist_ok=True)
+            for wav in tmp_dir.iterdir():
+                shutil.move(str(wav), sample_dir / wav.name)
+
+        _audit("speaker.reenroll", user_id=user_id, actor="self",
+               outcome="success", n_samples=len(audios),
+               cleared_revoke=True, ip=ip, ua=ua)
+        return jsonify({
+            "ok": True,
+            "user_id": user_id,
+            "n_samples": len(audios),
+            "revoke_cleared": True,
+        })
+
+    @app.route("/api/users/<user_id>/add-voice-samples", methods=["POST"])
+    @max_size(20)
+    @rate_limit(max_attempts=3, window_sec=300,
+                scope="user-add-voice", key_user_field="user_id")
+    def api_add_voice_samples(user_id):
+        """Bổ sung mẫu giọng nói cho centroid (KHÔNG replace).
+
+        Khác `reenroll-voice`: endpoint này AVERAGE mẫu mới với centroid cũ
+        (weight theo alpha). Dùng khi user muốn thêm robustness cho centroid
+        mà không xoá template cũ — ví dụ thu thêm mẫu trong môi trường ồn khác.
+
+        Body multipart: password + sample_0..N. Cần ít nhất 1 mẫu.
+        - KHÔNG cho phép khi revoke_pending (admin đã thu hồi → phải re-enroll).
+        - Mỗi mẫu apply incremental update với alpha = 1/(n_existing+1).
+        """
+        db = app.config["db"]
+        spk_mgr = app.config["spk_mgr"]
+        user = db.get_user(user_id)
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        if user.get("revoke_pending"):
+            return jsonify({"error": "Tài khoản đang chờ Re-enroll. Gọi "
+                                     "/api/users/<id>/reenroll-voice thay vì add-voice."}), 409
+        password = request.form.get("password", "").strip()
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
+        if not db.check_password(user_id, password):
+            _audit("auth.password_check", user_id=user_id, scope="add-voice",
+                   outcome="fail", ip=ip, ua=ua)
+            return jsonify({"error": "Sai mật khẩu"}), 403
+
+        audios, err = _decode_voice_samples_from_request(request)
+        if err is not None:
+            return err
+        if not audios:
+            return jsonify({"error": "Cần ít nhất 1 mẫu giọng"}), 400
+
+        # Update incremental — mỗi audio kéo centroid theo alpha nhỏ.
+        # alpha = 1/(N_existing_estimate + 1) — assume centroid đại diện cho
+        # ~ ENROLL_NUM_SAMPLES mẫu gốc nên giảm dần ảnh hưởng mỗi audio thêm.
+        alpha = 1.0 / (config.ENROLL_NUM_SAMPLES + 1)
+        updated_count = 0
+        for a in audios:
+            try:
+                ok, _ = spk_mgr.incremental_update_centroid(a, user_id, alpha=alpha)
+                if ok:
+                    updated_count += 1
+            except Exception:
+                _log.exception("incremental update failed cho %s", user_id)
+        # Persist WAV samples mới (append) — tên file unique theo timestamp.
+        sample_dir = config.ENROLL_AUDIO_DIR / user_id
+        sample_dir.mkdir(parents=True, exist_ok=True)
+        ts = int(time.time())
+        for idx, a in enumerate(audios, start=1):
+            audio_io.save_wav(a, sample_dir / f"sample_added_{ts}_{idx}.wav")
+
+        _audit("speaker.add_samples", user_id=user_id, actor="self",
+               outcome="success", n_samples=updated_count, alpha=alpha,
+               ip=ip, ua=ua)
+        return jsonify({
+            "ok": True,
+            "user_id": user_id,
+            "n_samples_applied": updated_count,
+            "alpha_per_sample": round(alpha, 4),
+        })
+
+    @app.route("/api/users/<user_id>/due-reminders", methods=["GET", "POST"])
+    @rate_limit(max_attempts=60, window_sec=60,
+                scope="due-reminders", key_user_field="user_id")
+    def api_due_reminders(user_id):
+        """Trả về reminder đã đến hạn và chưa fire.
+
+        - GET: chỉ read (peek). Frontend poll mỗi N giây để hiện notification.
+        - POST với body `{ack_ids: [...]}`: mark fired để không pop lại.
+          Gate auth: phải có file session match user_id (chống enumeration).
+        """
+        from core.reminders import due_reminders, mark_fired
+        db = app.config["db"]
+        user = db.get_user(user_id)
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        # GET không cần auth (chỉ ID-based polling sau khi user đã unlock ở UI).
+        # POST cần file session match → chống attacker mark-fired reminder của
+        # user khác.
+        if request.method == "POST":
+            if _get_authed_uid("any") != user_id:
+                return jsonify({"error": "Chưa xác thực"}), 403
+            ids = (_json_body() or {}).get("ack_ids", []) or []
+            prefs = dict(user["preferences"])
+            prefs["reminders"] = mark_fired(prefs.get("reminders", []), ids)
+            db.update_preferences(user_id, prefs)
+            return jsonify({"ok": True, "acked": len(ids)})
+
+        reminders = user["preferences"].get("reminders") or []
+        due = due_reminders(reminders)
+        # Public payload: chỉ id + content + when_iso — đủ cho banner UI.
+        return jsonify({
+            "due": [
+                {"id": r["id"], "content": r["content"],
+                 "when_iso": r.get("when_iso")}
+                for r in due
+            ],
+            "total_pending": sum(1 for r in reminders if not r.get("fired")),
+        })
 
     @app.route("/api/users/<user_id>/update", methods=["POST"])
     @rate_limit(max_attempts=5, window_sec=60,
@@ -726,19 +991,84 @@ def register_routes(app):
     @rate_limit(max_attempts=5, window_sec=60,
                 scope="user-update-info", key_user_field="user_id")
     def api_update_user_info(user_id):
+        """User self-service update (name + optional password).
+
+        Body: {password, name?, new_password?}
+        - `password`: current password (verify).
+        - `new_password` (tuỳ chọn): nếu set → đổi password. Validate length 8-128,
+          khác password cũ. Sau khi đổi → invalidate file session (user phải login lại).
+        """
         db = app.config["db"]
         if not db.get_user(user_id):
             return jsonify({"error": "User không tồn tại"}), 404
         data = _json_body()
         password = data.get("password", "")
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
         if not db.check_password(user_id, password):
+            _audit("auth.password_check", user_id=user_id, scope="update-info",
+                   outcome="fail", ip=ip, ua=ua)
             return jsonify({"error": "Sai mật khẩu"}), 403
 
         if "name" in data:
             db.update_user_name(user_id, data["name"])
         new_password = data.get("new_password", "")
         if new_password:
+            # Validate new password — big-tech standard: length 8-128 + khác cũ.
+            if len(new_password) < 8:
+                return jsonify({"error": "Mật khẩu mới phải có ít nhất 8 ký tự"}), 400
+            if len(new_password) > 128:
+                return jsonify({"error": "Mật khẩu mới quá dài (max 128)"}), 400
+            if new_password == password:
+                return jsonify({"error": "Mật khẩu mới phải khác mật khẩu cũ"}), 400
             db.update_password(user_id, new_password)
+            # Invalidate file session — buộc login lại với password mới.
+            if session.get("file_uid") == user_id:
+                _clear_file_session()
+            _audit("auth.password_change", user_id=user_id, actor="self",
+                   outcome="success", ip=ip, ua=ua)
+        return jsonify({"ok": True})
+
+    @app.route("/api/users/<user_id>/change-password", methods=["POST"])
+    @rate_limit(max_attempts=5, window_sec=60,
+                scope="user-change-password", key_user_field="user_id")
+    def api_change_password(user_id):
+        """User self-service password change — explicit endpoint riêng cho UI.
+
+        Body: {old_password, new_password, new_password_confirm}
+        - old_password phải khớp current.
+        - new_password = new_password_confirm.
+        - new ≠ old, length 8-128.
+        - Audit `auth.password_change`, invalidate file session.
+        """
+        db = app.config["db"]
+        if not db.get_user(user_id):
+            return jsonify({"error": "User không tồn tại"}), 404
+        data = _json_body()
+        old_pw = data.get("old_password", "")
+        new_pw = str(data.get("new_password", ""))
+        new_pw_confirm = str(data.get("new_password_confirm", ""))
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
+
+        if not db.check_password(user_id, old_pw):
+            _audit("auth.password_change", user_id=user_id, actor="self",
+                   outcome="fail_old_password", ip=ip, ua=ua)
+            return jsonify({"error": "Mật khẩu cũ không đúng"}), 403
+        if not new_pw or new_pw != new_pw_confirm:
+            return jsonify({"error": "Xác nhận mật khẩu mới không khớp"}), 400
+        if len(new_pw) < 8:
+            return jsonify({"error": "Mật khẩu mới phải có ít nhất 8 ký tự"}), 400
+        if len(new_pw) > 128:
+            return jsonify({"error": "Mật khẩu mới quá dài (max 128)"}), 400
+        if new_pw == old_pw:
+            return jsonify({"error": "Mật khẩu mới phải khác mật khẩu cũ"}), 400
+
+        db.update_password(user_id, new_pw)
+        if session.get("file_uid") == user_id:
+            _clear_file_session()
+        _audit("auth.password_change", user_id=user_id, actor="self",
+               outcome="success", ip=ip, ua=ua)
         return jsonify({"ok": True})
 
     @app.route("/api/users/<user_id>/export", methods=["POST"])
@@ -1098,11 +1428,21 @@ def register_routes(app):
         response    = ""
 
         if sv_required:
+            # Guard 0: nếu admin đã Revoke giọng → block IMPORTANT cho tới khi
+            # user re-enroll xong. KHÔNG cho password bypass — đây là design
+            # intent của Revoke flow.
+            if user and user.get("revoke_pending"):
+                blocked  = True
+                response = (
+                    f"Tài khoản {name} đang trong trạng thái chờ đăng ký lại giọng nói "
+                    f"(admin đã thu hồi). Vui lòng vào trang user → 'Đăng ký lại giọng nói' "
+                    f"để mở khóa tác vụ quan trọng."
+                )
             # Text-mode KHÔNG có audio để verify giọng. Mặc định block IMPORTANT
             # — Speaker Verification là biometric gate, password là "know factor"
             # không tương đương. Cho phép password fallback chỉ khi
             # ALLOW_PASSWORD_FOR_IMPORTANT=true (demo mode hoặc mic broken).
-            if not config.ALLOW_PASSWORD_FOR_IMPORTANT:
+            elif not config.ALLOW_PASSWORD_FOR_IMPORTANT:
                 blocked  = True
                 response = ("Tác vụ này yêu cầu xác thực bằng giọng nói (Speaker Verification). "
                             "Hãy chuyển sang chế độ Voice và nói lại yêu cầu.")
@@ -1110,9 +1450,15 @@ def register_routes(app):
                 blocked  = True
                 response = ("Tác vụ này yêu cầu xác thực. "
                             "Vui lòng chọn người dùng và nhập mật khẩu.")
+            elif not password:
+                # User chưa nhập password (turn đầu tiên với IMPORTANT intent)
+                # → prompt nhập password, KHÔNG báo "sai mật khẩu".
+                blocked  = True
+                response = (f"Tác vụ này cần xác thực. "
+                            f"Vui lòng nhập mật khẩu của {name} rồi gửi lại yêu cầu.")
             elif not db.check_password(uid, password):
                 blocked  = True
-                response = "Sai mật khẩu. Không thể thực hiện tác vụ này."
+                response = "Sai mật khẩu. Vui lòng kiểm tra và thử lại."
             else:
                 # Pass qua password fallback — KHÔNG phải biometric SV.
                 # auth_method="password" set ở _attach_action_data để frontend
@@ -1204,6 +1550,9 @@ def register_routes(app):
         except Exception:
             # gTTS lỗi (mất mạng, rate limit...). Trả về 204 No Content thay vì
             # bytes giả "\xff\xe3..." (không phải MP3 hợp lệ, gây lỗi audio player).
+            return ("", 204)
+        if not mp3:
+            # Cả gTTS và pyttsx3 fallback đều fail → 204 cho client xử lý gracefully.
             return ("", 204)
         return send_file(io.BytesIO(mp3), mimetype="audio/mpeg",
                          as_attachment=False)
@@ -1631,49 +1980,113 @@ def register_routes(app):
             ],
         })
 
-    @app.route("/api/admin/users/<user_id>/reset-password", methods=["POST"])
-    @max_size(0.01)
-    @rate_limit(max_attempts=5, window_sec=300,
-                scope="admin-reset-password", key_user_field="user_id")
-    def api_admin_reset_user_password(user_id):
-        """Admin-assisted password reset.
+    def _check_admin_pass(supplied: str) -> bool:
+        return bool(config.ADMIN_PASS) and hmac.compare_digest(
+            str(supplied), config.ADMIN_PASS)
 
-        Big-system style policy:
-        - Never recover/show old password; only replace hash with a new password.
-        - Require ADMIN_PASS on every reset request, not just a prior UI unlock.
-        - Validate new password length.
-        - Audit both success and failure without logging the password.
+    @app.route("/api/admin/users/<user_id>/info-masked", methods=["POST"])
+    @max_size(0.01)
+    @rate_limit(max_attempts=10, window_sec=60,
+                scope="admin-info-masked", key_user_field="user_id")
+    def api_admin_info_masked(user_id):
+        """Admin xem thông tin user với PII đã mask.
+
+        Big-tech style: admin KHÔNG được xem password/email/preferences full.
+        Chỉ thấy đủ để confirm danh tính + decide có revoke không. Không
+        có endpoint nào trả về password hash cho admin (always-hashed-never-recoverable).
+
+        Body: {admin_password}
+        Returns: {user_id, name_masked, email_masked, voice_status, has_password,
+                  revoke_pending, created_at}
         """
-        db = app.config["db"]
         data = _json_body()
-        supplied = data.get("admin_password", "")
         ip = _rl_client_ip()
         ua = request.headers.get("User-Agent", "")
-
-        if (not config.ADMIN_PASS or
-                not hmac.compare_digest(str(supplied), config.ADMIN_PASS)):
-            _audit("auth.password_reset", user_id=user_id, actor="admin",
+        if not _check_admin_pass(data.get("admin_password", "")):
+            _audit("admin.access", user_id=user_id, action="info_masked",
                    outcome="fail_admin_auth", ip=ip, ua=ua)
             return jsonify({"error": "Sai mật khẩu quản trị"}), 403
 
+        db = app.config["db"]
         user = db.get_user(user_id)
         if not user:
-            _audit("auth.password_reset", user_id=user_id, actor="admin",
-                   outcome="fail_user_not_found", ip=ip, ua=ua)
             return jsonify({"error": "User không tồn tại"}), 404
 
-        new_password = str(data.get("new_password", ""))
-        if len(new_password) < 8:
-            return jsonify({"error": "Mật khẩu mới phải có ít nhất 8 ký tự"}), 400
-        if len(new_password) > 128:
-            return jsonify({"error": "Mật khẩu mới quá dài"}), 400
+        prefs = user.get("preferences", {}) or {}
+        email = (prefs.get("email") or "").strip()
+        # Voice status: dựa trên embedding tồn tại cho backend hiện tại.
+        spk_mgr = app.config["spk_mgr"]
+        try:
+            cache = db.load_all_embeddings(
+                expected_dim=spk_mgr.encoder.embedding_dim,
+                backend_id=spk_mgr.encoder.backend_id,
+            )
+            voice_registered = user_id in cache
+        except Exception:
+            voice_registered = False
 
-        db.update_password(user_id, new_password)
+        _audit("admin.access", user_id=user_id, action="info_masked",
+               outcome="success", ip=ip, ua=ua)
+        return jsonify({
+            "user_id":        user_id,
+            "name_masked":    _mask_name(user["name"]),
+            "email_masked":   _mask_email(email),
+            "voice_status":   "Registered" if voice_registered else "Not Registered",
+            "has_password":   db.has_password(user_id),
+            "revoke_pending": bool(user.get("revoke_pending")),
+            "created_at":     user["created_at"],
+            "backend":        spk_mgr.encoder.backend_id,
+        })
+
+    @app.route("/api/admin/users/<user_id>/revoke-voice", methods=["POST"])
+    @max_size(0.01)
+    @rate_limit(max_attempts=3, window_sec=300,
+                scope="admin-revoke-voice", key_user_field="user_id")
+    def api_admin_revoke_voice(user_id):
+        """Admin "Revoke & Re-enroll" — xoá voice embedding, set cờ revoke_pending.
+
+        Hành vi sau khi gọi:
+        - DELETE FROM embeddings WHERE user_id=? (tất cả backend).
+        - SET users.revoke_pending = 1 → router block IMPORTANT cho user này.
+        - User phải tự gọi /api/users/<id>/reenroll-voice (cần password current) +
+          upload mẫu giọng mới để clear cờ.
+        - KHÔNG xoá user, KHÔNG xoá password, KHÔNG xoá oauth/preferences/files.
+
+        Body: {admin_password, reason?}
+        """
+        data = _json_body()
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
+        if not _check_admin_pass(data.get("admin_password", "")):
+            _audit("admin.access", user_id=user_id, action="revoke_voice",
+                   outcome="fail_admin_auth", ip=ip, ua=ua)
+            return jsonify({"error": "Sai mật khẩu quản trị"}), 403
+
+        db = app.config["db"]
+        user = db.get_user(user_id)
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+
+        reason = str(data.get("reason", "") or "")[:200]
+        # 1) Xoá embedding của TẤT CẢ backend.
+        db.revoke_voice_embedding(user_id, backend_id=None)
+        # 2) Set cờ revoke_pending.
+        db.set_revoke_pending(user_id, True)
+        # 3) Invalidate cache SpeakerManager.
+        app.config["spk_mgr"].invalidate_cache()
+        # 4) Force user logout nếu đang có file session.
         if session.get("file_uid") == user_id:
             _clear_file_session()
-        _audit("auth.password_reset", user_id=user_id, actor="admin",
-               outcome="success", ip=ip, ua=ua)
-        return jsonify({"ok": True, "user_id": user_id})
+
+        _audit("admin.revoke_voice", user_id=user_id, actor="admin",
+               outcome="success", reason=reason, ip=ip, ua=ua)
+        return jsonify({
+            "ok": True,
+            "user_id": user_id,
+            "message": ("Đã thu hồi giọng nói. User phải gọi "
+                        "/api/users/<id>/reenroll-voice với mật khẩu + mẫu "
+                        "giọng mới để kích hoạt lại."),
+        })
 
     # ==========================================================================
     # Google OAuth 2.0 — Gmail API authentication
@@ -1700,7 +2113,12 @@ def register_routes(app):
         session["oauth_nonce"]         = nonce
         session["oauth_pending_uid"]   = user_id
         session["oauth_code_verifier"] = verifier
+        # Lưu timestamp để callback có thể chẩn đoán session-lost vs state-mismatch.
+        session["oauth_started_at"]    = time.time()
         session.permanent = True
+        # Force session lưu xuống cookie ngay — flask sometimes lazy-writes
+        # khi response không có Set-Cookie trigger.
+        session.modified = True
         try:
             url = build_auth_url(state=nonce, code_challenge=challenge)
         except RuntimeError as e:
@@ -1727,11 +2145,48 @@ def register_routes(app):
         expected_nonce = session.pop("oauth_nonce", None)
         user_id        = session.pop("oauth_pending_uid", None)
         code_verifier  = session.pop("oauth_code_verifier", None)
+        started_at     = session.pop("oauth_started_at", None)
 
-        # CSRF check: state phải khớp với nonce server-side
-        if (expected_nonce is None or
-                not hmac.compare_digest(str(received_state), str(expected_nonce))):
-            return "<h3>State không hợp lệ (CSRF detected hoặc session expired)</h3>", 400
+        # CSRF / session check — phân biệt 3 trường hợp để user biết hành động:
+        #   (a) session không có nonce → cookie không tới (Secure/SameSite/restart)
+        #   (b) nonce có nhưng state khác → real CSRF hoặc multiple OAuth tab.
+        #   (c) hợp lệ → tiếp tục.
+        nonce_ok = False
+        if expected_nonce is not None:
+            nonce_ok = hmac.compare_digest(str(received_state), str(expected_nonce))
+        if not nonce_ok:
+            ip = _rl_client_ip()
+            reason = "no_session_nonce" if expected_nonce is None else "state_mismatch"
+            _audit("oauth.callback_failed", outcome="csrf", reason=reason,
+                   ip=ip, ua=request.headers.get("User-Agent", ""),
+                   session_age_s=(round(time.time() - started_at, 1)
+                                  if started_at else None))
+            # Thông báo cho user theo từng case — tránh "session expired" mơ hồ.
+            if expected_nonce is None:
+                hint = (
+                    "Trình duyệt không gửi session cookie tới callback. Thường do "
+                    "1 trong các nguyên nhân: app vừa restart (FLASK_SECRET random "
+                    "thay đổi → cookie cũ invalid), cookie bị xoá, hoặc chạy HTTP "
+                    "mà session cookie có cờ Secure (set FLASK_DEV_HTTP=true để "
+                    "tạm tắt khi dev local HTTP)."
+                )
+            else:
+                hint = ("State trả về từ Google không khớp nonce trong session. "
+                        "Có thể bạn mở nhiều tab OAuth song song, hoặc bị CSRF "
+                        "thật. Đóng tất cả tab OAuth rồi thử lại từ đầu.")
+            return (
+                "<!doctype html><html><head><meta charset='utf-8'>"
+                "<style>body{font-family:sans-serif;text-align:center;padding:48px;max-width:600px;margin:auto}"
+                "h2{color:#c62828}.hint{background:#fff8e1;border:1px solid #ffe082;"
+                "padding:12px;border-radius:6px;text-align:left;margin:16px 0;font-size:14px}"
+                "</style></head><body>"
+                f"<h2>✗ Xác thực Google bị từ chối</h2>"
+                f"<p>State không hợp lệ ({html.escape(reason)}).</p>"
+                f"<div class='hint'>{html.escape(hint)}</div>"
+                "<button onclick='window.close()' style='padding:8px 20px;"
+                "background:#1565c0;color:#fff;border:none;border-radius:6px;"
+                "cursor:pointer'>Đóng tab</button></body></html>"
+            ), 400
 
         # Lỗi từ Google (vd: user từ chối, redirect_uri_mismatch)
         if error:

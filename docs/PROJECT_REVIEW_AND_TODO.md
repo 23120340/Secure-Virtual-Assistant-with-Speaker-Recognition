@@ -1,7 +1,7 @@
 # Secure Virtual Assistant — Review tổng hợp & Todo-list
 
 Ngày review (consolidated): 2026-05-19
-Lần cập nhật gần nhất: 2026-05-19 (scope guard theo PDF + 4 feature §4.4)
+Lần cập nhật gần nhất: 2026-05-19 (account management + reminder/scheduler + offline TTS fallback + WAV encryption + strict CSP)
 
 > Tài liệu này hợp nhất 4 nguồn:
 > 1. Đề bài gốc: `docs/Secure_Virtual_Assistant_with_Speaker_Recognition.pdf`
@@ -18,8 +18,11 @@ Lần cập nhật gần nhất: 2026-05-19 (scope guard theo PDF + 4 feature §
 > **Tiến độ tổng quát**:
 > - **P0 thật sự trước nộp**: còn 2 việc cần chứng minh bằng artifact/log — training evidence và calibration/benchmark.
 > - **P1/P2/P3**: optional polish/production-grade; chỉ làm khi không tăng rủi ro demo.
-> - **§4.4 feature**: đã thêm 3 bidirectional intent + multi-language TTS + incremental re-enroll.
-> - **Tests**: 97 unit + integration test pytest, chạy `./venv/Scripts/python.exe -m pytest tests/ --basetemp .pytest_tmp`.
+> - **§4.4 feature**: 3 bidirectional intent + multi-language TTS + incremental re-enroll.
+> - **Account management (mới)**: user tự đổi password (`/change-password`), tự re-enroll giọng (`/reenroll-voice`), tự bổ sung mẫu (`/add-voice-samples`); admin có masked-info + Revoke & Re-enroll (không reset password trực tiếp).
+> - **Bug fixes**: text-mode IMPORTANT phân biệt "thiếu password" vs "sai password"; JSON error handler cho `/api/*` (không trả HTML 500); music suggestion bỏ nút "+" (giữ Play); OAuth callback chẩn đoán cụ thể (no_session vs state_mismatch).
+> - **Robustness (mới)**: offline TTS fallback (pyttsx3) khi gTTS fail; strict CSP (drop `'unsafe-inline'` cho script-src, tất cả onclick refactor thành addEventListener); WAV encryption at-rest (opt-in qua `ENCRYPT_BIOMETRIC_WAV`); 2 reminder intents (set/list) + parser tiếng Việt + endpoint polling.
+> - **Tests**: 118 unit + integration test pytest, chạy `./venv/Scripts/python.exe -m pytest tests/ --basetemp .pytest_tmp`.
 
 ---
 
@@ -293,7 +296,7 @@ Format: `- [ ]` chưa làm, `- [x]` đã làm, ưu tiên cao → thấp.
 ### 4.2 Ưu tiên 🟡 P1 — trong sprint trước demo
 
 - [x] **Security regression tests** (P1-1) — `tests/` với 55 security/regression test pass: password hashing (PBKDF2 + salt + Unicode), path traversal (`_resolve_child_path` + `_safe_filename`), OAuth Fernet encryption (DB không leak plaintext), cascade delete (oauth_tokens orphan), CSRF guard, rate limit 429, text-mode IMPORTANT block, session cookie flags, security headers, GET user không leak prefs, challenge-response phrase match, LIKE wildcard escape, `open_files` action, `email_flow` internal intent, Gemini empty response guard, admin-assisted password reset.
-- [ ] **Tách `web/app.py` thành blueprints** (P1-2) — **DEFER → P2** vì refactor lớn không có security/feature impact, risk break cao mà tests còn ít. Đẩy xuống P2 backlog.
+- [ ] **Tách `web/app.py` thành blueprints** (P1-2) — **DEFER P3** vì refactor lớn không có security/feature impact, risk break cao mà tests còn ít.
 - [x] **Extract duplicate email-flow** (P1-3) — `_continue_email_flow_if_active(text, db, nlu)` ở `web/app.py`, dùng chung giữa `/api/assistant/turn` (voice) và `/api/assistant/text` (text). Cắt ~140 dòng duplicate.
 - [x] **Challenge-response cho IMPORTANT voice flow** (P1-4) — module `core/challenge.py` (phrase gen 4 từ từ pool digit+color, token urlsafe 18 byte, Levenshtein word-level match tolerance 0.34, TTL 90s). Router `complete_challenge()` re-verify SV+ASR. New endpoint `/api/assistant/challenge-response` (rate-limit 10/60s). Opt-in via env `CHALLENGE_RESPONSE_ENABLED=true`. Audit log `auth.challenge_issued` + `auth.challenge_check`. 11 unit test trong `tests/test_challenge.py`.
 - [x] **Audit log có cấu trúc** (P1-5) — module `core/audit.py` JSON-line sink `data/audit.log` (rotate 5MB×5). Event: `auth.password_check` (success/fail + scope + ip + ua_hash), `auth.voice_verify` (sv_score, sid_score, margin), `auth.challenge_*`, `oauth.granted` (gmail_hash, không log plaintext), `data.delete_user` (dirs_removed). Truncate field > 200 char.
@@ -326,8 +329,8 @@ Format: `- [ ]` chưa làm, `- [x]` đã làm, ưu tiên cao → thấp.
 - [x] **Admin-assisted reset password** (P2-M) — thêm endpoint `POST /api/admin/users/<id>/reset-password` yêu cầu `ADMIN_PASS` trên từng request, validate password mới ≥ 8 ký tự, không khôi phục/hiển thị password cũ, audit `auth.password_reset`, rate-limit 5/5 phút per IP+user. UI Admin Panel có nút "Reset mật khẩu". Thêm regression test.
 - [ ] **`web/templates/home.html` refactor** — 2500 dòng → component-style. **DEFER**: refactor lớn, no security/feature impact.
 - [ ] **Blueprint split `web/app.py`** (carry from P1-2) — **DEFER P3**.
-- [ ] **Full drop CSP `'unsafe-inline'`** (carry from P1-9) — refactor onclick → addEventListener trong 7+ template. **DEFER P3**.
-- [ ] **WAV encryption at-rest** — Fernet-encrypt WAV trong `data/enroll_audio/`. **DEFER P3**: touches benchmark + reenroll_backend + data_export, cần migration script.
+- [x] **Full drop CSP `'unsafe-inline'`** — Refactor 7 inline `onclick` attributes thành `addEventListener` (3 static buttons trong templates: assistant.html, enroll.html, home.html × 3; 2 dynamic `<button onclick="downloadFile(...)">` trong innerHTML → `.btn-fdown.onclick=...`). CSP `script-src` giờ chỉ `'self' 'nonce-...' https://cdn.tailwindcss.com` — strict mode, bỏ `'unsafe-inline'`.
+- [x] **WAV encryption at-rest** — `core/audio_io.save_wav/load_wav` wrap Fernet khi `ENCRYPT_BIOMETRIC_WAV=true` (opt-in). File `.wav.enc` thay vì `.wav`; load tự detect prefer `.enc`, fallback `.wav` plaintext (backward compat). Reuse key derivation từ `core/database._encrypt/_decrypt` (TOKEN_ENCRYPTION_KEY hoặc HKDF từ FLASK_SECRET). 4 unit test trong `tests/test_wav_encryption.py`.
 
 ### 4.4 Tính năng mới (chọn 1-2 cho demo wow factor)
 
@@ -336,9 +339,9 @@ Format: `- [ ]` chưa làm, `- [x]` đã làm, ưu tiên cao → thấp.
 - [x] **Multi-language switch** qua `preferences.language` — `core/tts.py:_resolve_lang()` + `SUPPORTED_TTS_LANGS` (vi/en/ja/ko/zh-CN/fr/de). `/api/tts` resolve theo `?lang=...` → user pref → default vi. 7 unit test trong `tests/test_multilang_tts.py`.
 - [x] **Re-enroll bổ sung sau khi pass SV** — `SpeakerManager.incremental_update_centroid(audio, uid, alpha)` cập nhật centroid theo công thức `new = normalize((1-α)*old + α*emb_new)`. Hook ở Router sau SV pass (skip khi challenge enabled để chờ audio_2). Opt-in `SPEAKER_INCREMENTAL_REENROLL=true`, `SPEAKER_INCREMENTAL_ALPHA=0.1`. Audit event `speaker.incremental_update`. 6 unit test trong `tests/test_incremental_reenroll.py`.
 - [ ] **Calendar integration** cho `show_schedule` (reuse OAuth scope expansion).
-- [ ] **Reminder intent** + push notification (nếu PWA).
-- [ ] **Offline TTS fallback** pyttsx3.
-- [ ] **Wake-word** Picovoice Porcupine.
+- [x] **Reminder intent + scheduler đơn giản** — `core/reminders.py` parse thời gian Vietnamese (`30 phút nữa`, `9 giờ sáng mai`, `14:00 chiều nay`...). 2 intent mới: `set_reminder` (IMPORTANT) + `list_reminders` (PERSONAL). Endpoint `/api/users/<id>/due-reminders` (GET poll + POST ack_ids). Cap 100 reminders/user. 17 unit test trong `tests/test_reminders.py`.
+- [x] **Offline TTS fallback** — `pyttsx3` lazy-init engine, fallback khi gTTS fail (mất mạng / quota). `core/tts.py:_ensure_offline_engine` + `_synthesize_offline_to_wav_bytes` → convert WAV → MP3 qua pydub. `synthesize_to_mp3_bytes` trả `b""` khi cả 2 fail (caller route trả 204).
+- [ ] **Wake-word** Picovoice Porcupine — cần Picovoice license, defer.
 
 ---
 

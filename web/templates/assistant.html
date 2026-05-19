@@ -235,7 +235,6 @@
 
     <!-- Google sign-in button — href được set bởi JS khi modal mở -->
     <a id="oauth-login-btn" href="#" target="_blank" rel="noopener"
-       onclick="startOAuthPolling()"
        class="flex items-center justify-center gap-2.5 w-full py-3 px-4 rounded-xl
               bg-blue-600 hover:bg-blue-700 active:bg-blue-800
               text-white text-sm font-semibold transition-all mb-3 select-none">
@@ -517,6 +516,11 @@ function showOAuthModal(authUrl, userId) {
   document.getElementById("oauth-modal").classList.remove("hidden");
 }
 
+// Attach onclick programmatically — tránh inline event handler (CSP).
+{
+  const _btn = document.getElementById("oauth-login-btn");
+  if (_btn) _btn.addEventListener("click", () => startOAuthPolling());
+}
 function startOAuthPolling() {
   _stopOAuthPolling();
   const $status = document.getElementById("oauth-poll-status");
@@ -765,8 +769,8 @@ function makeTrackCard(t, idx, src) {
     ? `<img src="${esc(t.cover)}" class="w-8 h-8 rounded object-cover flex-shrink-0">`
     : `<div class="w-8 h-8 rounded bg-slate-200 flex-shrink-0 text-center leading-8 text-slate-400">♪</div>`;
 
-  const addBtn  = src==="result" && _musicUserId
-    ? `<button class="btn-add px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded hover:bg-emerald-100 hover:text-emerald-700 flex-shrink-0">+</button>` : "";
+  // Search result chỉ cần nút Play — không cho add vào playlist từ đây
+  // (gợi ý nhạc là kết quả tạm thời, không phải hành động lưu trữ).
   const delBtn  = src==="playlist"
     ? `<button class="btn-del px-1.5 py-0.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100 flex-shrink-0">✕</button>` : "";
 
@@ -777,14 +781,12 @@ function makeTrackCard(t, idx, src) {
       <div class="text-slate-500 truncate">${esc(t.artist)}</div>
     </div>
     <button class="btn-play px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 flex-shrink-0">▶</button>
-    ${addBtn}${delBtn}
+    ${delBtn}
   `;
   card.querySelector(".btn-play").onclick = () => {
     queue = src==="playlist" ? [...userPlaylist] : [...searchResults];
     playAt(idx);
   };
-  if (src==="result" && _musicUserId)
-    card.querySelector(".btn-add").onclick = () => addToPlaylist(t);
   if (src==="playlist")
     card.querySelector(".btn-del").onclick = () => removeFromPlaylist(t.id, t.title);
   return card;

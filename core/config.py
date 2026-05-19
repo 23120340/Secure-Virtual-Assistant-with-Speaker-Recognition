@@ -193,3 +193,12 @@ SPEAKER_INCREMENTAL_REENROLL = os.getenv(
     "SPEAKER_INCREMENTAL_REENROLL", "false"
 ).lower() in ("true", "1", "yes")
 SPEAKER_INCREMENTAL_ALPHA = float(os.getenv("SPEAKER_INCREMENTAL_ALPHA", "0.1"))
+
+# Encrypt biometric WAV at-rest: khi true, file mẫu giọng `data/enroll_audio/`
+# được lưu dưới dạng `<file>.wav.enc` (Fernet ciphertext) thay vì plaintext WAV.
+# Tránh leak audio gốc qua filesystem backup / DB dump.
+# Mặc định OFF cho backward compat — bật cần migration (encrypt file cũ).
+# Key derivation cùng nguồn với OAuth token (TOKEN_ENCRYPTION_KEY → FLASK_SECRET).
+ENCRYPT_BIOMETRIC_WAV = os.getenv(
+    "ENCRYPT_BIOMETRIC_WAV", "false"
+).lower() in ("true", "1", "yes")
