@@ -43,12 +43,31 @@ _TOKEN_URL    = "https://oauth2.googleapis.com/token"
 _REVOKE_URL   = "https://oauth2.googleapis.com/revoke"
 _USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
-# Minimal scopes: chỉ gửi mail + lấy địa chỉ email, không đọc mail
-_SCOPES = " ".join([
+# Minimal scopes: chỉ gửi mail + lấy địa chỉ email, không đọc mail.
+# Calendar scope thêm khi config.ENABLE_CALENDAR_INTEGRATION=True. Dùng
+# `calendar.events.readonly` (read-only, ít quyền nhất) — chỉ đọc events,
+# KHÔNG tạo/sửa/xoá. Đổi sang `calendar.events` khi cần write trong tương lai.
+_BASE_SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
-])
+]
+_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly"
+
+
+def _get_scopes() -> str:
+    """Build scope string runtime — re-evaluate env config mỗi lần để hỗ trợ
+    bật/tắt qua env mà không restart server."""
+    scopes = list(_BASE_SCOPES)
+    if config.ENABLE_CALENDAR_INTEGRATION:
+        scopes.append(_CALENDAR_SCOPE)
+    return " ".join(scopes)
+
+
+# Backward compat — code cũ import _SCOPES sẽ thấy snapshot lúc import. Tuy nhiên
+# build_auth_url giờ gọi _get_scopes() runtime nên kẻ nào dùng _SCOPES trực tiếp
+# phải migrate. Hiện chỉ build_auth_url dùng nên ổn.
+_SCOPES = " ".join(_BASE_SCOPES)
 
 # Marker đặt trước phản hồi từ handler khi cần OAuth — app.py nhận diện và
 # tách thành action_type="oauth_required" + auth URL riêng.
@@ -67,7 +86,7 @@ def build_auth_url(state: str, code_challenge: str | None = None) -> str:
         "client_id":     config.GOOGLE_CLIENT_ID,
         "redirect_uri":  config.GOOGLE_REDIRECT_URI,
         "response_type": "code",
-        "scope":         _SCOPES,
+        "scope":         _get_scopes(),   # runtime — pickup calendar scope nếu bật env
         "access_type":   "offline",   # yêu cầu refresh_token
         "prompt":        "consent",   # luôn hỏi consent để đảm bảo có refresh_token
         "state":         state,

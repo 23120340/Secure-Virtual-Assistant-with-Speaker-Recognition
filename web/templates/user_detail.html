@@ -14,7 +14,7 @@
 
 {% if user.revoke_pending %}
 <div class="mb-4 p-4 rounded-lg border border-rose-300 bg-rose-50 text-rose-900 text-sm flex items-start gap-3">
-  <div class="text-xl">⚠</div>
+  <div class="text-xl">!</div>
   <div class="flex-1">
     <strong class="block mb-1">Vector giọng nói đã bị thu hồi</strong>
     <p class="mb-1">
@@ -105,7 +105,7 @@
       <span id="oauth-status-text" class="text-sm text-slate-400">Đang kiểm tra...</span>
       <button id="oauth-auth-btn"
               class="hidden px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
-        🔗 Xác thực Gmail
+        Xác thực Gmail
       </button>
       <button id="oauth-revoke-btn"
               class="hidden px-3 py-1.5 bg-rose-500 text-white rounded text-sm hover:bg-rose-600">
@@ -134,21 +134,46 @@
             class="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">
       Đổi mật khẩu
     </button>
+    <button id="forgot-pw-btn"
+            class="mt-2 ml-2 px-4 py-2 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 text-sm">
+      Quên mật khẩu
+    </button>
     <span id="chg-pw-msg" class="text-sm ml-2"></span>
+    <div id="forgot-pw-panel" class="hidden mt-3 p-3 rounded border border-amber-200 bg-amber-50 max-w-2xl">
+      <p id="forgot-pw-info" class="text-sm text-amber-900 mb-2">
+        Nếu tài khoản đã link Gmail, hệ thống sẽ gửi mã reset về email. Nếu chưa, yêu cầu sẽ được gửi cho quản trị viên.
+      </p>
+      <div id="forgot-code-row" class="hidden grid grid-cols-1 md:grid-cols-3 gap-2">
+        <input id="forgot-code" type="text" inputmode="numeric" maxlength="6"
+               placeholder="Mã 6 số" class="border rounded px-3 py-2 text-sm"/>
+        <input id="forgot-new-pw" type="password" placeholder="Mật khẩu mới"
+               class="border rounded px-3 py-2 text-sm"/>
+        <input id="forgot-new-pw2" type="password" placeholder="Xác nhận"
+               class="border rounded px-3 py-2 text-sm"/>
+      </div>
+      <div class="mt-2 flex gap-2 flex-wrap">
+        <button id="forgot-request-btn" class="px-3 py-1.5 bg-amber-600 text-white rounded text-sm">
+          Gửi mã / yêu cầu
+        </button>
+        <button id="forgot-confirm-btn" class="hidden px-3 py-1.5 bg-emerald-600 text-white rounded text-sm">
+          Đặt lại mật khẩu
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Quản lý giọng nói: re-enroll + add samples -->
   <div class="pt-4 border-t">
-    <h2 class="font-semibold mb-2">🎙 Quản lý giọng nói</h2>
+    <h2 class="font-semibold mb-2">Quản lý giọng nói</h2>
     <p class="text-xs text-slate-400 mb-3">
-      Đăng ký lại (replace centroid) khi giọng đổi rõ hoặc bị admin thu hồi.
-      Bổ sung mẫu (incremental average) khi muốn centroid robust hơn ở môi trường mới.
-      Cần mật khẩu hiện tại + ít nhất 2 mẫu cho re-enroll, 1 mẫu cho add.
+      Đăng ký lại khi giọng nói thay đổi rõ hoặc bị quản trị yêu cầu.
+      Bổ sung mẫu để hệ thống nhận diện ổn định hơn ở môi trường mới.
+      Cần mật khẩu hiện tại + ít nhất 2 mẫu để đăng ký lại, 1 mẫu để bổ sung.
     </p>
     <div class="flex items-center gap-3 flex-wrap mb-3">
       <button id="voice-rec-btn" type="button"
               class="px-4 py-2 bg-violet-100 text-violet-700 border border-violet-200 rounded text-sm hover:bg-violet-200">
-        🎙 Thu mẫu (~5s)
+        Thu mẫu (~5s)
       </button>
       <button id="voice-clear-btn" type="button"
               class="px-4 py-2 bg-slate-100 text-slate-700 rounded text-sm hover:bg-slate-200">
@@ -161,12 +186,12 @@
       <button id="voice-reenroll-btn"
               class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
               disabled>
-        🔄 Đăng ký lại (replace)
+        Đăng ký lại
       </button>
       <button id="voice-add-btn"
               class="px-4 py-2 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded text-sm hover:bg-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled>
-        ➕ Bổ sung mẫu (incremental)
+        Bổ sung mẫu
       </button>
     </div>
     <span id="voice-msg" class="text-sm block mt-2"></span>
@@ -378,7 +403,8 @@ document.getElementById("chg-pw-btn").onclick = async () => {
   if (newPw === oldPw)  return show("Mật khẩu mới phải khác mật khẩu cũ", false);
 
   const r = await fetch(`/api/users/${userId}/change-password`, {
-    method: "POST", headers: {"Content-Type": "application/json"},
+    method: "POST", headers: {"Content-Type": "application/json",
+                              "X-Requested-With": "XMLHttpRequest"},
     body: JSON.stringify({
       old_password: oldPw, new_password: newPw, new_password_confirm: newPw2,
     }),
@@ -394,6 +420,57 @@ document.getElementById("chg-pw-btn").onclick = async () => {
 // ════════════════════════════════════════════════════════════
 // Voice management — re-enroll + add samples
 // ════════════════════════════════════════════════════════════
+document.getElementById("forgot-pw-btn").onclick = () => {
+  document.getElementById("forgot-pw-panel").classList.toggle("hidden");
+};
+
+document.getElementById("forgot-request-btn").onclick = async () => {
+  const $info = document.getElementById("forgot-pw-info");
+  const r = await fetch(`/api/users/${userId}/forgot-password/request`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest"},
+    body: JSON.stringify({}),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    $info.textContent = d.error || "Không gửi được yêu cầu reset.";
+    $info.className = "text-sm text-rose-700 mb-2";
+    return;
+  }
+  if (d.mode === "email_code") {
+    $info.textContent = `Đã gửi mã reset về ${d.email_masked}. Nhập mã và mật khẩu mới bên dưới.`;
+    document.getElementById("forgot-code-row").classList.remove("hidden");
+    document.getElementById("forgot-confirm-btn").classList.remove("hidden");
+  } else {
+    $info.textContent = d.message || "Đã gửi yêu cầu cho quản trị viên.";
+  }
+  $info.className = "text-sm text-emerald-700 mb-2";
+};
+
+document.getElementById("forgot-confirm-btn").onclick = async () => {
+  const $info = document.getElementById("forgot-pw-info");
+  const code = document.getElementById("forgot-code").value.trim();
+  const pw1 = document.getElementById("forgot-new-pw").value;
+  const pw2 = document.getElementById("forgot-new-pw2").value;
+  const r = await fetch(`/api/users/${userId}/forgot-password/confirm`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest"},
+    body: JSON.stringify({code, new_password: pw1, new_password_confirm: pw2}),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    $info.textContent = d.error || "Đặt lại mật khẩu thất bại.";
+    $info.className = "text-sm text-rose-700 mb-2";
+    return;
+  }
+  document.getElementById("forgot-code-row").classList.add("hidden");
+  document.getElementById("forgot-confirm-btn").classList.add("hidden");
+  $info.textContent = "Đã đặt lại mật khẩu. Bạn có thể dùng mật khẩu mới từ bây giờ.";
+  $info.className = "text-sm text-emerald-700 mb-2";
+};
+
 let _voiceSamples = [];   // [{blob, durationSec}]
 let _voiceMR = null;
 let _voiceChunks = [];
@@ -411,7 +488,7 @@ function _renderVoiceSamples() {
       const div = document.createElement("div");
       div.className = "flex items-center gap-2 bg-violet-50 border border-violet-200 rounded px-3 py-1.5 text-sm";
       div.innerHTML =
-        `<span>🎙 Mẫu ${i + 1}</span>` +
+        `<span>Mẫu ${i + 1}</span>` +
         `<span class="text-slate-500 text-xs">(${s.durationSec.toFixed(1)}s)</span>` +
         `<span class="flex-1"></span>` +
         `<button data-i="${i}" class="text-rose-500 hover:text-rose-700 text-xs">✕</button>`;
@@ -447,11 +524,11 @@ document.getElementById("voice-rec-btn").onclick = async () => {
       const durationSec = (Date.now() - startedAt) / 1000;
       _voiceSamples.push({blob, durationSec});
       _renderVoiceSamples();
-      $btn.textContent = "🎙 Thu mẫu (~5s)";
+      $btn.textContent = "Thu mẫu (~5s)";
       $btn.className = "px-4 py-2 bg-violet-100 text-violet-700 border border-violet-200 rounded text-sm hover:bg-violet-200";
     };
     _voiceMR.start();
-    $btn.textContent = "⏺ Đang thu...";
+    $btn.textContent = "Đang thu...";
     $btn.className = "px-4 py-2 bg-rose-100 text-rose-700 border border-rose-200 rounded text-sm";
     if (_voiceTimer) clearTimeout(_voiceTimer);
     _voiceTimer = setTimeout(() => {
@@ -496,7 +573,7 @@ async function _submitVoice(endpoint, label) {
 
 document.getElementById("voice-reenroll-btn").onclick = () => {
   if (!confirm("Đăng ký LẠI giọng nói? Centroid cũ bị thay thế hoàn toàn.")) return;
-  _submitVoice("/reenroll-voice", "Re-enroll");
+  _submitVoice("/reenroll-voice", "Đăng ký lại");
 };
 document.getElementById("voice-add-btn").onclick = () => {
   _submitVoice("/add-voice-samples", "Bổ sung mẫu");

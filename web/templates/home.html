@@ -260,7 +260,7 @@
      class="hidden fixed inset-0 z-50 flex items-center justify-center"
      style="background:rgba(0,0,0,.55);backdrop-filter:blur(4px)">
   <div class="enroll-card" style="max-width:380px;width:90%;padding:1.75rem 2rem;border-radius:1.25rem">
-    <h3 style="font-size:1.05rem;font-weight:700;margin-bottom:.35rem">🔐 Xác thực Gmail</h3>
+    <h3 style="font-size:1.05rem;font-weight:700;margin-bottom:.35rem">Xác thực Gmail</h3>
     <p style="font-size:.82rem;color:var(--txt-2);margin-bottom:1.1rem;line-height:1.5">
       Để gửi email, bạn cần đăng nhập với tài khoản Google. Tab mới sẽ mở — sau khi xác thực hãy quay lại đây và nói <b>"có"</b>.
     </p>
@@ -459,6 +459,34 @@
         <button id="modal-unlock-btn" class="btn-primary">Mở khóa</button>
       </div>
       <div id="modal-lock-error" style="margin-top:.5rem;font-size:.82rem;color:#ef4444;display:none"></div>
+      <button id="modal-forgot-pw-btn" type="button"
+              style="margin-top:.75rem;background:none;border:none;color:var(--c-violet);font-size:.82rem;font-weight:600;cursor:pointer;padding:0">
+        Quên mật khẩu?
+      </button>
+      <div id="modal-forgot-pw-panel" class="hidden"
+           style="margin-top:.75rem;padding:.8rem;border:1px solid rgba(245,158,11,.28);background:rgba(245,158,11,.08);border-radius:.85rem">
+        <p id="modal-forgot-pw-info" style="font-size:.78rem;color:#92400e;margin:0 0 .65rem">
+          Nếu tài khoản đã link Gmail, hệ thống sẽ gửi mã reset về email. Nếu chưa, yêu cầu sẽ được gửi cho quản trị viên.
+        </p>
+        <div id="modal-forgot-code-row" class="hidden" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin-bottom:.65rem">
+          <input id="modal-forgot-code" type="text" inputmode="numeric" maxlength="6"
+                 placeholder="Mã 6 số" class="glass-input" style="font-size:.8rem"/>
+          <input id="modal-forgot-new-pw" type="password"
+                 placeholder="Mật khẩu mới" class="glass-input" style="font-size:.8rem"/>
+          <input id="modal-forgot-new-pw2" type="password"
+                 placeholder="Xác nhận" class="glass-input" style="font-size:.8rem"/>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button id="modal-forgot-request-btn" type="button"
+                  style="padding:.45rem .8rem;border:none;border-radius:.7rem;background:#d97706;color:white;font-size:.78rem;font-weight:600;cursor:pointer">
+            Gửi mã / yêu cầu
+          </button>
+          <button id="modal-forgot-confirm-btn" type="button" class="hidden"
+                  style="padding:.45rem .8rem;border:none;border-radius:.7rem;background:#059669;color:white;font-size:.78rem;font-weight:600;cursor:pointer">
+            Đặt lại mật khẩu
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Editor (hidden until unlocked) -->
@@ -596,12 +624,12 @@
         <div class="modal-section">
           <p class="modal-section-label">Quản lý giọng nói</p>
           <p style="font-size:.75rem;color:var(--txt-2);margin-bottom:.5rem">
-            Đăng ký lại (replace centroid) hoặc bổ sung mẫu giọng nói (giúp robust hơn).
-            Cần mật khẩu hiện tại + ít nhất 2 mẫu giọng.
+            Đăng ký lại khi giọng nói thay đổi rõ hoặc bị quản trị yêu cầu.
+            Bổ sung mẫu để hệ thống nhận diện ổn định hơn. Cần mật khẩu hiện tại + ít nhất 2 mẫu giọng.
           </p>
           <div id="modal-voice-revoke-banner" class="hidden"
                style="margin-bottom:.7rem;padding:.6rem .75rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;font-size:.78rem;color:#b91c1c">
-            ⚠ Admin đã thu hồi vector giọng. Bạn phải <strong>Đăng ký lại</strong> trước khi
+            Admin đã thu hồi vector giọng. Bạn phải <strong>Đăng ký lại</strong> trước khi
             dùng được tác vụ IMPORTANT (đọc ghi chú, gửi email…).
           </div>
           <div style="display:flex;flex-direction:column;gap:.5rem">
@@ -609,7 +637,7 @@
             <div style="display:flex;gap:.5rem;flex-wrap:wrap">
               <button id="modal-voice-rec-btn" type="button"
                       style="display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .9rem;font-size:.82rem;font-weight:600;background:rgba(124,58,237,.1);color:var(--c-violet);border:1px solid rgba(124,58,237,.2);border-radius:.75rem;cursor:pointer">
-                🎙 Thu mẫu (~5s)
+                Thu mẫu (~5s)
               </button>
               <button id="modal-voice-clear-btn" type="button"
                       style="display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .9rem;font-size:.82rem;font-weight:600;background:rgba(148,163,184,.12);color:var(--txt-1);border:none;border-radius:.75rem;cursor:pointer">
@@ -617,10 +645,10 @@
               </button>
             </div>
             <button id="modal-voice-reenroll-btn" class="btn-primary" disabled
-                    style="opacity:.6">🔄 Đăng ký lại (replace)</button>
+                    style="opacity:.6">Đăng ký lại</button>
             <button id="modal-voice-add-btn"
                     style="padding:.55rem 1rem;font-size:.85rem;font-weight:600;background:rgba(16,185,129,.1);color:#047857;border:1px solid rgba(16,185,129,.2);border-radius:.75rem;cursor:pointer;opacity:.6"
-                    disabled>➕ Bổ sung mẫu (incremental)</button>
+                    disabled>Bổ sung mẫu</button>
           </div>
           <div id="modal-voice-msg" style="margin-top:.5rem;font-size:.82rem;display:none"></div>
         </div>
@@ -637,7 +665,7 @@
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
             <a id="modal-oauth-auth-btn" href="#" target="_blank" rel="noopener"
                style="display:inline-flex;align-items:center;gap:.4rem;padding:.45rem 1rem;font-size:.82rem;font-weight:600;background:var(--c-violet);color:#fff;border-radius:.75rem;text-decoration:none;cursor:pointer">
-              🔐 Xác thực Gmail
+              Xác thực Gmail
             </a>
             <button id="modal-oauth-revoke-btn" class="hidden"
                     style="padding:.45rem 1rem;font-size:.82rem;font-weight:600;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.25);border-radius:.75rem;cursor:pointer">
@@ -650,7 +678,7 @@
         <!-- Danger zone -->
         <div class="modal-danger-zone">
           <div style="display:flex;align-items:flex-start;gap:.75rem;margin-bottom:.85rem">
-            <div style="flex-shrink:0;width:2rem;height:2rem;border-radius:50%;background:rgba(239,68,68,.12);display:flex;align-items:center;justify-content:center;font-size:.9rem">⚠</div>
+            <div style="flex-shrink:0;width:2rem;height:2rem;border-radius:50%;background:rgba(239,68,68,.12);display:flex;align-items:center;justify-content:center;font-size:.72rem;color:#991b1b">!</div>
             <div>
               <p style="font-size:.82rem;font-weight:600;color:#b91c1c;margin-bottom:.2rem">Vùng nguy hiểm</p>
               <p style="font-size:.78rem;color:#6b7280;line-height:1.5">Xóa người dùng sẽ xóa vĩnh viễn toàn bộ dữ liệu giọng nói, playlist và thông tin cá nhân. Hành động này không thể hoàn tác.</p>
@@ -774,6 +802,11 @@
                 style="font-size:.78rem;color:var(--txt-2);background:none;border:1px solid rgba(0,0,0,.1);border-radius:var(--r-btn);padding:.35rem .9rem;cursor:pointer">
           Đăng xuất
         </button>
+      </div>
+
+      <div id="admin-reset-requests" class="hidden enroll-card fade-up" style="margin-bottom:1rem;padding:1rem">
+        <h3 style="font-size:.92rem;font-weight:700;margin-bottom:.6rem">Yêu cầu cấp lại mật khẩu</h3>
+        <div id="admin-reset-list" style="display:flex;flex-direction:column;gap:.45rem"></div>
       </div>
 
       <!-- User table -->
@@ -1971,6 +2004,17 @@ async function openModal(uid, name) {
   document.getElementById("modal-user-id").textContent   = "ID: " + uid;
   document.getElementById("modal-pw").value = "";
   document.getElementById("modal-lock-error").style.display = "none";
+  document.getElementById("modal-forgot-pw-panel").classList.add("hidden");
+  document.getElementById("modal-forgot-pw-info").textContent =
+    "Nếu tài khoản đã link Gmail, hệ thống sẽ gửi mã reset về email. Nếu chưa, yêu cầu sẽ được gửi cho quản trị viên.";
+  document.getElementById("modal-forgot-pw-info").style.color = "#92400e";
+  document.getElementById("modal-forgot-code-row").classList.add("hidden");
+  document.getElementById("modal-forgot-code-row").style.display = "none";
+  document.getElementById("modal-forgot-confirm-btn").classList.add("hidden");
+  ["modal-forgot-code", "modal-forgot-new-pw", "modal-forgot-new-pw2"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
   document.getElementById("modal-lock").classList.remove("hidden");
   document.getElementById("modal-editor").classList.add("hidden");
   document.getElementById("modal-save-msg").style.display = "none";
@@ -2067,6 +2111,61 @@ document.getElementById("modal-unlock-btn").onclick = async () => {
 document.getElementById("modal-pw").addEventListener("keydown", e => {
   if (e.key === "Enter") document.getElementById("modal-unlock-btn").click();
 });
+
+document.getElementById("modal-forgot-pw-btn").onclick = () => {
+  document.getElementById("modal-forgot-pw-panel").classList.toggle("hidden");
+};
+
+document.getElementById("modal-forgot-request-btn").onclick = async () => {
+  const $info = document.getElementById("modal-forgot-pw-info");
+  if (!_modalUid) return;
+  const r = await fetch(`/api/users/${_modalUid}/forgot-password/request`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+    body: JSON.stringify({}),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    $info.textContent = d.error || "Không gửi được yêu cầu reset.";
+    $info.style.color = "#be123c";
+    return;
+  }
+  if (d.mode === "email_code") {
+    $info.textContent = `Đã gửi mã reset về ${d.email_masked}. Nhập mã và mật khẩu mới bên dưới.`;
+    const row = document.getElementById("modal-forgot-code-row");
+    row.classList.remove("hidden");
+    row.style.display = "grid";
+    document.getElementById("modal-forgot-confirm-btn").classList.remove("hidden");
+  } else {
+    $info.textContent = d.message || "Đã gửi yêu cầu cho quản trị viên.";
+  }
+  $info.style.color = "#047857";
+};
+
+document.getElementById("modal-forgot-confirm-btn").onclick = async () => {
+  const $info = document.getElementById("modal-forgot-pw-info");
+  if (!_modalUid) return;
+  const code = document.getElementById("modal-forgot-code").value.trim();
+  const pw1 = document.getElementById("modal-forgot-new-pw").value;
+  const pw2 = document.getElementById("modal-forgot-new-pw2").value;
+  const r = await fetch(`/api/users/${_modalUid}/forgot-password/confirm`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+    body: JSON.stringify({code, new_password: pw1, new_password_confirm: pw2}),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    $info.textContent = d.error || "Đặt lại mật khẩu thất bại.";
+    $info.style.color = "#be123c";
+    return;
+  }
+  document.getElementById("modal-pw").value = "";
+  document.getElementById("modal-forgot-code-row").classList.add("hidden");
+  document.getElementById("modal-forgot-code-row").style.display = "none";
+  document.getElementById("modal-forgot-confirm-btn").classList.add("hidden");
+  $info.textContent = "Đã đặt lại mật khẩu. Bạn có thể dùng mật khẩu mới để mở khóa.";
+  $info.style.color = "#047857";
+};
 
 // Password eye toggles
 document.getElementById("modal-pw-eye").onclick     = function() { togglePwEye("modal-pw", this); };
@@ -2202,7 +2301,7 @@ function _renderVoiceSamples() {
   } else {
     $list.innerHTML = _modalVoiceSamples.map((s, i) =>
       `<div style="display:flex;align-items:center;gap:.5rem;padding:.35rem .55rem;background:rgba(124,58,237,.06);border-radius:6px;font-size:.78rem">
-        <span>🎙 Mẫu ${i + 1}</span>
+        <span>Mẫu ${i + 1}</span>
         <span style="color:var(--txt-2)">(${s.durationSec.toFixed(1)}s)</span>
         <span style="flex:1"></span>
         <button data-idx="${i}" class="voice-sample-del" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:.78rem">✕</button>
@@ -2243,12 +2342,12 @@ async function _modalVoiceStartRecord() {
       const durationSec = (Date.now() - startedAt) / 1000;
       _modalVoiceSamples.push({blob, durationSec});
       _renderVoiceSamples();
-      $btn.textContent = "🎙 Thu mẫu (~5s)";
+      $btn.textContent = "Thu mẫu (~5s)";
       $btn.style.background = "rgba(124,58,237,.1)";
       $btn.style.color = "var(--c-violet)";
     };
     _modalVoiceMR.start();
-    $btn.textContent = "⏺ Đang thu...";
+    $btn.textContent = "Đang thu...";
     $btn.style.background = "rgba(239,68,68,.15)";
     $btn.style.color = "#b91c1c";
     // Auto-stop sau 5s.
@@ -2298,7 +2397,7 @@ async function _submitVoiceFlow(endpoint, label) {
 document.getElementById("modal-voice-reenroll-btn").onclick = () => {
   if (!window.confirm("Đăng ký LẠI giọng nói? Centroid cũ sẽ bị thay thế hoàn toàn."))
     return;
-  _submitVoiceFlow("/reenroll-voice", "Re-enroll");
+  _submitVoiceFlow("/reenroll-voice", "Đăng ký lại");
 };
 document.getElementById("modal-voice-add-btn").onclick = () => {
   _submitVoiceFlow("/add-voice-samples", "Bổ sung mẫu");
@@ -2706,6 +2805,7 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     _adminPw = pw;
     $count.textContent = d.count;
     renderAdminTable(d.users);
+    renderResetRequests(d.reset_requests || []);
   }
 
   // Admin xem info user dưới dạng masked (no PII full) + Revoke & Re-enroll.
@@ -2726,14 +2826,14 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
       return;
     }
     const voiceBadge = d.voice_status === "Registered"
-      ? `<span style="background:rgba(16,185,129,.12);color:#047857;border:1px solid rgba(16,185,129,.25);padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:600">● ${esc(d.voice_status)}</span>`
-      : `<span style="background:rgba(148,163,184,.15);color:#475569;border:1px solid rgba(148,163,184,.3);padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:600">○ ${esc(d.voice_status)}</span>`;
+      ? `<span style="background:rgba(16,185,129,.12);color:#047857;border:1px solid rgba(16,185,129,.25);padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:600">${esc(d.voice_status)}</span>`
+      : `<span style="background:rgba(148,163,184,.15);color:#475569;border:1px solid rgba(148,163,184,.3);padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:600">${esc(d.voice_status)}</span>`;
     const revokeBadge = d.revoke_pending
-      ? `<span style="background:rgba(239,68,68,.1);color:#b91c1c;border:1px solid rgba(239,68,68,.25);padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:600">⚠ Revoke pending</span>`
+      ? `<span style="background:rgba(239,68,68,.1);color:#b91c1c;border:1px solid rgba(239,68,68,.25);padding:2px 8px;border-radius:999px;font-size:.7rem;font-weight:600">Chờ đăng ký lại</span>`
       : "";
     const pwBadge = d.has_password
-      ? `<span style="color:var(--txt-2);font-size:.78rem">🔐 has_password</span>`
-      : `<span style="color:#b91c1c;font-size:.78rem">⚠ no_password</span>`;
+      ? `<span style="color:var(--txt-2);font-size:.78rem">has_password</span>`
+      : `<span style="color:#b91c1c;font-size:.78rem">no_password</span>`;
     const html = `
       <div style="font-size:.85rem;line-height:1.55">
         <div style="margin-bottom:.4rem"><span style="color:var(--txt-2)">user_id:</span> <code style="background:rgba(124,58,237,.08);color:var(--c-violet);padding:1px 6px;border-radius:4px;font-size:.78rem">${esc(d.user_id)}</code></div>
@@ -2743,27 +2843,25 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
         <div style="margin-bottom:.4rem"><span style="color:var(--txt-2)">Backend:</span> <code style="background:rgba(148,163,184,.1);padding:1px 6px;border-radius:4px;font-size:.78rem">${esc(d.backend)}</code></div>
         <div style="margin-bottom:.4rem">${pwBadge}</div>
         <div style="margin-top:.7rem;padding:.6rem;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:6px;font-size:.78rem;color:#92400e">
-          ℹ Admin KHÔNG xem được password / preferences / token. Chính sách no-recover.
-          Nếu user mất quyền truy cập, dùng <strong>Revoke & Re-enroll</strong>:
-          xoá vector giọng → user phải tự đăng ký lại giọng để mở khóa IMPORTANT.
+          Admin KHÔNG xem được password / preferences / token. Chính sách no-recover.
+          Nếu user mất quyền truy cập, dùng <strong>Yêu cầu re-enroll</strong> để bắt user đăng ký lại giọng.
+          Nút <strong>Revoke</strong> bên ngoài dùng để xoá hẳn user.
         </div>
       </div>`;
     showAdminDialog(`Thông tin ${name || userId}`, html, [
       { label: "Đóng", style: "secondary" },
-      { label: "🛑 Revoke & Re-enroll", style: "danger",
-        onClick: () => revokeAndReenroll(userId, name) },
+      { label: "Yêu cầu re-enroll", style: "danger",
+        onClick: () => requestReenroll(userId, name) },
     ]);
   }
 
-  async function revokeAndReenroll(userId, name) {
+  async function requestReenroll(userId, name) {
     const reason = window.prompt(
-      `Lý do thu hồi giọng nói của "${name || userId}" (sẽ ghi vào audit log)?\n` +
-      `Sau khi revoke, user phải tự re-enroll giọng để mở khóa IMPORTANT.`,
-      "Yêu cầu re-verification"
+      `Lý do yêu cầu "${name || userId}" đăng ký lại giọng nói?`,
+      "Yêu cầu xác thực lại"
     );
     if (reason === null) return;
-    if (!window.confirm(`Xác nhận thu hồi vector giọng của ${name || userId}?`)) return;
-    const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/revoke-voice`, {
+    const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/request-reenroll`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2773,11 +2871,27 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) {
-      showToast(d.error || "Revoke thất bại", true);
+      showToast(d.error || "Gửi yêu cầu re-enroll thất bại", true);
       return;
     }
-    showToast(`Đã thu hồi giọng nói của ${name || userId}. User phải tự re-enroll.`);
+    showToast(`Đã yêu cầu ${name || userId} đăng ký lại giọng nói.`);
     closeAdminDialog();
+  }
+
+  async function deleteUserByAdmin(userId, name) {
+    if (!window.confirm(`Revoke/xóa hẳn user "${name || userId}"? Thao tác này xóa DB, voice, OAuth và file liên quan.`)) return;
+    const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/delete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ admin_password: _adminPw }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return showToast(d.error || "Xóa user thất bại", true);
+    showToast(`Đã xóa user ${name || userId}.`);
+    await unlock();
   }
 
   // Lightweight inline dialog cho admin actions — match style modal sẵn có.
@@ -2820,6 +2934,38 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     if ($dlg) $dlg.remove();
   }
 
+  function renderResetRequests(requests) {
+    const wrap = document.getElementById("admin-reset-requests");
+    const list = document.getElementById("admin-reset-list");
+    if (!wrap || !list) return;
+    if (!requests.length) {
+      wrap.classList.add("hidden");
+      list.innerHTML = "";
+      return;
+    }
+    wrap.classList.remove("hidden");
+    list.innerHTML = "";
+    requests.forEach(req => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.55rem .7rem;border:1px solid rgba(0,0,0,.08);border-radius:8px;background:rgba(248,250,252,.8);font-size:.82rem";
+      row.innerHTML =
+        `<span><strong>${esc(req.name || req.user_id)}</strong> <code style="color:var(--txt-2)">${esc(req.user_id)}</code></span>` +
+        `<button class="btn-reset-resolve" style="font-size:.76rem;color:#334155;background:#fff;border:1px solid rgba(51,65,85,.2);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer">Đã xử lý</button>`;
+      row.querySelector(".btn-reset-resolve").onclick = async () => {
+        const r = await fetch(`/api/admin/password-reset-requests/${req.id}/resolve`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"},
+          body: JSON.stringify({admin_password: _adminPw, status: "resolved"}),
+        });
+        if (!r.ok) return showToast("Không cập nhật được yêu cầu", true);
+        row.remove();
+        if (!list.children.length) wrap.classList.add("hidden");
+      };
+      list.appendChild(row);
+    });
+  }
+
   function renderAdminTable(users) {
     $tbody.innerHTML = "";
     if (!users.length) { $empty.classList.remove("hidden"); return; }
@@ -2835,11 +2981,15 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
         `<td style="padding:.65rem 1.1rem;font-weight:600">${esc(u.name)}</td>` +
         `<td style="padding:.65rem 1.1rem;color:var(--txt-2);font-size:.82rem">${esc(u.created_at)}</td>` +
         `<td style="padding:.65rem 1.1rem;text-align:right;white-space:nowrap">` +
-          `<button class="btn-admin-info" style="font-size:.76rem;color:#4338ca;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.18);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.45rem">🔍 Xem (masked)</button>` +
+          `<button class="btn-admin-info" style="font-size:.76rem;color:#334155;background:#fff;border:1px solid rgba(51,65,85,.18);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.35rem">Xem</button>` +
+          `<button class="btn-admin-reroll" style="font-size:.76rem;color:#334155;background:#fff;border:1px solid rgba(51,65,85,.18);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.35rem">Yêu cầu</button>` +
+          `<button class="btn-admin-revoke" style="font-size:.76rem;color:#991b1b;background:#fff;border:1px solid rgba(153,27,27,.22);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.35rem">Revoke</button>` +
           `<button class="btn-admin-edit btn-primary btn-sm">Sửa</button>` +
         `</td>`;
       tr.querySelector(".btn-admin-edit").onclick = () => openModal(u.user_id, u.name);
       tr.querySelector(".btn-admin-info").onclick = () => showMaskedInfo(u.user_id, u.name);
+      tr.querySelector(".btn-admin-reroll").onclick = () => requestReenroll(u.user_id, u.name);
+      tr.querySelector(".btn-admin-revoke").onclick = () => deleteUserByAdmin(u.user_id, u.name);
       $tbody.appendChild(tr);
     });
   }

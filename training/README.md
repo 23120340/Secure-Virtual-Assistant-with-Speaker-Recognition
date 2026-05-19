@@ -135,6 +135,18 @@ print(f"Trial pairs (SV): {len(trials)} | Speakers: {len(spk2files)}")
 
 Với T4 x1 và batch 64, mỗi epoch ~5–10 phút. 15 epochs ≈ 1–2 giờ.
 
+Metric logging optional:
+
+```bash
+# Local, miễn phí, không cần account
+!python train_ecapa.py ... --tensorboard
+
+# Cloud dashboard, cần pip install wandb + WANDB_API_KEY
+!python train_ecapa.py ... --wandb --wandb-project secva-ecapa-tdnn
+```
+
+Nếu `tensorboard`/`wandb` chưa cài hoặc thiếu `WANDB_API_KEY`, `MetricLogger` sẽ warning rồi no-op; training vẫn chạy bình thường.
+
 ### 4. Kiểm tra output sau train
 
 ```python

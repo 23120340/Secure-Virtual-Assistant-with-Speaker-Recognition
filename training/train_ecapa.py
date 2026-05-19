@@ -135,7 +135,13 @@ class FbankExtractor(nn.Module):
 # ==========================================================================
 # Train loop
 # ==========================================================================
-def run_epoch(loader, feat, model, classifier, optimizer, device, train=True):
+def run_epoch(loader, feat, model, classifier, optimizer, device, train=True,
+              *, metric_logger=None, epoch_idx: int = 0):
+    """Run 1 epoch train hoặc eval.
+
+    `metric_logger` (optional MetricLogger): nếu truyền, log per-batch loss/acc
+    với global_step = epoch_idx * len(loader) + batch_idx. Chỉ log khi train.
+    """
     if train:
         model.train(); classifier.train()
     else:
@@ -145,7 +151,7 @@ def run_epoch(loader, feat, model, classifier, optimizer, device, train=True):
     ctx = torch.enable_grad() if train else torch.no_grad()
     desc = "train" if train else "val"
     with ctx:
-        for wav, label in tqdm(loader, desc=desc, leave=False):
+        for batch_idx, (wav, label) in enumerate(tqdm(loader, desc=desc, leave=False)):
             wav, label = wav.to(device), label.to(device)
             mel = feat(wav)
             emb = model(mel).squeeze(1)  # [B, 1, D] -> [B, D]
@@ -163,6 +169,15 @@ def run_epoch(loader, feat, model, classifier, optimizer, device, train=True):
             total_loss += loss.item() * bs
             total_acc += acc.item() * bs
             n += bs
+
+            # Per-batch logging (chỉ train) — giúp debug spike trong epoch.
+            if train and metric_logger is not None and metric_logger.enabled:
+                global_step = epoch_idx * len(loader) + batch_idx
+                metric_logger.log_scalars({
+                    "train/batch_loss": loss.item(),
+                    "train/batch_acc":  acc.item(),
+                    "train/lr":         optimizer.param_groups[0]["lr"],
+                }, step=global_step)
     return total_loss / n, total_acc / n
 
 
@@ -220,27 +235,59 @@ def main(args):
     with open(save_dir / "hparams.json", "w") as f:
         json.dump(hparams, f, indent=2)
 
+    # Khởi tạo MetricLogger — no-op nếu không bật flag --tensorboard/--wandb.
+    # Per-batch loss + per-epoch summary log vào backend tương ứng (Wandb cloud
+    # hoặc TensorBoard local). Đọc thêm: training/metric_logger.py.
+    from metric_logger import MetricLogger
+    metric_logger = MetricLogger(
+        save_dir=save_dir,
+        tensorboard=args.tensorboard,
+        wandb=args.wandb,
+        wandb_project=args.wandb_project,
+        wandb_run_name=(args.wandb_run_name
+                        or f"e{args.epochs}-bs{args.batch_size}-lr{args.lr}"),
+        hparams=hparams,
+    )
+
     log = []
     best_val = 0.0
-    for epoch in range(1, args.epochs + 1):
-        tr_loss, tr_acc = run_epoch(train_loader, feat, model, classifier,
-                                    optimizer, device, train=True)
-        val_loss, val_acc = run_epoch(val_loader, feat, model, classifier,
-                                      optimizer, device, train=False)
-        scheduler.step()
-        print(f"Epoch {epoch:02d} | train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} "
-              f"| val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
-        log.append({"epoch": epoch, "train_loss": tr_loss, "train_acc": tr_acc,
-                    "val_loss": val_loss, "val_acc": val_acc})
+    try:
+        for epoch in range(1, args.epochs + 1):
+            tr_loss, tr_acc = run_epoch(
+                train_loader, feat, model, classifier, optimizer, device,
+                train=True, metric_logger=metric_logger, epoch_idx=epoch - 1,
+            )
+            val_loss, val_acc = run_epoch(val_loader, feat, model, classifier,
+                                          optimizer, device, train=False)
+            scheduler.step()
+            print(f"Epoch {epoch:02d} | train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} "
+                  f"| val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
+            log.append({"epoch": epoch, "train_loss": tr_loss, "train_acc": tr_acc,
+                        "val_loss": val_loss, "val_acc": val_acc})
 
-        if val_acc > best_val:
-            best_val = val_acc
-            torch.save({
-                "model": model.state_dict(),
-                "classifier": classifier.state_dict(),
-                "epoch": epoch, "val_acc": val_acc,
-            }, save_dir / "best_model.pt")
-            print(f"  ✓ Saved best (val_acc={val_acc:.4f})")
+            # Per-epoch summary metrics. step=epoch để TB/Wandb có biểu đồ epoch-level
+            # song song với per-batch (đã log ở trên với step=global_step).
+            metric_logger.log_scalars({
+                "epoch/train_loss": tr_loss, "epoch/train_acc": tr_acc,
+                "epoch/val_loss":   val_loss, "epoch/val_acc":   val_acc,
+            }, step=epoch)
+
+            if val_acc > best_val:
+                best_val = val_acc
+                torch.save({
+                    "model": model.state_dict(),
+                    "classifier": classifier.state_dict(),
+                    "epoch": epoch, "val_acc": val_acc,
+                }, save_dir / "best_model.pt")
+                print(f"  ✓ Saved best (val_acc={val_acc:.4f})")
+    finally:
+        # Final summary + flush — chạy cả khi training fail giữa chừng.
+        metric_logger.log_summary({
+            "best_val_acc": best_val,
+            "total_epochs": len(log),
+            "n_speakers":   len(train_ds.spk2idx),
+        })
+        metric_logger.close()
 
     with open(save_dir / "training_log.json", "w") as f:
         json.dump(log, f, indent=2)
@@ -258,4 +305,19 @@ if __name__ == "__main__":
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--num_workers", type=int, default=4)
+    # ── Metric logging (optional) ────────────────────────────────────────
+    # Cả 2 backend đều no-op khi flag tắt (default). Bật khi cần debug/share:
+    #   --tensorboard         → log local vào <save_dir>/runs (no API key)
+    #   --wandb               → log cloud (cần WANDB_API_KEY env)
+    #   --wandb-project NAME  → tên project trên wandb.ai (default secva-ecapa-tdnn)
+    #   --wandb-run-name NAME → tên run, default auto theo hparams
+    p.add_argument("--tensorboard", action="store_true",
+                   help="Bật TensorBoard logging vào <save_dir>/runs (no API key)")
+    p.add_argument("--wandb", action="store_true",
+                   help="Bật Wandb cloud logging (cần WANDB_API_KEY env)")
+    p.add_argument("--wandb-project",
+                   default=os.getenv("WANDB_PROJECT", "secva-ecapa-tdnn"),
+                   help="Tên project Wandb")
+    p.add_argument("--wandb-run-name", default=None,
+                   help="Tên run Wandb (default auto theo hparams)")
     main(p.parse_args())

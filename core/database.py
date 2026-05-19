@@ -260,6 +260,28 @@ class UserDB:
             """)
             c.execute("CREATE INDEX IF NOT EXISTS idx_email_send_log "
                       "ON email_send_log(user_id, sent_at)")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS password_reset_codes (
+                    user_id      TEXT PRIMARY KEY,
+                    code_hash    TEXT NOT NULL,
+                    expires_at   REAL NOT NULL,
+                    attempts     INTEGER NOT NULL DEFAULT 0,
+                    created_at   REAL NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id)
+                )
+            """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS password_reset_requests (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id      TEXT NOT NULL,
+                    requested_at REAL NOT NULL,
+                    status       TEXT NOT NULL DEFAULT 'pending',
+                    note         TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY(user_id) REFERENCES users(user_id)
+                )
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_requests "
+                      "ON password_reset_requests(status, requested_at)")
 
     # ----------------------------------------------------------------
     # User CRUD
@@ -375,6 +397,8 @@ class UserDB:
         with self._conn() as c:
             c.execute("DELETE FROM oauth_tokens WHERE user_id=?", (user_id,))
             c.execute("DELETE FROM embeddings WHERE user_id=?", (user_id,))
+            c.execute("DELETE FROM password_reset_codes WHERE user_id=?", (user_id,))
+            c.execute("DELETE FROM password_reset_requests WHERE user_id=?", (user_id,))
             c.execute("DELETE FROM users WHERE user_id=?", (user_id,))
 
     def check_password(self, user_id: str, password: str) -> bool:
@@ -398,6 +422,92 @@ class UserDB:
         with self._conn() as c:
             c.execute("UPDATE users SET password_hash=? WHERE user_id=?",
                       (_hash_pw(new_password), user_id))
+
+    # ----------------------------------------------------------------
+    # Password reset support
+    # ----------------------------------------------------------------
+    def save_password_reset_code(self, user_id: str, code_hash: str,
+                                 expires_at: float, created_at: float):
+        with self._conn() as c:
+            c.execute(
+                """INSERT INTO password_reset_codes(user_id, code_hash, expires_at,
+                                                     attempts, created_at)
+                   VALUES (?, ?, ?, 0, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       code_hash=excluded.code_hash,
+                       expires_at=excluded.expires_at,
+                       attempts=0,
+                       created_at=excluded.created_at""",
+                (user_id, code_hash, expires_at, created_at),
+            )
+
+    def get_password_reset_code(self, user_id: str) -> Optional[dict]:
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT code_hash, expires_at, attempts, created_at "
+                "FROM password_reset_codes WHERE user_id=?",
+                (user_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "code_hash": row[0],
+            "expires_at": float(row[1]),
+            "attempts": int(row[2]),
+            "created_at": float(row[3]),
+        }
+
+    def increment_password_reset_attempts(self, user_id: str):
+        with self._conn() as c:
+            c.execute(
+                "UPDATE password_reset_codes SET attempts=attempts+1 WHERE user_id=?",
+                (user_id,),
+            )
+
+    def delete_password_reset_code(self, user_id: str):
+        with self._conn() as c:
+            c.execute("DELETE FROM password_reset_codes WHERE user_id=?", (user_id,))
+
+    def create_password_reset_request(self, user_id: str, note: str = "") -> int:
+        now = __import__("time").time()
+        with self._conn() as c:
+            cur = c.execute(
+                "INSERT INTO password_reset_requests(user_id, requested_at, status, note) "
+                "VALUES (?, ?, 'pending', ?)",
+                (user_id, now, note[:300]),
+            )
+            return int(cur.lastrowid)
+
+    def list_password_reset_requests(self, status: str = "pending",
+                                     limit: int = 20) -> list[dict]:
+        with self._conn() as c:
+            rows = c.execute(
+                """SELECT r.id, r.user_id, u.name, r.requested_at, r.status, r.note
+                   FROM password_reset_requests r
+                   LEFT JOIN users u ON u.user_id=r.user_id
+                   WHERE r.status=?
+                   ORDER BY r.requested_at DESC
+                   LIMIT ?""",
+                (status, limit),
+            ).fetchall()
+        return [
+            {
+                "id": r[0],
+                "user_id": r[1],
+                "name": r[2] or r[1],
+                "requested_at": float(r[3]),
+                "status": r[4],
+                "note": r[5],
+            }
+            for r in rows
+        ]
+
+    def update_password_reset_request_status(self, request_id: int, status: str):
+        with self._conn() as c:
+            c.execute(
+                "UPDATE password_reset_requests SET status=? WHERE id=?",
+                (status, request_id),
+            )
 
     def has_password(self, user_id: str) -> bool:
         """Returns True if a non-empty password_hash is stored for user_id."""

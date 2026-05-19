@@ -22,7 +22,7 @@ Lần cập nhật gần nhất: 2026-05-19 (account management + reminder/sched
 > - **Account management (mới)**: user tự đổi password (`/change-password`), tự re-enroll giọng (`/reenroll-voice`), tự bổ sung mẫu (`/add-voice-samples`); admin có masked-info + Revoke & Re-enroll (không reset password trực tiếp).
 > - **Bug fixes**: text-mode IMPORTANT phân biệt "thiếu password" vs "sai password"; JSON error handler cho `/api/*` (không trả HTML 500); music suggestion bỏ nút "+" (giữ Play); OAuth callback chẩn đoán cụ thể (no_session vs state_mismatch).
 > - **Robustness (mới)**: offline TTS fallback (pyttsx3) khi gTTS fail; strict CSP (drop `'unsafe-inline'` cho script-src, tất cả onclick refactor thành addEventListener); WAV encryption at-rest (opt-in qua `ENCRYPT_BIOMETRIC_WAV`); 2 reminder intents (set/list) + parser tiếng Việt + endpoint polling.
-> - **Tests**: 118 unit + integration test pytest, chạy `./venv/Scripts/python.exe -m pytest tests/ --basetemp .pytest_tmp`.
+> - **Tests**: 137 unit + integration test pytest (`1` skip nếu TensorBoard chưa cài), chạy `./venv/Scripts/python.exe -m pytest tests/ --basetemp .pytest_tmp`.
 
 ---
 
@@ -316,7 +316,7 @@ Format: `- [ ]` chưa làm, `- [x]` đã làm, ưu tiên cao → thấp.
 - [x] **Consent banner** (P2-F) — Section "Thông báo về dữ liệu sinh trắc giọng nói" trên `/enroll`, mô tả storage (WAV + 192-d BLOB + token) + retention + right to erasure. Checkbox gate `record-btn` và `submit-btn`.
 - [x] **Data export endpoint** (P2-G) — `POST /api/users/<id>/export` password-gated, rate-limit 3/5min. ZIP chứa `user.json` + `enroll_audio/*` + `user_files/*` + `oauth.json` (gmail/expiry, KHÔNG include token). Audit `data.export_user`.
 - [ ] **Augmentation cho training** — MUSAN noise + RIR reverb + SpecAugment + speed perturb. ECAPA-TDNN gain lớn nhất từ đây. **DEFER**: yêu cầu chạy training trên Kaggle GPU, không impact runtime.
-- [ ] **Wandb/TensorBoard hook** trong `train_ecapa.py` — per-step loss curve. **DEFER**: optional; `training_log.json` đã có loss/acc theo epoch.
+- [x] **Wandb/TensorBoard hook** trong `train_ecapa.py` — thêm `training/metric_logger.py` với API no-op an toàn, CLI flags `--tensorboard`, `--wandb`, `--wandb-project`, `--wandb-run-name`. TensorBoard ghi local vào `<save_dir>/runs`; Wandb chỉ bật khi có package + `WANDB_API_KEY`, thiếu thì warning và training tiếp tục.
 - [x] **Model card** (P2-H) — `training/MODEL_CARD.md` theo format Mitchell et al. 2019: model details, intended use, training data (caveat splits + bias), evaluation expected, ethical considerations (replay/cloning/consent), caveats + recommendations.
 - [x] **Pin requirements** (P2-K) — `requirements.lock.txt` từ `pip freeze` (96 dòng), kèm header doc cách regenerate. `pyproject.toml` extras + `pip-audit` đẩy xuống P3.
 - [x] **Bỏ `flask-cors` dead dep** (P2-A) — đã xoá khỏi `web/requirements.txt`. (Vẫn còn trong venv local + `requirements.lock.txt` cho đến khi `pip uninstall`.)
@@ -338,7 +338,7 @@ Format: `- [ ]` chưa làm, `- [x]` đã làm, ưu tiên cao → thấp.
 - [x] **`add_note` / `add_contact` / `add_schedule`** (3 bidirectional voice intent, IMPORTANT) — module `core/intents.py` + `core/handlers.py` + rule-based NLU. Cap entries (50 notes / 50 schedule / 100 contacts). `add_contact` idempotent (cùng name → update email). 14 unit test trong `tests/test_bidirectional_intents.py`.
 - [x] **Multi-language switch** qua `preferences.language` — `core/tts.py:_resolve_lang()` + `SUPPORTED_TTS_LANGS` (vi/en/ja/ko/zh-CN/fr/de). `/api/tts` resolve theo `?lang=...` → user pref → default vi. 7 unit test trong `tests/test_multilang_tts.py`.
 - [x] **Re-enroll bổ sung sau khi pass SV** — `SpeakerManager.incremental_update_centroid(audio, uid, alpha)` cập nhật centroid theo công thức `new = normalize((1-α)*old + α*emb_new)`. Hook ở Router sau SV pass (skip khi challenge enabled để chờ audio_2). Opt-in `SPEAKER_INCREMENTAL_REENROLL=true`, `SPEAKER_INCREMENTAL_ALPHA=0.1`. Audit event `speaker.incremental_update`. 6 unit test trong `tests/test_incremental_reenroll.py`.
-- [ ] **Calendar integration** cho `show_schedule` (reuse OAuth scope expansion).
+- [x] **Calendar integration** cho `show_schedule` (reuse OAuth scope expansion) — thêm `ENABLE_CALENDAR_INTEGRATION=false` opt-in, scope read-only `calendar.events.readonly`, `core/calendar_api.py` fetch/normalize events, `handle_show_schedule` merge Google Calendar 24h tới với `preferences.schedule` và fallback local khi token/scope/API lỗi.
 - [x] **Reminder intent + scheduler đơn giản** — `core/reminders.py` parse thời gian Vietnamese (`30 phút nữa`, `9 giờ sáng mai`, `14:00 chiều nay`...). 2 intent mới: `set_reminder` (IMPORTANT) + `list_reminders` (PERSONAL). Endpoint `/api/users/<id>/due-reminders` (GET poll + POST ack_ids). Cap 100 reminders/user. 17 unit test trong `tests/test_reminders.py`.
 - [x] **Offline TTS fallback** — `pyttsx3` lazy-init engine, fallback khi gTTS fail (mất mạng / quota). `core/tts.py:_ensure_offline_engine` + `_synthesize_offline_to_wav_bytes` → convert WAV → MP3 qua pydub. `synthesize_to_mp3_bytes` trả `b""` khi cả 2 fail (caller route trả 204).
 - [ ] **Wake-word** Picovoice Porcupine — cần Picovoice license, defer.

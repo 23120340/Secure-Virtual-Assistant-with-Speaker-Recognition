@@ -88,6 +88,29 @@ def test_text_mode_important_blocked_by_default(client):
         assert "giọng" in data.get("response", "").lower()
 
 
+def test_text_mode_open_files_password_fallback_no_500(client, app, reset_rate_limit):
+    """open_files ở text-mode được phép dùng password và không crash với HandlerResult."""
+    import numpy as np
+    db = app.config["db"]
+    uid = "text-open-files-test"
+    if db.get_user(uid) is None:
+        db.add_user(uid, "File Test", np.zeros(192, dtype=np.float32),
+                    preferences={}, password="file-pw-123")
+    try:
+        r = client.post("/api/assistant/text",
+                        json={"text": "mở file của tôi", "user_id": uid,
+                              "password": "file-pw-123"},
+                        headers=_xhr_headers())
+        assert r.status_code == 200
+        data = r.get_json()
+        if data.get("intent") == "open_files":
+            assert data["blocked"] is False
+            assert data.get("action_type") == "show_files"
+            assert "file" in data.get("response", "").lower()
+    finally:
+        db.delete_user(uid)
+
+
 # ----- Session cookie flags ----------------------------------------------------
 def test_session_cookie_has_security_flags(app):
     """SESSION_COOKIE_HTTPONLY + SAMESITE + SECURE phải set ở config."""
@@ -260,6 +283,81 @@ def test_admin_revoke_voice_sets_flag(client, app, reset_rate_limit):
             backend_id=spk_mgr.encoder.backend_id,
         )
         assert uid not in cache
+    finally:
+        db.set_revoke_pending(uid, False)
+        db.delete_user(uid)
+        config.ADMIN_PASS = old_admin
+
+
+def test_forgot_password_without_gmail_creates_admin_request(client, app, reset_rate_limit):
+    """Nếu user chưa link Gmail, forgot-password tạo request cho admin dashboard."""
+    import numpy as np
+    db = app.config["db"]
+    uid = "forgot-admin-test"
+    if db.get_user(uid) is None:
+        db.add_user(uid, "Forgot Test", np.zeros(192, dtype=np.float32),
+                    preferences={}, password="old-password")
+    try:
+        r = client.post(f"/api/users/{uid}/forgot-password/request",
+                        json={}, headers=_xhr_headers())
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["mode"] == "admin_request"
+        reqs = db.list_password_reset_requests()
+        assert any(x["user_id"] == uid for x in reqs)
+    finally:
+        db.delete_user(uid)
+
+
+def test_forgot_password_confirm_updates_password(client, app, reset_rate_limit):
+    """Mã reset hợp lệ đổi được mật khẩu và bị xoá sau khi dùng."""
+    import time
+    import hashlib
+    import numpy as np
+    db = app.config["db"]
+    uid = "forgot-confirm-test"
+    if db.get_user(uid) is None:
+        db.add_user(uid, "Forgot Confirm", np.zeros(192, dtype=np.float32),
+                    preferences={}, password="old-password")
+    try:
+        code = "123456"
+        db.save_password_reset_code(
+            uid, hashlib.sha256(code.encode()).hexdigest(),
+            time.time() + 600, time.time())
+        r = client.post(f"/api/users/{uid}/forgot-password/confirm",
+                        json={"code": code, "new_password": "new-password-123",
+                              "new_password_confirm": "new-password-123"},
+                        headers=_xhr_headers())
+        assert r.status_code == 200
+        assert db.check_password(uid, "new-password-123") is True
+        assert db.get_password_reset_code(uid) is None
+    finally:
+        db.delete_user(uid)
+
+
+def test_admin_request_reenroll_keeps_embedding(client, app, reset_rate_limit):
+    """Reroll/re-enroll request chỉ set flag, không xoá embedding."""
+    import numpy as np
+    from core import config
+    db = app.config["db"]
+    uid = "admin-reroll-test"
+    old_admin = config.ADMIN_PASS
+    config.ADMIN_PASS = "admin-pw"
+    emb = np.ones(192, dtype=np.float32) / (192 ** 0.5)
+    if db.get_user(uid) is None:
+        db.add_user(uid, "Reroll Test", emb, password="pw")
+    try:
+        r = client.post(f"/api/admin/users/{uid}/request-reenroll",
+                        json={"admin_password": "admin-pw", "reason": "test"},
+                        headers=_xhr_headers())
+        assert r.status_code == 200
+        assert db.is_revoke_pending(uid) is True
+        spk_mgr = app.config["spk_mgr"]
+        cache = db.load_all_embeddings(
+            expected_dim=spk_mgr.encoder.embedding_dim,
+            backend_id=spk_mgr.encoder.backend_id,
+        )
+        assert uid in cache
     finally:
         db.set_revoke_pending(uid, False)
         db.delete_user(uid)

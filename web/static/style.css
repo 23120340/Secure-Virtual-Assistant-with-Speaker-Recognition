@@ -448,6 +448,8 @@ select.glass-input { cursor: pointer; }
   border: 1px solid rgba(255,255,255,.55) !important;
   border-radius: 1.5rem !important;
   box-shadow: 0 24px 80px rgba(0,0,0,.18) !important;
+  max-height: calc(100vh - 2rem) !important;
+  overflow-y: auto !important;
 }
 #modal-unlock-btn, #modal-save-btn, #modal-change-pw-btn,
 #modal-files-open-btn, #modal-music-upload-btn, #modal-files-upload-btn {

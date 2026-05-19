@@ -156,6 +156,15 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI",
                                   "https://localhost:5000/auth/google/callback")
 
+# Calendar integration (opt-in): khi True, OAuth flow thêm scope
+# `calendar.events.readonly` → user phải re-consent. `show_schedule` handler
+# sẽ merge sự kiện Google Calendar hôm nay với `preferences.schedule` local.
+# Mặc định False — chỉ bật khi đã configure Google Cloud Console project
+# để enable Calendar API + add scope vào OAuth consent screen.
+ENABLE_CALENDAR_INTEGRATION = os.getenv(
+    "ENABLE_CALENDAR_INTEGRATION", "false"
+).lower() in ("true", "1", "yes")
+
 # ==========================================================================
 # Admin
 # ==========================================================================

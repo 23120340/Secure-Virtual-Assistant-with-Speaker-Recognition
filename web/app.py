@@ -313,6 +313,28 @@ from collections import defaultdict, deque
 _RL_LOCK = threading.Lock()
 _RL_BUCKETS: dict = defaultdict(deque)
 
+_OAUTH_PENDING_LOCK = threading.Lock()
+_OAUTH_PENDING: dict[str, dict] = {}
+
+
+def _oauth_pending_put(state: str, payload: dict):
+    now = time.time()
+    with _OAUTH_PENDING_LOCK:
+        expired = [k for k, v in _OAUTH_PENDING.items()
+                   if now - v.get("created_at", 0) > 600]
+        for k in expired:
+            _OAUTH_PENDING.pop(k, None)
+        _OAUTH_PENDING[state] = {**payload, "created_at": now}
+
+
+def _oauth_pending_pop(state: str) -> dict | None:
+    now = time.time()
+    with _OAUTH_PENDING_LOCK:
+        payload = _OAUTH_PENDING.pop(state, None)
+    if payload and now - payload.get("created_at", 0) <= 600:
+        return payload
+    return None
+
 
 def _rl_client_ip() -> str:
     # request.remote_addr; trust proxy chỉ khi có header rõ ràng (default off).
@@ -1423,6 +1445,9 @@ def register_routes(app):
         name = user["name"] if user else "Khách"
 
         sv_required = (level == AuthLevel.IMPORTANT)
+        password_allowed_for_intent = (
+            config.ALLOW_PASSWORD_FOR_IMPORTANT or intent == "open_files"
+        )
         sv_passed   = None
         blocked     = False
         response    = ""
@@ -1442,7 +1467,7 @@ def register_routes(app):
             # — Speaker Verification là biometric gate, password là "know factor"
             # không tương đương. Cho phép password fallback chỉ khi
             # ALLOW_PASSWORD_FOR_IMPORTANT=true (demo mode hoặc mic broken).
-            elif not config.ALLOW_PASSWORD_FOR_IMPORTANT:
+            elif not password_allowed_for_intent:
                 blocked  = True
                 response = ("Tác vụ này yêu cầu xác thực bằng giọng nói (Speaker Verification). "
                             "Hãy chuyển sang chế độ Voice và nói lại yêu cầu.")
@@ -1497,7 +1522,18 @@ def register_routes(app):
 
         if not blocked:
             handler  = _h.HANDLERS.get(intent, _h.handle_unknown)
-            response = handler(entities, user, db=db)
+            raw_response = handler(entities, user, db=db)
+            action_type = None
+            action_data = None
+            if isinstance(raw_response, _h_module.HandlerResult):
+                response = raw_response.text
+                action_type = raw_response.action_type
+                action_data = raw_response.action_data
+            else:
+                response = raw_response
+        else:
+            action_type = None
+            action_data = None
 
         payload = {
             "transcript":           text,
@@ -1515,6 +1551,10 @@ def register_routes(app):
             "flow_active":          False,
             "tts_url":              f"/api/tts?text={_quote(response)}",
         }
+        if action_type:
+            payload["action_type"] = action_type
+        if action_data:
+            payload["action_data"] = action_data
 
         _prefs = user["preferences"] if user else {}
         _attach_action_data(
@@ -1966,10 +2006,13 @@ def register_routes(app):
         if (not config.ADMIN_PASS or
                 not hmac.compare_digest(str(supplied), config.ADMIN_PASS)):
             return jsonify({"error": "Sai mật khẩu quản trị"}), 403
-        users = app.config["db"].list_users()
+        db = app.config["db"]
+        users = db.list_users()
+        reset_requests = db.list_password_reset_requests(status="pending")
         return jsonify({
             "ok": True,
             "count": len(users),
+            "reset_requests": reset_requests,
             "users": [
                 {
                     "user_id":    u["user_id"],
@@ -1983,6 +2026,147 @@ def register_routes(app):
     def _check_admin_pass(supplied: str) -> bool:
         return bool(config.ADMIN_PASS) and hmac.compare_digest(
             str(supplied), config.ADMIN_PASS)
+
+    @app.route("/api/admin/password-reset-requests", methods=["POST"])
+    @max_size(0.02)
+    @rate_limit(max_attempts=10, window_sec=60, scope="admin-reset-requests")
+    def api_admin_password_reset_requests():
+        data = _json_body()
+        if not _check_admin_pass(data.get("admin_password", "")):
+            return jsonify({"error": "Sai mật khẩu quản trị"}), 403
+        return jsonify({
+            "ok": True,
+            "requests": app.config["db"].list_password_reset_requests(status="pending"),
+        })
+
+    @app.route("/api/admin/password-reset-requests/<int:request_id>/resolve",
+               methods=["POST"])
+    @max_size(0.02)
+    @rate_limit(max_attempts=10, window_sec=60, scope="admin-reset-request-resolve")
+    def api_admin_password_reset_request_resolve(request_id):
+        data = _json_body()
+        if not _check_admin_pass(data.get("admin_password", "")):
+            return jsonify({"error": "Sai mật khẩu quản trị"}), 403
+        status = str(data.get("status", "resolved")).strip() or "resolved"
+        if status not in ("resolved", "rejected"):
+            return jsonify({"error": "Status không hợp lệ"}), 400
+        app.config["db"].update_password_reset_request_status(request_id, status)
+        _audit("admin.password_reset_request", request_id=request_id,
+               outcome=status, ip=_rl_client_ip(),
+               ua=request.headers.get("User-Agent", ""))
+        return jsonify({"ok": True})
+
+    def _reset_code_hash(code: str) -> str:
+        return hashlib.sha256(str(code).encode("utf-8")).hexdigest()
+
+    def _send_password_reset_code(db, user_id: str, token_data: dict,
+                                  gmail_addr: str, code: str):
+        import time as _t
+        from core.gmail_api import send_email
+        from core.oauth import refresh_access_token
+        if _t.time() > token_data.get("expiry", 0):
+            updated = refresh_access_token(token_data["refresh_token"])
+            token_data.update(updated)
+            db.save_oauth_token(user_id, token_data)
+        send_email(
+            token_data["access_token"],
+            gmail_addr,
+            "Mã đặt lại mật khẩu Secure Virtual Assistant",
+            "Mã đặt lại mật khẩu của bạn là: "
+            f"{code}\n\nMã có hiệu lực trong 10 phút. "
+            "Nếu bạn không yêu cầu thao tác này, hãy bỏ qua email.",
+            from_name="Secure Virtual Assistant",
+        )
+
+    @app.route("/api/users/<user_id>/forgot-password/request", methods=["POST"])
+    @max_size(0.01)
+    @rate_limit(max_attempts=3, window_sec=300,
+                scope="forgot-password", key_user_field="user_id")
+    def api_forgot_password_request(user_id):
+        """Request reset password.
+
+        - Nếu user đã link Gmail OAuth: gửi mã 6 số về email đó.
+        - Nếu chưa link Gmail: tạo request pending cho admin xử lý.
+        """
+        db = app.config["db"]
+        user = db.get_user(user_id)
+        # Không leak user enumeration quá nhiều; nhưng UI nội bộ cần biết lỗi rõ.
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+
+        token_data = db.get_oauth_token(user_id)
+        gmail_addr = (token_data or {}).get("gmail_address", "")
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
+        if token_data and gmail_addr:
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            db.save_password_reset_code(
+                user_id, _reset_code_hash(code),
+                time.time() + 600, time.time(),
+            )
+            try:
+                _send_password_reset_code(db, user_id, token_data, gmail_addr, code)
+            except Exception as exc:
+                _audit("auth.password_reset_request", user_id=user_id,
+                       outcome="email_send_failed", ip=ip, ua=ua,
+                       error=str(exc)[:120])
+                return jsonify({
+                    "error": "Không gửi được email reset. Vui lòng thử lại hoặc gửi yêu cầu cho admin.",
+                    "mode": "email_failed",
+                }), 503
+            _audit("auth.password_reset_request", user_id=user_id,
+                   outcome="email_code_sent", ip=ip, ua=ua)
+            return jsonify({"ok": True, "mode": "email_code",
+                            "email_masked": _mask_email(gmail_addr),
+                            "expires_in_sec": 600})
+
+        req_id = db.create_password_reset_request(
+            user_id, note="User requested password reset without linked Gmail")
+        _audit("auth.password_reset_request", user_id=user_id,
+               outcome="admin_pending", request_id=req_id, ip=ip, ua=ua)
+        return jsonify({"ok": True, "mode": "admin_request",
+                        "request_id": req_id,
+                        "message": "Chưa có Gmail liên kết. Đã gửi yêu cầu cho quản trị viên."})
+
+    @app.route("/api/users/<user_id>/forgot-password/confirm", methods=["POST"])
+    @max_size(0.02)
+    @rate_limit(max_attempts=5, window_sec=600,
+                scope="forgot-password-confirm", key_user_field="user_id")
+    def api_forgot_password_confirm(user_id):
+        db = app.config["db"]
+        user = db.get_user(user_id)
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        data = _json_body()
+        code = str(data.get("code", "")).strip()
+        new_password = str(data.get("new_password", ""))
+        confirm = str(data.get("new_password_confirm", ""))
+        rec = db.get_password_reset_code(user_id)
+        if not rec:
+            return jsonify({"error": "Chưa có mã reset hoặc mã đã hết hạn"}), 400
+        if time.time() > rec["expires_at"]:
+            db.delete_password_reset_code(user_id)
+            return jsonify({"error": "Mã reset đã hết hạn"}), 400
+        if rec["attempts"] >= 5:
+            db.delete_password_reset_code(user_id)
+            return jsonify({"error": "Nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới."}), 429
+        if not hmac.compare_digest(_reset_code_hash(code), rec["code_hash"]):
+            db.increment_password_reset_attempts(user_id)
+            return jsonify({"error": "Mã reset không đúng"}), 403
+        if len(new_password) < 8:
+            return jsonify({"error": "Mật khẩu mới phải có ít nhất 8 ký tự"}), 400
+        if len(new_password) > 128:
+            return jsonify({"error": "Mật khẩu mới quá dài"}), 400
+        if new_password != confirm:
+            return jsonify({"error": "Xác nhận mật khẩu không khớp"}), 400
+        db.update_password(user_id, new_password)
+        db.delete_password_reset_code(user_id)
+        if session.get("file_uid") == user_id:
+            _clear_file_session()
+        _audit("auth.password_reset", user_id=user_id, actor="self_email",
+               outcome="success", ip=_rl_client_ip(),
+               ua=request.headers.get("User-Agent", ""))
+        return jsonify({"ok": True})
 
     @app.route("/api/admin/users/<user_id>/info-masked", methods=["POST"])
     @max_size(0.01)
@@ -2088,6 +2272,60 @@ def register_routes(app):
                         "giọng mới để kích hoạt lại."),
         })
 
+    @app.route("/api/admin/users/<user_id>/request-reenroll", methods=["POST"])
+    @max_size(0.01)
+    @rate_limit(max_attempts=5, window_sec=300,
+                scope="admin-request-reenroll", key_user_field="user_id")
+    def api_admin_request_reenroll(user_id):
+        """Admin yêu cầu user re-enroll lại giọng nhưng KHÔNG xoá embedding."""
+        data = _json_body()
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
+        if not _check_admin_pass(data.get("admin_password", "")):
+            return jsonify({"error": "Sai mật khẩu quản trị"}), 403
+        db = app.config["db"]
+        user = db.get_user(user_id)
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        reason = str(data.get("reason", "") or "")[:200]
+        db.set_revoke_pending(user_id, True)
+        if session.get("file_uid") == user_id:
+            _clear_file_session()
+        _audit("admin.request_reenroll", user_id=user_id, actor="admin",
+               outcome="success", reason=reason, ip=ip, ua=ua)
+        return jsonify({"ok": True, "user_id": user_id,
+                        "message": "Đã yêu cầu user đăng ký lại giọng nói."})
+
+    @app.route("/api/admin/users/<user_id>/delete", methods=["POST"])
+    @max_size(0.01)
+    @rate_limit(max_attempts=3, window_sec=300,
+                scope="admin-delete-user", key_user_field="user_id")
+    def api_admin_delete_user(user_id):
+        """Admin revoke theo nghĩa xoá hẳn user + dữ liệu liên quan."""
+        data = _json_body()
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
+        if not _check_admin_pass(data.get("admin_password", "")):
+            return jsonify({"error": "Sai mật khẩu quản trị"}), 403
+        db = app.config["db"]
+        if not db.get_user(user_id):
+            return jsonify({"error": "User không tồn tại"}), 404
+
+        db.delete_user(user_id)
+        app.config["spk_mgr"].invalidate_cache()
+        import shutil
+        dirs_removed = []
+        for base in (config.ENROLL_AUDIO_DIR, config.USER_FILES_DIR):
+            target = _resolve_child_path(base, user_id)
+            if target and target.exists() and target.is_dir():
+                shutil.rmtree(target)
+                dirs_removed.append(str(target.relative_to(config.DATA_DIR)))
+        if session.get("file_uid") == user_id:
+            _clear_file_session()
+        _audit("admin.delete_user", user_id=user_id, actor="admin",
+               outcome="success", dirs_removed=dirs_removed, ip=ip, ua=ua)
+        return jsonify({"ok": True, "user_id": user_id})
+
     # ==========================================================================
     # Google OAuth 2.0 — Gmail API authentication
     # ==========================================================================
@@ -2115,6 +2353,7 @@ def register_routes(app):
         session["oauth_code_verifier"] = verifier
         # Lưu timestamp để callback có thể chẩn đoán session-lost vs state-mismatch.
         session["oauth_started_at"]    = time.time()
+        _oauth_pending_put(nonce, {"user_id": user_id, "code_verifier": verifier})
         session.permanent = True
         # Force session lưu xuống cookie ngay — flask sometimes lazy-writes
         # khi response không có Set-Cookie trigger.
@@ -2154,6 +2393,14 @@ def register_routes(app):
         nonce_ok = False
         if expected_nonce is not None:
             nonce_ok = hmac.compare_digest(str(received_state), str(expected_nonce))
+        elif received_state:
+            pending = _oauth_pending_pop(received_state)
+            if pending:
+                expected_nonce = received_state
+                user_id = user_id or pending.get("user_id")
+                code_verifier = code_verifier or pending.get("code_verifier")
+                started_at = pending.get("created_at")
+                nonce_ok = True
         if not nonce_ok:
             ip = _rl_client_ip()
             reason = "no_session_nonce" if expected_nonce is None else "state_mismatch"
@@ -2385,6 +2632,10 @@ if __name__ == "__main__":
                         help="Bật HTTPS (cần pyopenssl) — cho phép dùng mic qua IP")
     parser.add_argument("--port", type=int, default=5000)
     args = parser.parse_args()
+
+    if not args.ssl and "FLASK_DEV_HTTP" not in os.environ:
+        os.environ["FLASK_DEV_HTTP"] = "true"
+        _log.warning("Chạy HTTP dev → tự set FLASK_DEV_HTTP=true để session cookie không có cờ Secure")
 
     app = create_app()
 

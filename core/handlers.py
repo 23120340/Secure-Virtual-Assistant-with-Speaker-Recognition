@@ -449,13 +449,71 @@ def handle_play_music(entities, user, **kwargs) -> str:
 
 
 def handle_show_schedule(entities, user, **kwargs) -> str:
+    """Show lịch — merge local `preferences.schedule` + Google Calendar events.
+
+    Khi `config.ENABLE_CALENDAR_INTEGRATION=true` AND user đã link OAuth có
+    scope `calendar.events.readonly` → fetch events 24h tới từ Google. Nếu
+    fail (token expired, scope thiếu, network) → fall back về local schedule.
+    """
     if user is None:
         return "Mình chưa nhận ra giọng bạn nên không truy cập được lịch cá nhân."
-    schedule = user["preferences"].get("schedule", [])
-    if not schedule:
-        return f"{user['name']} ơi, hôm nay không có việc gì trong lịch."
-    items = "; ".join(schedule[:3])
-    return f"Lịch của {user['name']} hôm nay: {items}."
+
+    from . import config
+    name = user["name"]
+    local_items = list(user["preferences"].get("schedule") or [])
+    gcal_items: list[str] = []
+
+    # Thử fetch Google Calendar nếu integration bật + có token.
+    if config.ENABLE_CALENDAR_INTEGRATION:
+        db = kwargs.get("db")
+        if db is not None:
+            token_data = db.get_oauth_token(user["user_id"])
+            if token_data:
+                gcal_items = _fetch_calendar_events(token_data, db, user["user_id"])
+
+    if not local_items and not gcal_items:
+        return f"{name} ơi, hôm nay không có việc gì trong lịch."
+
+    lines = []
+    if gcal_items:
+        lines.append(f"📅 Google Calendar ({len(gcal_items)}): "
+                     + "; ".join(gcal_items[:3]))
+    if local_items:
+        lines.append(f"📝 Lịch cá nhân ({len(local_items)}): "
+                     + "; ".join(local_items[:3]))
+    return f"Lịch của {name} hôm nay:\n" + "\n".join(lines)
+
+
+def _fetch_calendar_events(token_data: dict, db, user_id: str) -> list[str]:
+    """Helper: fetch + format Google Calendar events 24h tới. Trả [] khi fail.
+
+    Tự refresh token nếu hết hạn (giống `handle_send_email`).
+    """
+    import time as _t
+    try:
+        from .oauth import refresh_access_token
+        from .calendar_api import list_events, format_events_for_speech
+    except ImportError:
+        return []
+    # Refresh nếu access_token hết hạn.
+    if _t.time() > token_data.get("expiry", 0):
+        try:
+            updated = refresh_access_token(token_data["refresh_token"])
+            token_data.update(updated)
+            db.save_oauth_token(user_id, token_data)
+        except Exception:
+            return []
+    try:
+        events = list_events(token_data["access_token"], max_results=10)
+    except Exception:
+        # Token thiếu scope (insufficientPermissions) hoặc network fail → silently
+        # fall back, không spam user "Lỗi calendar".
+        return []
+    formatted = format_events_for_speech(events)
+    if not formatted:
+        return []
+    # Chuyển từ string "; "-joined thành list để uniform với local schedule.
+    return [s.strip() for s in formatted.split(";") if s.strip()]
 
 
 # ==========================================================================

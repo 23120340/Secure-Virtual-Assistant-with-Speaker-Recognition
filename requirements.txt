@@ -38,3 +38,9 @@ google-genai>=1.0.0
 # Misc
 python-dotenv>=1.0.0
 requests
+
+# Optional training metric logging:
+# - TensorBoard: local dashboard, bật bằng train_ecapa.py --tensorboard
+# - Wandb: cloud dashboard, bật bằng train_ecapa.py --wandb + WANDB_API_KEY
+# tensorboard>=2.13.0
+# wandb>=0.16.0

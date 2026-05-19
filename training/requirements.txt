@@ -4,3 +4,8 @@ speechbrain>=1.0.0
 numpy
 scikit-learn
 tqdm
+
+# Optional — bật bằng CLI flag --tensorboard / --wandb. Không cài cũng không sao:
+# MetricLogger no-op nếu module thiếu (xem training/metric_logger.py).
+# tensorboard>=2.13.0
+# wandb>=0.16.0

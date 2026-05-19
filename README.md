@@ -29,7 +29,8 @@ Trợ lý ảo tiếng Việt có phân quyền bằng giọng nói, kết hợp
 - **Account management**: user tự đổi password, re-enroll giọng nói, hoặc bổ sung mẫu giọng. Admin chỉ xem masked info + revoke voice (không reset password trực tiếp).
 - **Robustness**: offline TTS fallback (pyttsx3) khi gTTS fail; retry + circuit breaker cho Gmail / OAuth; multi-language TTS qua `preferences.language`.
 - **Productivity intents**: bidirectional voice intents (`add_note`, `add_schedule`, `add_contact`, `set_reminder`, `list_reminders`) — voice-first task entry.
-- **Test suite**: `118` unit/integration tests hiện pass với `pytest`.
+- **Optional integrations đã có khung**: TensorBoard/Wandb metric logging cho training và Google Calendar read-only cho `show_schedule`. Mặc định đều tắt; bật khi có dependency/API key miễn phí phù hợp.
+- **Test suite**: `137` unit/integration tests hiện pass với `pytest` (`1` TensorBoard-dependent test skip nếu package chưa cài).
 
 ---
 
@@ -41,6 +42,7 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 │   ├── audio_io.py          # Decode audio, VAD, preprocess
 │   ├── asr.py               # faster-whisper / PhoWhisper
 │   ├── audit.py             # JSONL audit log
+│   ├── calendar_api.py      # Google Calendar read-only client (opt-in)
 │   ├── challenge.py         # Challenge-response cho IMPORTANT voice flow
 │   ├── config.py            # Env/config/thresholds
 │   ├── database.py          # SQLite UserDB + SpeakerManager
@@ -59,6 +61,7 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 │   ├── train_ecapa.py
 │   ├── evaluate_sid.py
 │   ├── evaluate_sv.py
+│   ├── metric_logger.py     # TensorBoard/Wandb optional dispatch
 │   ├── MODEL_CARD.md
 │   ├── README.md
 │   ├── data/
@@ -260,6 +263,14 @@ CHALLENGE_RESPONSE_ENABLED=true
 
 Khi bật, sau khi SID+SV pass, server yêu cầu user đọc lại phrase random. Handler chỉ chạy nếu audio thứ hai vừa khớp phrase vừa pass SV.
 
+Google Calendar integration là opt-in:
+
+```env
+ENABLE_CALENDAR_INTEGRATION=true
+```
+
+Khi bật, OAuth consent sẽ thêm scope read-only `calendar.events.readonly`; user đã link Gmail trước đó cần revoke/re-link để cấp scope mới. `show_schedule` sẽ merge sự kiện Google Calendar 24h tới với `preferences.schedule`, và tự fallback về lịch local nếu token/scope/API lỗi.
+
 ---
 
 ## Training Và Evaluation YC1
@@ -280,6 +291,16 @@ python training/train_ecapa.py --help
 python training/evaluate_sid.py --help
 python training/evaluate_sv.py --help
 ```
+
+Metric logging là optional:
+
+```powershell
+python training/train_ecapa.py ... --tensorboard
+python training/train_ecapa.py ... --wandb --wandb-project secva-ecapa-tdnn
+```
+
+- TensorBoard ghi local vào `<save_dir>/runs`, không cần API key.
+- Wandb cần package `wandb` và env `WANDB_API_KEY`; nếu thiếu key/package thì tự bỏ qua, training vẫn chạy.
 
 Artifact cần có trước khi nộp:
 
