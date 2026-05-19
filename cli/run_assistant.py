@@ -25,9 +25,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core import audio_io, config
 from core.asr import get_asr
 from core.tts import get_tts
-from core.nlu import get_nlu
+from core.nlu import get_nlu, parse_with_correction
 from core.database import UserDB, SpeakerManager
 from core.router import Router
+from core.turn_logging import log_turn
 
 
 def print_turn(result):
@@ -81,14 +82,16 @@ def run_mic_mode(args):
                 print("  ASR không nhận diện được nội dung.")
                 continue
 
-            nlu_result = nlu.parse(transcript)
+            transcript, nlu_result = parse_with_correction(transcript, nlu)
             result = router.handle_turn(audio, transcript, nlu_result)
             print_turn(result)
 
             if tts:
                 tts.speak(result.response)
 
-            log.append(asdict(result))
+            turn = asdict(result)
+            log_turn(turn, source="cli_voice", auth_method="voice")
+            log.append(turn)
 
         except KeyboardInterrupt:
             break
@@ -113,7 +116,7 @@ def run_text_mode(args):
             text = input("text> ").strip()
             if not text or text.lower() in ("quit", "q"):
                 break
-            result = nlu.parse(text)
+            text, result = parse_with_correction(text, nlu)
             print(f"  → intent={result['intent']}, entities={result['entities']}")
         except KeyboardInterrupt:
             break

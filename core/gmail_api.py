@@ -16,7 +16,20 @@ from email.mime.text import MIMEText
 
 import requests
 
+from .resilience import CircuitBreaker, retry
 
+
+# Circuit breaker riêng cho Gmail send — 5xx Google trip breaker, tránh hammer.
+# Tách biệt với OAuth breaker vì Gmail API có thể fail riêng (rate-limit per-user).
+_GMAIL_BREAKER = CircuitBreaker("gmail-send", fail_threshold=5, reset_after=60)
+
+
+@_GMAIL_BREAKER
+@retry(max_attempts=3, backoff_base=0.7,
+       # Chỉ retry network-level + timeout. KHÔNG retry HTTPError ở đây vì
+       # 4xx (sai token, sai recipient) là vĩnh viễn — retry vô nghĩa.
+       # 5xx thì raise_for_status raise HTTPError → caller decide refresh/restart.
+       retriable=(requests.ConnectionError, requests.Timeout))
 def send_email(access_token: str, to: str, subject: str, body: str,
                from_name: str = "") -> dict:
     """Gửi email qua Gmail API.

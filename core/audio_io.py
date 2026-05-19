@@ -128,6 +128,81 @@ class SileroVAD:
 
 
 # ==========================================================================
+# Audio preprocessing cho speaker encoder
+# ==========================================================================
+# noisereduce là optional dep — không bắt buộc cài để chạy hệ thống.
+_NOISEREDUCE = None
+_NOISEREDUCE_TRIED = False
+
+
+def _try_noisereduce():
+    """Lazy import noisereduce. Cache None nếu không có package."""
+    global _NOISEREDUCE, _NOISEREDUCE_TRIED
+    if not _NOISEREDUCE_TRIED:
+        _NOISEREDUCE_TRIED = True
+        try:
+            import noisereduce  # type: ignore
+            _NOISEREDUCE = noisereduce
+            _log.info("noisereduce available → denoise có thể bật")
+        except ImportError:
+            _log.info("noisereduce chưa cài (pip install noisereduce) → denoise no-op")
+    return _NOISEREDUCE
+
+
+def preprocess_audio(audio: np.ndarray,
+                     sample_rate: int = config.SAMPLE_RATE,
+                     denoise: bool | None = None,
+                     normalize: bool | None = None) -> np.ndarray:
+    """Pre-process audio trước khi đưa vào speaker encoder.
+
+    - DC-removal (mean centering): bỏ DC bias của micro
+    - Denoise (optional): spectral gating qua noisereduce (nếu cài + flag bật)
+    - RMS-normalize (optional): đưa loudness về RMS ~0.1 → giảm ảnh hưởng âm
+      lượng tới embedding
+
+    Cả 2 flag (denoise, normalize) khi None sẽ đọc từ config — bật/tắt qua env.
+    Quan trọng: nếu đổi preprocessing sau khi enroll, hãy re-enroll user để
+    centroid khớp domain mới (audio đã preprocess vs chưa).
+    """
+    if denoise is None:
+        denoise = config.SPEAKER_DENOISE
+    if normalize is None:
+        normalize = config.SPEAKER_PREPROCESS
+
+    if audio.size == 0:
+        return audio
+
+    out = audio.astype(np.float32, copy=False)
+
+    # Luôn DC-remove khi preprocess (rất rẻ, không gây side effect)
+    if normalize or denoise:
+        out = out - out.mean()
+
+    if denoise:
+        nr = _try_noisereduce()
+        if nr is not None:
+            try:
+                # stationary=True dùng cho noise nền liên tục (ổn định hơn).
+                # prop_decrease=0.8 để không quá aggressive (giữ formant tiếng nói).
+                out = nr.reduce_noise(
+                    y=out, sr=sample_rate,
+                    stationary=True, prop_decrease=0.8,
+                ).astype(np.float32)
+            except Exception as e:
+                _log.warning("noisereduce failed: %s — bỏ qua denoise", e)
+
+    if normalize:
+        # RMS normalize → target 0.1 (~ -20 dBFS) — speech điển hình
+        rms = float(np.sqrt(np.mean(out ** 2)) + 1e-9)
+        if rms > 1e-5:    # tránh khuếch đại silence/noise nhỏ
+            out = out * (0.1 / rms)
+            # Soft clip để chặn peak > 1.0 (gây distortion)
+            np.clip(out, -1.0, 1.0, out=out)
+
+    return out
+
+
+# ==========================================================================
 # Convenience: record + trim + save
 # ==========================================================================
 def record_and_trim(duration: float, save_path: Path = None) -> np.ndarray:

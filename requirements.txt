@@ -6,6 +6,15 @@ numpy
 
 # ASR
 faster-whisper>=1.0.0
+# Optional: cần khi ASR_BACKEND=phowhisper (vinai/PhoWhisper-*) hoặc
+# SPEAKER_BACKEND=wavlm (microsoft/wavlm-base-plus-sv).
+# transformers + sentencepiece + safetensors (transitively).
+transformers>=4.40.0
+sentencepiece>=0.2.0
+
+# Optional: chỉ cần khi SPEAKER_DENOISE=true (spectral gating denoise
+# trước khi encode speaker). Bỏ qua → core/audio_io.py tự skip denoise.
+# noisereduce>=3.0.0
 
 # VAD
 silero-vad>=5.0.0

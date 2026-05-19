@@ -95,6 +95,24 @@ cp .env.example .env  # điền GEMINI_API_KEY (free tại aistudio.google.com)
 **Copy speaker checkpoint** từ Tuần 1 vào `checkpoints/best_model.pt`.
 Nếu chưa có → app tự fallback sang pretrained SpeechBrain ECAPA-TDNN (VoxCeleb2).
 
+### Backend selection (optional)
+
+Đổi engine ASR / Speaker qua env, không cần sửa code:
+
+| Env | Giá trị | Ghi chú |
+|---|---|---|
+| `ASR_BACKEND` | `faster-whisper` (default) / `phowhisper` | PhoWhisper (vinai/PhoWhisper-*) fine-tune VN — cần `pip install transformers sentencepiece` |
+| `SPEAKER_BACKEND` | `ecapa` (default) / `wavlm` | WavLM-SV pretrained Microsoft — cần transformers |
+
+Sau khi đổi `SPEAKER_BACKEND`, chạy:
+
+```bash
+python scripts/reenroll_backend.py   # re-encode audio cũ
+python scripts/benchmark.py --all    # đối chiếu WER + TPR/FPR
+```
+
+Toàn bộ env vars (pipeline knobs: multi-window, AS-Norm, denoise, …): xem [.env.example](../.env.example).
+
 ## Cách chạy
 
 ### Bước 0 — Tạo TLS certificate (chỉ làm 1 lần)

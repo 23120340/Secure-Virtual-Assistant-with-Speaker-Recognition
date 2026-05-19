@@ -1,0 +1,29 @@
+# Track model checkpoint + large binary via Git LFS thay vì commit thẳng.
+# Reviewer cần `git lfs install` + `git lfs pull` để fetch file thật.
+#
+# Lý do: best_model.pt ~24MB, embedding/audio cache có thể lớn — commit thẳng
+# vào git history phình repo + chậm clone.
+#
+# Nếu KHÔNG dùng Git LFS, comment các dòng dưới và upload checkpoint qua
+# Google Drive (tham khảo training/README.md "Quy Định Nộp Bài" trong PDF đề).
+
+checkpoints/*.pt        filter=lfs diff=lfs merge=lfs -text
+checkpoints/*.ckpt      filter=lfs diff=lfs merge=lfs -text
+checkpoints/*.safetensors filter=lfs diff=lfs merge=lfs -text
+
+# Audio sample enroll: nhỏ (<1MB mỗi file) nên có thể commit thẳng, NHƯNG nếu
+# tổng số user enroll > vài chục thì cũng nên LFS.
+# data/enroll_audio/**/*.wav filter=lfs diff=lfs merge=lfs -text
+
+# Line ending: chuẩn hoá để Windows/Linux không gây spurious diff.
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf

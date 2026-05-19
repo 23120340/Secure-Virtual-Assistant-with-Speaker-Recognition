@@ -66,7 +66,7 @@ def main(args):
     feat = FbankExtractor().to(device).eval()
     model = ECAPA_TDNN(input_size=80, lin_neurons=192,
                        channels=[512, 512, 512, 512, 1536]).to(device).eval()
-    ckpt = torch.load(args.ckpt, map_location=device, weights_only=False)
+    ckpt = torch.load(args.ckpt, map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model"])
     print(f"Loaded checkpoint từ epoch {ckpt.get('epoch', '?')} "
           f"(val_acc={ckpt.get('val_acc', 0):.4f})")

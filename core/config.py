@@ -27,14 +27,23 @@ USER_FILES_DIR.mkdir(exist_ok=True)
 # ==========================================================================
 SAMPLE_RATE = 16000
 RECORD_DURATION = 5.0       # giây mỗi lần record (cho command)
-ENROLL_DURATION = 4.0       # giây mỗi mẫu enroll
-ENROLL_NUM_SAMPLES = 5      # số mẫu mỗi user khi đăng ký
+ENROLL_DURATION = float(os.getenv("ENROLL_DURATION", "5.0"))   # ↑ 4→5s: centroid ổn định hơn
+ENROLL_NUM_SAMPLES = int(os.getenv("ENROLL_NUM_SAMPLES", "5"))
 
 # Min audio length sau VAD trim, theo từng context:
 #   - Enroll : cần chất lượng cao để build centroid → 1.0s
 #   - Turn   : chỉ cần đủ để identify → 0.5s
 MIN_AUDIO_SEC_ENROLL = 1.0
 MIN_AUDIO_SEC_TURN   = 0.5
+
+# ==========================================================================
+# Speaker model backend
+# ==========================================================================
+# Backend chọn encoder cho speaker:
+#   "ecapa" (default): ECAPA-TDNN từ SpeechBrain hoặc own checkpoint Tuần 1 (192-d)
+#   "wavlm" (future, session 3): WavLM-SV pretrained của Microsoft (768-d/1024-d)
+#       Cần schema migration vì embedding dim khác.
+SPEAKER_BACKEND = os.getenv("SPEAKER_BACKEND", "ecapa").lower()
 
 # ==========================================================================
 # Speaker recognition thresholds
@@ -44,9 +53,23 @@ MIN_AUDIO_SEC_TURN   = 0.5
 # khác nhau → cần threshold riêng cho mỗi model.
 SV_THRESHOLD_OWN = float(os.getenv("SV_THRESHOLD_OWN", "0.45"))
 SV_THRESHOLD_PRETRAINED = float(os.getenv("SV_THRESHOLD_PRETRAINED", "0.25"))
+# WavLM-base-plus-sv: x-vector embedding cosine concentrate ở mức cao (~0.9+
+# cho cả same lẫn different speaker khi audio cùng domain). Calibrated trên
+# 5 user × 5 audio nội bộ (script: reenroll_backend.py + benchmark):
+#   target mean=0.96, std=0.02, min=0.92
+#   non-target mean=0.70, std=0.18, max=0.97
+#   optimal threshold ~0.95
+# Chọn 0.93 = min_target - 1 std margin để cân false-reject/false-accept.
+# Re-calibrate khi có nhiều user hơn hoặc môi trường record khác.
+SV_THRESHOLD_WAVLM = float(os.getenv("SV_THRESHOLD_WAVLM", "0.93"))
 
 SID_MIN_THRESHOLD_OWN = float(os.getenv("SID_MIN_THRESHOLD_OWN", "0.35"))
 SID_MIN_THRESHOLD_PRETRAINED = float(os.getenv("SID_MIN_THRESHOLD_PRETRAINED", "0.20"))
+SID_MIN_THRESHOLD_WAVLM = float(os.getenv("SID_MIN_THRESHOLD_WAVLM", "0.90"))
+
+# WavLM model name (chỉ dùng khi SPEAKER_BACKEND=wavlm)
+WAVLM_MODEL  = os.getenv("WAVLM_MODEL", "microsoft/wavlm-base-plus-sv")
+WAVLM_DEVICE = os.getenv("WAVLM_DEVICE", "")  # rỗng = auto
 
 # Default (giữ cho backward compat với code chưa biết mode) — ưu tiên own.
 SV_THRESHOLD = SV_THRESHOLD_OWN
@@ -59,12 +82,53 @@ SID_MIN_THRESHOLD = SID_MIN_THRESHOLD_OWN
 SID_MIN_MARGIN = float(os.getenv("SID_MIN_MARGIN", "0.08"))
 
 # ==========================================================================
+# Speaker pipeline improvements (đều có thể bật/tắt qua env)
+# ==========================================================================
+# Multi-window embedding: chia audio đủ dài thành N cửa sổ chồng lấp, encode
+# từng cửa sổ rồi average → robust hơn 1-pass single encode. Audio quá ngắn tự
+# fallback về single encode → an toàn.
+SPEAKER_MULTIWINDOW = os.getenv("SPEAKER_MULTIWINDOW", "true").lower() in ("true", "1", "yes")
+SPEAKER_WINDOW_SEC  = float(os.getenv("SPEAKER_WINDOW_SEC", "2.0"))
+SPEAKER_N_WINDOWS   = int(os.getenv("SPEAKER_N_WINDOWS", "3"))
+
+# AS-Norm-lite: z-normalize raw cosine score theo cohort các user khác trong DB.
+# Auto-disable nếu cohort < SPEAKER_ASNORM_MIN_COHORT → tránh statistics không ổn định.
+SPEAKER_ASNORM             = os.getenv("SPEAKER_ASNORM", "true").lower() in ("true", "1", "yes")
+SPEAKER_ASNORM_MIN_COHORT  = int(os.getenv("SPEAKER_ASNORM_MIN_COHORT", "4"))
+SPEAKER_ASNORM_TOP_K       = int(os.getenv("SPEAKER_ASNORM_TOP_K", "5"))
+# Z-score threshold cho AS-Norm. Score đã chuẩn hóa → ngưỡng tuyệt đối, không phụ
+# thuộc raw cosine distribution. ~2.0 = "vượt cohort trung bình 2 std" — strict.
+SPEAKER_ASNORM_Z_THRESHOLD = float(os.getenv("SPEAKER_ASNORM_Z_THRESHOLD", "2.0"))
+
+# Audio pre-processing trước khi encode: DC-removal, RMS-normalize.
+# Lưu ý: nếu đổi sang True sau khi đã enroll user, có thể mismatch với centroid cũ
+# (centroid built từ audio chưa preprocess). Re-enroll khi đổi flag để chắc chắn.
+SPEAKER_PREPROCESS = os.getenv("SPEAKER_PREPROCESS", "false").lower() in ("true", "1", "yes")
+
+# Denoise bằng spectral gating (noisereduce nếu có, else fallback no-op).
+# Cũng phải re-enroll khi đổi flag — embedding của audio noise vs denoised khác nhau.
+SPEAKER_DENOISE = os.getenv("SPEAKER_DENOISE", "false").lower() in ("true", "1", "yes")
+
+# ==========================================================================
 # ASR
 # ==========================================================================
+# Backend chọn engine ASR:
+#   "faster-whisper" (default): faster-whisper với WHISPER_MODEL = "base"/"small"/...
+#       hoặc đường dẫn local đến CT2-converted model (vd: PhoWhisper-ct2).
+#   "phowhisper": transformers pipeline với vinai/PhoWhisper-{tiny,base,small,medium,large}.
+#       Cài thêm: pip install transformers (chưa có trong requirements).
+ASR_BACKEND = os.getenv("ASR_BACKEND", "faster-whisper").lower()
+
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")  # tiny/base/small/medium/large-v3 — base nhanh cho CPU int8
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 WHISPER_COMPUTE = os.getenv("WHISPER_COMPUTE", "int8")  # int8 cho CPU, float16 cho GPU
 ASR_LANGUAGE = "vi"
+
+# PhoWhisper-specific (chỉ dùng khi ASR_BACKEND=phowhisper).
+# Default 'base' — CPU-friendly (~1× realtime). Trên CPU 'small' khoảng 3× realtime,
+# quá chậm cho virtual assistant. Có GPU thì đổi 'small' hoặc 'medium' qua env.
+PHOWHISPER_MODEL  = os.getenv("PHOWHISPER_MODEL", "vinai/PhoWhisper-base")
+PHOWHISPER_DEVICE = os.getenv("PHOWHISPER_DEVICE", "")  # rỗng = auto (cuda → cpu)
 
 # Bật/tắt sửa chính tả qua Gemini sau ASR. Mặc định OFF vì tốn 500-2000ms/turn
 # và gửi transcript cho Google (privacy). Có cache LRU nên 1 câu lặp lại không gọi 2 lần.
@@ -96,3 +160,36 @@ GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI",
 # Admin
 # ==========================================================================
 ADMIN_PASS = os.getenv("ADMIN_PASS", "")
+
+# ==========================================================================
+# Auth policy
+# ==========================================================================
+# Text-mode IMPORTANT: cho phép password thay thế Speaker Verification.
+# Mặc định OFF — text-mode block IMPORTANT (chỉ voice mới qua được SV gate).
+# Bật khi cần demo flow hoặc khi user gặp lỗi mic (best-effort 2FA fallback).
+# CẢNH BÁO: password fallback KHÔNG phải biometric — chỉ là "know factor".
+# Threat model phải document rõ điều này trong báo cáo.
+ALLOW_PASSWORD_FOR_IMPORTANT = os.getenv(
+    "ALLOW_PASSWORD_FOR_IMPORTANT", "false"
+).lower() in ("true", "1", "yes")
+
+# Challenge-response cho IMPORTANT voice flow:
+# Khi bật, sau khi SID+SV pass, server KHÔNG dispatch handler ngay — thay vào
+# đó sinh phrase random và yêu cầu user đọc lại. Server verify cả ASR-match
+# lẫn SV trên audio thứ 2 → chống replay attack đơn giản.
+# Mặc định OFF cho demo nhanh; bật cho production / báo cáo bảo mật.
+CHALLENGE_RESPONSE_ENABLED = os.getenv(
+    "CHALLENGE_RESPONSE_ENABLED", "false"
+).lower() in ("true", "1", "yes")
+
+# Số từ trong phrase challenge (mỗi từ từ pool 16 → entropy ~4 bit/từ).
+CHALLENGE_PHRASE_LEN = int(os.getenv("CHALLENGE_PHRASE_LEN", "4"))
+
+# Incremental re-enroll sau khi SV pass: cập nhật centroid của user 1 ít theo
+# audio mới (chống speaker drift do tuổi / mic / nhiễu thay đổi theo thời gian).
+# alpha nhỏ → mỗi lần update chỉ "kéo" centroid alpha% về phía audio mới.
+# Mặc định OFF — bật khi demo thấy SV score của user thật giảm dần theo phiên.
+SPEAKER_INCREMENTAL_REENROLL = os.getenv(
+    "SPEAKER_INCREMENTAL_REENROLL", "false"
+).lower() in ("true", "1", "yes")
+SPEAKER_INCREMENTAL_ALPHA = float(os.getenv("SPEAKER_INCREMENTAL_ALPHA", "0.1"))

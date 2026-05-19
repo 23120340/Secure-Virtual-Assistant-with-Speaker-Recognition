@@ -736,7 +736,7 @@
               <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">User ID</th>
               <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">Tên</th>
               <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">Ngày đăng ký</th>
-              <th style="padding:.7rem 1.1rem"></th>
+              <th style="padding:.7rem 1.1rem;text-align:right;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">Thao tác</th>
             </tr>
           </thead>
           <tbody id="admin-user-tbody"></tbody>
@@ -755,13 +755,13 @@
      style="position:fixed;bottom:5rem;right:1rem;padding:.55rem 1.2rem;color:white;z-index:9999"></div>
 
 {# Embed users data for JS (tránh Jinja inline trong JS) #}
-<script id="users-json-data" type="application/json">{{ users | tojson }}</script>
-<script id="enroll-config-data" type="application/json">{"numSamples": {{ num_samples }}, "durationSec": {{ duration }}}</script>
+<script nonce="{{ csp_nonce }}" id="users-json-data" type="application/json">{{ users | tojson }}</script>
+<script nonce="{{ csp_nonce }}" id="enroll-config-data" type="application/json">{"numSamples": {{ num_samples }}, "durationSec": {{ duration }}}</script>
 
 {# ─────────────────────────────────────────────────────────
    JAVASCRIPT
    ───────────────────────────────────────────────────────── #}
-<script>
+<script nonce="{{ csp_nonce }}">
 // ════════════════════════════════════════════════════════════
 // UTILITIES
 // ════════════════════════════════════════════════════════════
@@ -2470,6 +2470,7 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
   const $count   = document.getElementById("admin-count");
   const $logBtn  = document.getElementById("admin-logout-btn");
   const $empty   = document.getElementById("admin-empty");
+  let _adminPw = "";
   if (!$pw) return;
 
   if ($pwEye) $pwEye.onclick = function() { togglePwEye("admin-pw", this); };
@@ -2480,7 +2481,10 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     $unlBtn.disabled = true;
     const r = await fetch("/api/admin/verify", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
       body: JSON.stringify({ password: pw }),
     });
     $unlBtn.disabled = false;
@@ -2492,8 +2496,40 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     $err.style.display = "none";
     $lock.classList.add("hidden");
     $dash.classList.remove("hidden");
+    _adminPw = pw;
     $count.textContent = d.count;
     renderAdminTable(d.users);
+  }
+
+  async function resetUserPassword(userId, name) {
+    const p1 = window.prompt(`Nhập mật khẩu mới cho ${name || userId} (tối thiểu 8 ký tự):`);
+    if (p1 === null) return;
+    if (p1.length < 8) {
+      showToast("Mật khẩu mới phải có ít nhất 8 ký tự", true);
+      return;
+    }
+    const p2 = window.prompt("Nhập lại mật khẩu mới để xác nhận:");
+    if (p2 === null) return;
+    if (p1 !== p2) {
+      showToast("Hai mật khẩu không khớp", true);
+      return;
+    }
+    const ok = window.confirm(`Reset mật khẩu cho user "${userId}"? Mật khẩu cũ sẽ không thể khôi phục.`);
+    if (!ok) return;
+    const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ admin_password: _adminPw, new_password: p1 }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      showToast(d.error || "Reset mật khẩu thất bại", true);
+      return;
+    }
+    showToast(`Đã reset mật khẩu cho ${name || userId}`);
   }
 
   function renderAdminTable(users) {
@@ -2510,8 +2546,12 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
         `<td style="padding:.65rem 1.1rem"><code style="background:rgba(124,58,237,.08);color:var(--c-violet);padding:2px 7px;border-radius:4px;font-size:.78rem">${esc(u.user_id)}</code></td>` +
         `<td style="padding:.65rem 1.1rem;font-weight:600">${esc(u.name)}</td>` +
         `<td style="padding:.65rem 1.1rem;color:var(--txt-2);font-size:.82rem">${esc(u.created_at)}</td>` +
-        `<td style="padding:.65rem 1.1rem"><button class="btn-admin-edit btn-primary btn-sm">Sửa</button></td>`;
+        `<td style="padding:.65rem 1.1rem;text-align:right;white-space:nowrap">` +
+          `<button class="btn-admin-reset" style="font-size:.76rem;color:#b91c1c;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.18);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.45rem">Reset mật khẩu</button>` +
+          `<button class="btn-admin-edit btn-primary btn-sm">Sửa</button>` +
+        `</td>`;
       tr.querySelector(".btn-admin-edit").onclick = () => openModal(u.user_id, u.name);
+      tr.querySelector(".btn-admin-reset").onclick = () => resetUserPassword(u.user_id, u.name);
       $tbody.appendChild(tr);
     });
   }
@@ -2520,6 +2560,7 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     $lock.classList.remove("hidden");
     $dash.classList.add("hidden");
     $pw.value = "";
+    _adminPw = "";
   };
 
   $unlBtn.onclick = unlock;

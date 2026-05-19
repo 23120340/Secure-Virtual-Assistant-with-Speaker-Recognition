@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core import audio_io
 from core.asr import get_asr
-from core.nlu import get_nlu
+from core.nlu import get_nlu, parse_with_correction
 from core.database import UserDB, SpeakerManager
 from core.router import Router
 
@@ -47,7 +47,8 @@ def main():
 
     # NLU
     nlu = get_nlu()
-    nlu_result = nlu.parse(transcript)
+    transcript, nlu_result = parse_with_correction(transcript, nlu)
+    print(f"Transcript (final): '{transcript}'")
     print(f"NLU: {nlu_result}")
 
     # Router

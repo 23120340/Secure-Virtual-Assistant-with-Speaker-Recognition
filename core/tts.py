@@ -33,15 +33,46 @@ for _bin_dir in _FFMPEG_BIN_HINTS:
         break
 
 
+# Supported gTTS language codes (subset chính). Multi-language switch.
+SUPPORTED_TTS_LANGS = {
+    "vi": "Tiếng Việt",
+    "en": "English",
+    "ja": "日本語",
+    "ko": "한국어",
+    "zh-CN": "中文",
+    "fr": "Français",
+    "de": "Deutsch",
+}
+
+
+def _resolve_lang(lang: str | None, fallback: str = config.TTS_LANG) -> str:
+    """Normalize lang code, fallback nếu None/empty/unsupported."""
+    if not lang:
+        return fallback
+    code = lang.strip()
+    # Cho phép "zh" → "zh-CN", các code phổ biến.
+    if code == "zh":
+        code = "zh-CN"
+    if code in SUPPORTED_TTS_LANGS:
+        return code
+    return fallback
+
+
 class TTS:
     def __init__(self, lang: str = config.TTS_LANG):
         self.lang = lang
 
-    def synthesize(self, text: str, save_path: Path = None) -> np.ndarray:
-        """Text → audio float32 mono ở 16kHz. Lưu wav nếu save_path != None."""
+    def synthesize(self, text: str, save_path: Path = None,
+                   lang: str | None = None) -> np.ndarray:
+        """Text → audio float32 mono ở 16kHz. Lưu wav nếu save_path != None.
+
+        `lang` override per-call (multi-language theo user preferences); None →
+        dùng `self.lang` (mặc định Vietnamese).
+        """
+        effective_lang = _resolve_lang(lang, self.lang)
         # gTTS tạo MP3 → decode bằng pydub → resample về 16kHz mono
         mp3_buf = io.BytesIO()
-        gTTS(text=text, lang=self.lang).write_to_fp(mp3_buf)
+        gTTS(text=text, lang=effective_lang).write_to_fp(mp3_buf)
         mp3_buf.seek(0)
 
         seg = AudioSegment.from_file(mp3_buf, format="mp3")
@@ -55,10 +86,14 @@ class TTS:
             sf.write(str(save_path), samples, config.SAMPLE_RATE)
         return samples
 
-    def synthesize_to_mp3_bytes(self, text: str) -> bytes:
-        """Text → MP3 bytes (cho browser <audio> tag stream về client)."""
+    def synthesize_to_mp3_bytes(self, text: str, lang: str | None = None) -> bytes:
+        """Text → MP3 bytes (cho browser <audio> tag stream về client).
+
+        `lang` override theo user preferences; None → mặc định self.lang.
+        """
+        effective_lang = _resolve_lang(lang, self.lang)
         mp3_buf = io.BytesIO()
-        gTTS(text=text, lang=self.lang).write_to_fp(mp3_buf)
+        gTTS(text=text, lang=effective_lang).write_to_fp(mp3_buf)
         return mp3_buf.getvalue()
 
     def speak(self, text: str):

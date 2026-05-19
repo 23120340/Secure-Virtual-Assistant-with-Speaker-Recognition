@@ -8,6 +8,31 @@
   để tạo speaker embedding đại diện cho bạn.
 </p>
 
+<!-- Consent banner: biometric data notice (GDPR Art.9 / Luật bảo vệ DLCN VN). -->
+<div class="mb-6 p-4 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-sm">
+  <div class="flex items-start gap-3">
+    <div class="text-xl">🛡️</div>
+    <div class="flex-1">
+      <strong class="block mb-1">Thông báo về dữ liệu sinh trắc giọng nói</strong>
+      <p class="mb-2">
+        Trang này sẽ truy cập microphone của bạn để thu mẫu giọng. Hệ thống lưu trữ:
+      </p>
+      <ul class="list-disc ml-5 mb-2 space-y-0.5">
+        <li>File WAV mẫu giọng (cục bộ trên server, thư mục <code>data/enroll_audio/&lt;user_id&gt;/</code>).</li>
+        <li>Vector đặc trưng giọng nói 192-d (BLOB trong SQLite, không thể restore lại audio gốc).</li>
+        <li>Mật khẩu băm PBKDF2 + salt; nếu liên kết Gmail thì token được mã hoá Fernet.</li>
+      </ul>
+      <p class="mb-2">
+        Dữ liệu chỉ dùng cho mục đích nhận dạng và xác thực giọng nói trong app này, KHÔNG gửi lên dịch vụ bên thứ ba. Bạn có thể yêu cầu xoá toàn bộ (right to erasure) bằng nút <em>"Xoá tài khoản"</em> ở trang chi tiết user — thao tác sẽ xoá embedding, WAV mẫu, file cá nhân và token OAuth.
+      </p>
+      <label class="inline-flex items-center gap-2 mt-2 cursor-pointer">
+        <input id="consent-checkbox" type="checkbox" class="rounded"/>
+        <span>Tôi đồng ý cho hệ thống thu mẫu giọng và lưu trữ như mô tả trên.</span>
+      </label>
+    </div>
+  </div>
+</div>
+
 <div class="bg-white border rounded-lg p-6 space-y-6">
 
   <!-- Step 1: Thông tin user -->
@@ -135,11 +160,11 @@
   </section>
 </div>
 
-<script type="application/json" id="__enroll_cfg__">
+<script nonce="{{ csp_nonce }}" type="application/json" id="__enroll_cfg__">
 {"numSamples": {{ num_samples }}, "durationSec": {{ duration }}}
 </script>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 const __cfg__    = JSON.parse(document.getElementById("__enroll_cfg__").textContent);
 const NUM_SAMPLES = __cfg__.numSamples;
 const DURATION_MS = __cfg__.durationSec * 1000;
@@ -186,7 +211,10 @@ function checkReady() {
   } else {
     $msg.textContent = "";
   }
-  $submit.disabled = !(uid && nm && pw && pw === pw2 && samples.length >= NUM_SAMPLES);
+  const consent = document.getElementById("consent-checkbox");
+  const consented = consent ? consent.checked : true;
+  $submit.disabled = !(uid && nm && pw && pw === pw2 &&
+                       samples.length >= NUM_SAMPLES && consented);
 }
 
 function renderSamples() {
@@ -214,6 +242,7 @@ function renderSamples() {
 
 ["user_id","name","password","password2"].forEach(id =>
   document.getElementById(id).addEventListener("input", checkReady));
+document.getElementById("consent-checkbox").addEventListener("change", checkReady);
 
 // Cap an toàn — tránh user lỡ tay nói 30s, audio quá lớn cho server xử lý.
 const MAX_DURATION_MS = Math.max(DURATION_MS, 8000);
@@ -228,6 +257,13 @@ function _stopRecordingNow() {
 async function startRecording() {
   if (samples.length >= NUM_SAMPLES) {
     $status.textContent = "Đã đủ số mẫu yêu cầu.";
+    return;
+  }
+  // Bắt buộc tick consent trước khi xin mic. CSP nonce-protected → safe.
+  const consent = document.getElementById("consent-checkbox");
+  if (consent && !consent.checked) {
+    $status.textContent = "⚠ Cần tick đồng ý điều khoản trước khi thu mẫu giọng.";
+    consent.scrollIntoView({behavior: "smooth", block: "center"});
     return;
   }
   try {

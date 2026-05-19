@@ -19,7 +19,9 @@ Chạy:
     python -m web.app
     # → http://localhost:5000
 """
+import hashlib
 import hmac
+import html
 import io
 import json
 import logging
@@ -45,7 +47,7 @@ logging.basicConfig(
 _log = logging.getLogger("secva.app")
 
 from flask import (Flask, render_template, request, jsonify, send_file,
-                   redirect, url_for, flash, session)
+                   redirect, url_for, flash, session, g)
 
 
 import unicodedata as _unicodedata
@@ -86,18 +88,31 @@ def _safe_filename(filename: str,
     is_allowed = (allowed_exts is None or ext in allowed_exts)
     return safe or "file", is_allowed
 
+
+def _resolve_child_path(base: Path, child: str) -> Path | None:
+    """Resolve user-controlled path and require it to stay under base."""
+    base_resolved = base.resolve()
+    candidate = (base_resolved / child).resolve()
+    try:
+        candidate.relative_to(base_resolved)
+    except ValueError:
+        return None
+    return candidate
+
 # Thêm project root vào path để import được core/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core import audio_io, config
 from core.asr import get_asr, correct_transcript
+from core.audit import audit as _audit
+from core.turn_logging import log_turn as _log_turn
 from core import email_flow as _ef
 from core import handlers as _h_module
 from core.handlers import handle_send_email as _send_email
 from core.oauth import (build_auth_url, exchange_code, gen_pkce_pair,
                         get_user_email)
 from core.tts import get_tts
-from core.nlu import get_nlu
+from core.nlu import get_nlu, parse_with_correction
 from core.database import UserDB, SpeakerManager
 from core.router import Router
 
@@ -119,6 +134,18 @@ def create_app():
     # Vừa đủ cho upload file/music + buffer; chống DoS POST rác lớn.
     app.config["MAX_CONTENT_LENGTH"] = 60 * 1024 * 1024
     app.permanent_session_lifetime = timedelta(minutes=30)
+
+    # Session cookie hardening:
+    #   HTTPONLY  → JS không đọc được cookie (chống XSS đánh cắp session).
+    #   SAMESITE  → Lax: cross-site request không gửi cookie (chống CSRF).
+    #   SECURE    → chỉ gửi cookie qua HTTPS. Bật mặc định; tắt khi dev HTTP
+    #               qua env FLASK_DEV_HTTP=1 (vd: localhost không SSL).
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    _dev_http = os.environ.get("FLASK_DEV_HTTP", "").strip() in ("1", "true", "True")
+    app.config["SESSION_COOKIE_SECURE"]   = not _dev_http
+    if _dev_http:
+        _log.warning("FLASK_DEV_HTTP=1 → SESSION_COOKIE_SECURE=False (chỉ dùng dev HTTP)")
     # Jinja auto_reload: chỉ bật khi FLASK_DEBUG=1 (development). Production có
     # auto_reload=True làm tăng I/O mỗi request — không cần thiết.
     app.jinja_env.auto_reload = os.environ.get("FLASK_DEBUG", "").strip() in ("1", "true", "True")
@@ -227,6 +254,12 @@ def _json_body() -> dict:
     return request.get_json(silent=True) or {}
 
 
+def _log_assistant_turn(payload: dict, *, source: str, auth_method: str):
+    """Best-effort structured turn logging with request correlation."""
+    return _log_turn(payload, source=source, auth_method=auth_method,
+                     request_id=getattr(g, "request_id", ""))
+
+
 def max_size(mb: float):
     """Decorator giới hạn size request cho từng route. Audio turn ≈ 100KB, không
     cần cho phép 50MB như global. Chống DoS upload rác lên /api/assistant/turn.
@@ -239,6 +272,61 @@ def max_size(mb: float):
             cl = request.content_length
             if cl is not None and cl > limit_bytes:
                 return jsonify({"error": f"Yêu cầu quá lớn (giới hạn {mb}MB)"}), 413
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+# ==========================================================================
+# Rate limit (in-process) — chống brute force password endpoints.
+# Process-local, đủ cho single-worker dev/demo. Production multi-worker cần
+# Redis-backed (Flask-Limiter); xem todo P1.
+# ==========================================================================
+import threading
+from collections import defaultdict, deque
+
+_RL_LOCK = threading.Lock()
+_RL_BUCKETS: dict = defaultdict(deque)
+
+
+def _rl_client_ip() -> str:
+    # request.remote_addr; trust proxy chỉ khi có header rõ ràng (default off).
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def rate_limit(max_attempts: int, window_sec: int, scope: str,
+               key_user_field: str | None = None):
+    """Decorator giới hạn N attempts / window / (ip, user_id).
+
+    scope        : tên bucket (vd "files-verify", "user-info").
+    key_user_field: tên route param chứa user_id để key thêm; None → chỉ key IP.
+
+    Trả 429 + Retry-After khi vượt. KHÔNG block lâu — chỉ delay; user-friendly fail.
+    """
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            ip = _rl_client_ip()
+            uid = kwargs.get(key_user_field, "") if key_user_field else ""
+            key = (scope, ip, uid)
+            now = time.time()
+            with _RL_LOCK:
+                bucket = _RL_BUCKETS[key]
+                while bucket and now - bucket[0] > window_sec:
+                    bucket.popleft()
+                if len(bucket) >= max_attempts:
+                    retry = int(window_sec - (now - bucket[0])) + 1
+                    resp = jsonify({
+                        "error": f"Quá nhiều lần thử. Vui lòng đợi {retry}s rồi thử lại.",
+                        "retry_after": retry,
+                    })
+                    resp.status_code = 429
+                    resp.headers["Retry-After"] = str(retry)
+                    return resp
+                bucket.append(now)
             return fn(*args, **kwargs)
         return wrapper
     return decorator
@@ -290,6 +378,82 @@ def _get_authed_uid(level: str = "any") -> str | None:
     return uid
 
 
+def _continue_email_flow_if_active(text: str, db, nlu):
+    """Nếu session có email_flow đang active, drive flow tiếp.
+
+    Dùng chung cho voice route (`/api/assistant/turn`) và text route
+    (`/api/assistant/text`) — logic identical, chỉ khác nguồn `text`.
+
+    Trả về `(payload_dict, True)` nếu đã xử lý email_flow trong turn này;
+    caller chỉ cần `return jsonify(payload)`. Trả `(None, False)` nếu không
+    có flow active → caller chạy NLU/Router thông thường.
+    """
+    if "email_flow" not in session:
+        return None, False
+
+    flow_state = session["email_flow"]
+    uid   = flow_state.get("user_id")
+    _user = db.get_user(uid) if uid else None
+    contacts = (_user["preferences"].get("contacts", []) if _user else [])
+
+    # Intent guard: nếu user nói intent khác (vd "phát nhạc đi"), thoát flow
+    # để tránh câu đó bị nuốt thành recipient/subject/body.
+    if flow_state.get("step") in ("recipient", "subject", "body"):
+        _quick_nlu = nlu.parse(text)
+        if _quick_nlu.get("intent", "unknown") not in (
+                "send_email", "unknown", "general_question"):
+            session.pop("email_flow", None)
+            return None, False
+
+    resp, new_state, is_done = _ef.continue_flow(text, flow_state, contacts)
+    _oauth_extras: dict = {}
+
+    if is_done:
+        ents = {
+            "recipient":       new_state["recipient_name"],
+            "recipient_email": new_state["recipient_email"],
+            "subject":         new_state["subject"],
+            "body":            new_state["body"],
+        }
+        send_result = _send_email(ents, _user, db=db)
+        if isinstance(send_result, _h_module.HandlerResult):
+            # Handler cần OAuth → giữ flow state để retry sau khi user xác thực
+            resp = send_result.text
+            session["email_flow"] = new_state
+            flow_active = True
+            _oauth_extras = {"action_type": send_result.action_type,
+                             "action_data": send_result.action_data}
+        else:
+            resp = send_result
+            session.pop("email_flow", None)
+            flow_active = False
+    elif new_state is None:
+        session.pop("email_flow", None)
+        flow_active = False
+    else:
+        session["email_flow"] = new_state
+        flow_active = True
+
+    payload = {
+        "transcript":           text,
+        "intent":               "email_flow",
+        "auth_level":           "important",
+        "entities":             {},
+        "identified_user_id":   uid,
+        "identified_user_name": _user["name"] if _user else "Khách",
+        "sid_score":            1.0 if uid else 0.0,
+        "sv_required":          False,
+        "sv_passed":            True,
+        "sv_score":             None,
+        "response":             resp,
+        "blocked":              False,
+        "flow_active":          flow_active,
+        "tts_url":              f"/api/tts?text={_quote(resp)}",
+        **_oauth_extras,
+    }
+    return payload, True
+
+
 # ==========================================================================
 # Routes
 # ==========================================================================
@@ -313,26 +477,69 @@ def register_routes(app):
                 "error": "CSRF: thiếu header X-Requested-With"
             }), 403
 
-    # Content-Security-Policy — defence-in-depth chống XSS. 'unsafe-inline' cho
-    # script vẫn cần vì code inline đầy template; refactor extract sang static .js
-    # rồi có thể bỏ unsafe-inline để tăng độ an toàn.
-    _CSP = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.cdnfonts.com; "
-        "font-src https://fonts.gstatic.com https://fonts.cdnfonts.com data:; "
-        "img-src 'self' data: https://i.ytimg.com https://*.deezer.com https://*.dzcdn.net; "
-        "media-src 'self' blob: https://*.googlevideo.com; "
-        "connect-src 'self'; "
-        "frame-ancestors 'none';"
-    )
+    # Per-request CSP nonce + Request-ID correlation. Cả 2 sinh trong cùng hook.
+    # Request-ID: dùng để correlate audit log + error trace ngang qua handler.
+    #   Header `X-Request-ID` từ client (vd: load balancer/reverse proxy) được
+    #   preserve nếu hợp lệ; nếu không có thì sinh mới. Trả lại qua response
+    #   header để client thấy được ID đó.
+    _RID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+    @app.before_request
+    def _gen_csp_nonce():
+        g.csp_nonce = secrets.token_urlsafe(16)
+        # Request-ID: trust upstream nếu valid format, else generate.
+        incoming = request.headers.get("X-Request-ID", "")
+        if incoming and _RID_RE.match(incoming):
+            g.request_id = incoming
+        else:
+            g.request_id = secrets.token_urlsafe(12)
+
+    @app.context_processor
+    def _inject_csp_nonce():
+        return {"csp_nonce": getattr(g, "csp_nonce", "")}
+
+    def _build_csp(nonce: str) -> str:
+        # script-src: nonce + 'unsafe-inline'.
+        # - Nonce protects: full <script> blocks (đã sửa templates).
+        # - 'unsafe-inline' VẪN cần cho onclick='...' attributes trong template
+        #   + onclick string nội suy vào innerHTML từ JS (vd downloadFile).
+        # CSP3: khi có nonce-source, browser modern bỏ qua 'unsafe-inline' cho
+        # <script> blocks (vẫn enforce nonce) NHƯNG vẫn cho phép inline event
+        # handlers vì chúng không phải <script>. Trade-off chấp nhận được; full
+        # drop cần refactor onclick → addEventListener (P2 todo).
+        return (
+            "default-src 'self'; "
+            f"script-src 'self' 'nonce-{nonce}' 'unsafe-inline' https://cdn.tailwindcss.com; "
+            # style-src vẫn cần 'unsafe-inline' (Tailwind utility-class inline style)
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.cdnfonts.com; "
+            "font-src https://fonts.gstatic.com https://fonts.cdnfonts.com data:; "
+            "img-src 'self' data: https://i.ytimg.com https://*.deezer.com https://*.dzcdn.net; "
+            "media-src 'self' blob: https://*.googlevideo.com; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none';"
+        )
 
     @app.after_request
     def set_security_headers(response):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "same-origin")
-        response.headers.setdefault("Content-Security-Policy", _CSP)
+        # Echo lại Request-ID để client/log aggregator có thể trace.
+        rid = getattr(g, "request_id", "")
+        if rid:
+            response.headers.setdefault("X-Request-ID", rid)
+        # Dùng nonce per-request thay vì 'unsafe-inline'.
+        nonce = getattr(g, "csp_nonce", "")
+        response.headers.setdefault("Content-Security-Policy", _build_csp(nonce))
+        # HSTS: chỉ set khi request đến qua HTTPS (request.is_secure). Tránh
+        # gửi header trên kết nối HTTP — vô nghĩa và confuse browser.
+        # max-age=180 ngày, includeSubDomains. KHÔNG có preload — app chỉ dùng
+        # nội bộ/demo, không submit lên HSTS preload list.
+        if request.is_secure:
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=15552000; includeSubDomains"
+            )
         return response
 
     # ----- Pages -----
@@ -355,6 +562,14 @@ def register_routes(app):
         if not user:
             flash(f"Không tìm thấy user '{user_id}'", "error")
             return redirect(url_for("home"))
+        # Gate PII: render trang chi tiết với prefs đầy đủ CHỈ khi caller có
+        # file session match user_id (đã xác thực qua voice/password).
+        # Ngược lại render với prefs rỗng — user vẫn thấy danh tính + nhập
+        # password để mở khoá, nhưng KHÔNG leak prefs ra public URL.
+        if _get_authed_uid("any") != user_id:
+            user = dict(user)
+            user["preferences"] = {}
+            user["_locked"] = True
         return render_template("user_detail.html", user=user)
 
     @app.route("/assistant")
@@ -365,6 +580,7 @@ def register_routes(app):
     # ----- API: Enrollment -----
     @app.route("/api/enroll", methods=["POST"])
     @max_size(20)
+    @rate_limit(max_attempts=5, window_sec=600, scope="enroll")
     def api_enroll():
         """Body multipart:
            - user_id: text
@@ -453,15 +669,33 @@ def register_routes(app):
     # ----- API: User CRUD -----
     @app.route("/api/users/<user_id>", methods=["GET"])
     def api_get_user(user_id):
+        """Trả về public info của user.
+
+        Mặc định KHÔNG include preferences (notes, email, balance, schedule —
+        đều là PII). Caller cần preferences phải qua `/api/users/<id>/unlock`
+        (đã có sẵn — yêu cầu password) hoặc đã đăng nhập file session.
+        """
         db = app.config["db"]
         user = db.get_user(user_id)
         if not user:
             return jsonify({"error": "User không tồn tại"}), 404
-        result = dict(user)
-        result["has_password"] = db.has_password(user_id)
+        # Public payload: identification + auth-status only.
+        result = {
+            "user_id":      user["user_id"],
+            "name":         user["name"],
+            "created_at":   user["created_at"],
+            "has_password": db.has_password(user_id),
+            "preferences":  {},
+        }
+        # Authed session với chính user này → trả preferences đầy đủ
+        # (file session đặt sau khi unlock; same auth scope dùng cho assistant).
+        if _get_authed_uid("any") == user_id:
+            result["preferences"] = user["preferences"]
         return jsonify(result)
 
     @app.route("/api/users/<user_id>/update", methods=["POST"])
+    @rate_limit(max_attempts=5, window_sec=60,
+                scope="user-update-prefs", key_user_field="user_id")
     def api_update_prefs(user_id):
         db = app.config["db"]
         if not db.get_user(user_id):
@@ -476,12 +710,21 @@ def register_routes(app):
 
         password = data.get("password", "")
         if not db.check_password(user_id, password):
+            _audit("auth.password_check", user_id=user_id, scope="update-prefs",
+                   outcome="fail", ip=_rl_client_ip(),
+                   ua=request.headers.get("User-Agent", ""))
             return jsonify({"error": "Sai mật khẩu"}), 403
 
         db.update_preferences(user_id, preferences)
+        _audit("auth.password_check", user_id=user_id, scope="update-prefs",
+               outcome="success", ip=_rl_client_ip(),
+               ua=request.headers.get("User-Agent", ""),
+               pref_keys=sorted(preferences.keys()))
         return jsonify({"ok": True})
 
     @app.route("/api/users/<user_id>/update-info", methods=["POST"])
+    @rate_limit(max_attempts=5, window_sec=60,
+                scope="user-update-info", key_user_field="user_id")
     def api_update_user_info(user_id):
         db = app.config["db"]
         if not db.get_user(user_id):
@@ -498,19 +741,128 @@ def register_routes(app):
             db.update_password(user_id, new_password)
         return jsonify({"ok": True})
 
+    @app.route("/api/users/<user_id>/export", methods=["POST"])
+    @rate_limit(max_attempts=3, window_sec=300,
+                scope="user-export", key_user_field="user_id")
+    def api_export_user(user_id):
+        """Xuất toàn bộ dữ liệu của user dạng ZIP (GDPR Art.20 portability).
+
+        Body JSON: {password}. Required vì preferences chứa PII (email, notes,
+        balance...). Sau khi xác thực, trả về ZIP chứa:
+          - user.json        : metadata + preferences
+          - enroll_audio/*   : tất cả WAV mẫu enroll
+          - user_files/*     : file user đã upload
+          - oauth.json       : thông tin OAuth (gmail address, expiry) — KHÔNG
+                               include access/refresh token (security: token là
+                               secret server-side, không phải user data).
+
+        Trả ZIP qua send_file streaming. Lưu trữ tạm trong tempfile, xoá sau khi gửi.
+        """
+        db = app.config["db"]
+        user = db.get_user(user_id)
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
+        if not user:
+            return jsonify({"error": "User không tồn tại"}), 404
+        data = _json_body()
+        password = data.get("password", "")
+        if not db.check_password(user_id, password):
+            _audit("auth.password_check", user_id=user_id, scope="export",
+                   outcome="fail", ip=ip, ua=ua)
+            return jsonify({"error": "Sai mật khẩu"}), 403
+
+        import io as _io
+        import zipfile
+        import tempfile
+
+        # Build ZIP in-memory (user data size khá nhỏ: vài MB WAV + ít byte JSON).
+        # Nếu user có nhiều file upload → có thể >50MB, nhưng đã có MAX_CONTENT_LENGTH
+        # cap. Send via send_file với BytesIO.
+        buf = _io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            # 1. Metadata + preferences
+            meta = {
+                "user_id":    user["user_id"],
+                "name":       user["name"],
+                "created_at": user["created_at"],
+                "preferences": user["preferences"],
+                "exported_at": datetime.now().isoformat() + "Z",
+                "exported_by_ip": ip,
+            }
+            zf.writestr("user.json", json.dumps(meta, ensure_ascii=False, indent=2))
+
+            # 2. WAV enroll samples
+            enroll_dir = _resolve_child_path(config.ENROLL_AUDIO_DIR, user_id)
+            if enroll_dir and enroll_dir.is_dir():
+                for wav in enroll_dir.iterdir():
+                    if wav.is_file() and wav.suffix.lower() == ".wav":
+                        zf.write(wav, f"enroll_audio/{wav.name}")
+
+            # 3. User file uploads
+            files_dir = _resolve_child_path(config.USER_FILES_DIR, user_id)
+            if files_dir and files_dir.is_dir():
+                for f in files_dir.iterdir():
+                    if f.is_file():
+                        zf.write(f, f"user_files/{f.name}")
+
+            # 4. OAuth metadata (KHÔNG include token)
+            tok = db.get_oauth_token(user_id)
+            if tok:
+                oauth_meta = {
+                    "gmail_address": tok.get("gmail_address", ""),
+                    "expiry":        tok.get("expiry", 0),
+                    "note": ("access_token + refresh_token không export — "
+                             "đây là secret server-side, không phải user data."),
+                }
+                zf.writestr("oauth.json", json.dumps(oauth_meta, ensure_ascii=False, indent=2))
+
+        buf.seek(0)
+        _audit("data.export_user", user_id=user_id, outcome="success",
+               size_bytes=buf.getbuffer().nbytes, ip=ip, ua=ua)
+        return send_file(
+            buf,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"secva-export-{user_id}.zip",
+        )
+
     @app.route("/api/users/<user_id>/delete", methods=["POST"])
+    @rate_limit(max_attempts=3, window_sec=300,
+                scope="user-delete", key_user_field="user_id")
     def api_delete_user(user_id):
         db = app.config["db"]
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
         if not db.get_user(user_id):
             return jsonify({"error": "User không tồn tại"}), 404
         data = _json_body()
         password = data.get("password", "")
         if not db.check_password(user_id, password):
+            _audit("auth.password_check", user_id=user_id, scope="delete-user",
+                   outcome="fail", ip=ip, ua=ua)
             return jsonify({"error": "Sai mật khẩu"}), 403
 
+        # 1. Xoá DB rows (users + embeddings + oauth_tokens).
         db.delete_user(user_id)
-        # Invalidate cache trong SpeakerManager
+        # 2. Invalidate cache SpeakerManager (đẩy user khỏi identify/verify pool).
         app.config["spk_mgr"]._cache = None
+        # 3. Xoá on-disk biometric data + user files (right to erasure / GDPR Art.17).
+        #    _resolve_child_path đảm bảo không escape ra ngoài thư mục cha.
+        import shutil
+        dirs_removed = []
+        for base in (config.ENROLL_AUDIO_DIR, config.USER_FILES_DIR):
+            target = _resolve_child_path(base, user_id)
+            if target and target.exists() and target.is_dir():
+                try:
+                    shutil.rmtree(target)
+                    dirs_removed.append(str(target.relative_to(config.DATA_DIR)))
+                except OSError as e:
+                    _log.warning("Không xoá được %s: %s", target, e)
+        # 4. Invalidate session nếu user vừa xoá đang đang đăng nhập trên browser này.
+        if session.get("file_uid") == user_id:
+            _clear_file_session()
+        _audit("data.delete_user", user_id=user_id, outcome="success",
+               dirs_removed=dirs_removed, ip=ip, ua=ua)
         return jsonify({"ok": True})
 
     # ----- API: Assistant turn -----
@@ -554,84 +906,40 @@ def register_routes(app):
 
         transcript = correct_transcript(transcript)
 
-        # ── Email flow: tiếp tục nếu đang trong luồng soạn email ──────────
-        flow_state = None
-        uid = None
-        _user = None
-        contacts = []
-        if "email_flow" in session:
-            flow_state = session["email_flow"]
-            uid   = flow_state.get("user_id")
-            _user = db.get_user(uid) if uid else None
-            contacts = (_user["preferences"].get("contacts", [])
-                        if _user else [])
+        # Email flow continuation (dùng chung với text route — xem
+        # _continue_email_flow_if_active).
+        flow_payload, handled = _continue_email_flow_if_active(transcript, db, nlu)
+        if handled:
+            _log_assistant_turn(flow_payload, source="web_voice_email_flow",
+                                auth_method="voice")
+            return jsonify(flow_payload)
 
-            # Intent guard: nếu user nói intent khác (vd "phát nhạc đi"), thoát flow
-            # và xử lý intent mới như bình thường. Tránh trường hợp câu đó bị nuốt
-            # thành subject/body.
-            if flow_state.get("step") in ("recipient", "subject", "body"):
-                _quick_nlu = nlu.parse(transcript)
-                _new_intent = _quick_nlu.get("intent", "unknown")
-                _email_safe = {"send_email", "unknown", "general_question"}
-                if _new_intent not in _email_safe:
-                    session.pop("email_flow", None)
-                    # Fall through xuống NLU/Router thông thường — không continue_flow
-                    flow_state = None
-
-        if flow_state is not None and "email_flow" in session:
-            resp, new_state, is_done = _ef.continue_flow(
-                transcript, flow_state, contacts)
-
-            _oauth_extras = {}
-            if is_done:
-                ents = {
-                    "recipient":       new_state["recipient_name"],
-                    "recipient_email": new_state["recipient_email"],
-                    "subject":         new_state["subject"],
-                    "body":            new_state["body"],
-                }
-                _send_result = _send_email(ents, _user, db=db)
-                # Handler trả HandlerResult nếu cần OAuth, str nếu đã gửi xong
-                if isinstance(_send_result, _h_module.HandlerResult):
-                    resp = _send_result.text
-                    session["email_flow"] = new_state   # giữ để retry sau khi auth
-                    flow_active = True
-                    _oauth_extras = {"action_type": _send_result.action_type,
-                                     "action_data": _send_result.action_data}
-                else:
-                    resp = _send_result
-                    session.pop("email_flow", None)
-                    flow_active = False
-            elif new_state is None:
-                session.pop("email_flow", None)
-                flow_active = False
-            else:
-                session["email_flow"] = new_state
-                flow_active = True
-
-            payload = {
-                "transcript":           transcript,
-                "intent":               "email_flow",
-                "auth_level":           "important",
-                "entities":             {},
-                "identified_user_id":   uid,
-                "identified_user_name": _user["name"] if _user else "Khách",
-                "sid_score":            1.0,
-                "sv_required":          False,
-                "sv_passed":            True,
-                "sv_score":             None,
-                "response":             resp,
-                "blocked":              False,
-                "flow_active":          flow_active,
-                "tts_url":              f"/api/tts?text={_quote(resp)}",
-                **_oauth_extras,
-            }
-            return jsonify(payload)
-        # ── End email flow continuation ───────────────────────────────────
-
-        nlu_result = nlu.parse(transcript)
+        transcript, nlu_result = parse_with_correction(transcript, nlu)
         result = router.handle_turn(audio, transcript, nlu_result,
                                     extra_context={"db": db})
+
+        # Challenge-response: lưu state vào session để turn thứ 2 dispatch handler.
+        if result.action_type == "challenge_required" and result.action_data:
+            cd = result.action_data
+            ch_store = session.get("challenges", {})
+            # Cleanup expired tokens
+            now = time.time()
+            ch_store = {k: v for k, v in ch_store.items()
+                        if v.get("expires_at", 0) > now}
+            ch_store[cd["token"]] = {
+                **cd,
+                "expires_at": now + 90,  # 90s TTL
+                "used":       False,
+            }
+            session["challenges"] = ch_store
+
+            payload = asdict(result)
+            payload["tts_url"] = f"/api/tts?text={_quote(result.response)}"
+            payload["flow_active"] = False
+            # Frontend đọc payload.action_data.phrase để show user + record audio_2.
+            _log_assistant_turn(payload, source="web_voice_challenge_issued",
+                                auth_method="voice")
+            return jsonify(payload)
 
         # Nếu send_email vừa pass SV → bắt đầu flow thay vì gửi ngay
         if result.intent == "send_email" and not result.blocked:
@@ -648,6 +956,8 @@ def register_routes(app):
             payload["response"]    = question
             payload["tts_url"]     = f"/api/tts?text={_quote(question)}"
             payload["flow_active"] = True
+            _log_assistant_turn(payload, source="web_voice",
+                                auth_method="voice")
             return jsonify(payload)
 
         payload = asdict(result)
@@ -664,11 +974,86 @@ def register_routes(app):
             result.entities, _prefs, auth_method="voice",
         )
 
+        _log_assistant_turn(payload, source="web_voice", auth_method="voice")
+        return jsonify(payload)
+
+    # ----- API: Challenge-response (turn 2 sau khi SID+SV pass) -----
+    @app.route("/api/assistant/challenge-response", methods=["POST"])
+    @max_size(5)
+    @rate_limit(max_attempts=10, window_sec=60, scope="challenge-response")
+    def api_challenge_response():
+        """Hoàn tất 1 challenge-response cho IMPORTANT intent.
+
+        Body multipart:
+            - audio: file blob (WebM/wav) — user đọc lại phrase server đã sinh.
+            - token: form field — token từ payload `action_data.token` của turn 1.
+
+        Server check token còn hợp lệ → ASR audio → so phrase → re-SV →
+        dispatch handler đã pending.
+        """
+        token = (request.form.get("token") or "").strip()
+        if not token:
+            return jsonify({"error": "Thiếu token"}), 400
+        if "audio" not in request.files:
+            return jsonify({"error": "Thiếu file 'audio'"}), 400
+
+        ch_store = session.get("challenges", {})
+        state = ch_store.get(token)
+        if not state:
+            return jsonify({"error": "Token không hợp lệ hoặc đã hết hạn"}), 403
+        if state.get("used"):
+            return jsonify({"error": "Token đã được dùng"}), 403
+        if time.time() > state.get("expires_at", 0):
+            ch_store.pop(token, None)
+            session["challenges"] = ch_store
+            return jsonify({"error": "Token đã hết hạn — vui lòng thử lại"}), 403
+
+        # Decode audio thứ 2
+        blob = request.files["audio"].read()
+        try:
+            audio = audio_io.decode_browser_audio(blob)
+        except Exception as e:
+            return jsonify({"error": f"Giải mã audio thất bại: {e}"}), 400
+        audio, has_speech = audio_io.SileroVAD.trim(audio, return_speech_detected=True)
+        _min_turn = int(config.SAMPLE_RATE * config.MIN_AUDIO_SEC_TURN)
+        if not has_speech or audio.size < _min_turn:
+            return jsonify({"error": "Audio quá ngắn hoặc không có giọng"}), 400
+
+        # ASR + complete
+        asr    = app.config["asr"]
+        router = app.config["router"]
+        db     = app.config["db"]
+        transcript = asr.transcribe(audio)
+        result = router.complete_challenge(audio, transcript, state,
+                                           extra_context={"db": db})
+
+        # Mark token used (one-shot), cleanup
+        state["used"] = True
+        ch_store.pop(token, None)
+        session["challenges"] = ch_store
+
+        payload = asdict(result)
+        payload["tts_url"] = f"/api/tts?text={_quote(result.response)}"
+        payload["flow_active"] = False
+
+        # Attach action_data cho frontend nếu pass + handler có signal
+        if not result.blocked:
+            _uid = result.identified_user_id
+            _user = db.get_user(_uid) if _uid else None
+            _prefs = _user["preferences"] if _user else {}
+            _attach_action_data(
+                payload, result.intent, result.blocked,
+                _uid, result.identified_user_name,
+                result.entities, _prefs, auth_method="voice",
+            )
+        _log_assistant_turn(payload, source="web_challenge_response",
+                            auth_method="voice")
         return jsonify(payload)
 
     # ----- API: Text mode (không cần micro) -----
     @app.route("/api/assistant/text", methods=["POST"])
     @max_size(1)
+    @rate_limit(max_attempts=30, window_sec=60, scope="assistant-text")
     def api_assistant_text():
         """Chế độ nhập văn bản thay vì giọng nói.
         Body JSON: { text, user_id (optional), password (optional) }
@@ -689,78 +1074,15 @@ def register_routes(app):
         db  = app.config["db"]
         nlu = app.config["nlu"]
 
-        # ── Email flow: tiếp tục nếu đang trong luồng soạn email ──────────
-        flow_state = None
-        uid = None
-        _user = None
-        contacts = []
-        if "email_flow" in session:
-            flow_state = session["email_flow"]
-            uid   = flow_state.get("user_id")
-            _user = db.get_user(uid) if uid else None
-            contacts = (_user["preferences"].get("contacts", [])
-                        if _user else [])
+        # Email flow continuation (dùng chung với voice route — xem
+        # _continue_email_flow_if_active).
+        flow_payload, handled = _continue_email_flow_if_active(text, db, nlu)
+        if handled:
+            _log_assistant_turn(flow_payload, source="web_text_email_flow",
+                                auth_method="password")
+            return jsonify(flow_payload)
 
-            # Intent guard (xem api_assistant_turn): cho phép thoát flow bằng intent khác.
-            if flow_state.get("step") in ("recipient", "subject", "body"):
-                _quick_nlu = nlu.parse(text)
-                _new_intent = _quick_nlu.get("intent", "unknown")
-                _email_safe = {"send_email", "unknown", "general_question"}
-                if _new_intent not in _email_safe:
-                    session.pop("email_flow", None)
-                    flow_state = None
-
-        if flow_state is not None and "email_flow" in session:
-            resp, new_state, is_done = _ef.continue_flow(text, flow_state, contacts)
-
-            _oauth_extras = {}
-            if is_done:
-                ents = {
-                    "recipient":       new_state["recipient_name"],
-                    "recipient_email": new_state["recipient_email"],
-                    "subject":         new_state["subject"],
-                    "body":            new_state["body"],
-                }
-                _send_result = _send_email(ents, _user, db=db)
-                # Handler trả HandlerResult nếu cần OAuth, str nếu đã gửi xong
-                if isinstance(_send_result, _h_module.HandlerResult):
-                    resp = _send_result.text
-                    session["email_flow"] = new_state   # giữ để retry sau khi auth
-                    flow_active = True
-                    _oauth_extras = {"action_type": _send_result.action_type,
-                                     "action_data": _send_result.action_data}
-                else:
-                    resp = _send_result
-                    session.pop("email_flow", None)
-                    flow_active = False
-            elif new_state is None:
-                session.pop("email_flow", None)
-                flow_active = False
-            else:
-                session["email_flow"] = new_state
-                flow_active = True
-
-            payload = {
-                "transcript":           text,
-                "intent":               "email_flow",
-                "auth_level":           "important",
-                "entities":             {},
-                "identified_user_id":   uid,
-                "identified_user_name": _user["name"] if _user else "Khách",
-                "sid_score":            1.0 if uid else 0.0,
-                "sv_required":          False,
-                "sv_passed":            True,
-                "sv_score":             None,
-                "response":             resp,
-                "blocked":              False,
-                "flow_active":          flow_active,
-                "tts_url":              f"/api/tts?text={_quote(resp)}",
-                **_oauth_extras,
-            }
-            return jsonify(payload)
-        # ── End email flow continuation ───────────────────────────────────
-
-        nlu_result = nlu.parse(text)
+        text, nlu_result = parse_with_correction(text, nlu)
         intent   = nlu_result["intent"]
         entities = nlu_result["entities"]
         spec     = INTENTS.get(intent, INTENTS["unknown"])
@@ -776,7 +1098,15 @@ def register_routes(app):
         response    = ""
 
         if sv_required:
-            if not uid:
+            # Text-mode KHÔNG có audio để verify giọng. Mặc định block IMPORTANT
+            # — Speaker Verification là biometric gate, password là "know factor"
+            # không tương đương. Cho phép password fallback chỉ khi
+            # ALLOW_PASSWORD_FOR_IMPORTANT=true (demo mode hoặc mic broken).
+            if not config.ALLOW_PASSWORD_FOR_IMPORTANT:
+                blocked  = True
+                response = ("Tác vụ này yêu cầu xác thực bằng giọng nói (Speaker Verification). "
+                            "Hãy chuyển sang chế độ Voice và nói lại yêu cầu.")
+            elif not uid:
                 blocked  = True
                 response = ("Tác vụ này yêu cầu xác thực. "
                             "Vui lòng chọn người dùng và nhập mật khẩu.")
@@ -784,6 +1114,9 @@ def register_routes(app):
                 blocked  = True
                 response = "Sai mật khẩu. Không thể thực hiện tác vụ này."
             else:
+                # Pass qua password fallback — KHÔNG phải biometric SV.
+                # auth_method="password" set ở _attach_action_data để frontend
+                # hiển thị warning rõ.
                 sv_passed = True
 
         # Nếu send_email pass auth → bắt đầu flow thay vì gửi ngay
@@ -812,6 +1145,8 @@ def register_routes(app):
                 "flow_active":          True,
                 "tts_url":              f"/api/tts?text={_quote(question)}",
             }
+            _log_assistant_turn(payload, source="web_text",
+                                auth_method="password")
             return jsonify(payload)
 
         if not blocked:
@@ -841,6 +1176,7 @@ def register_routes(app):
             uid, name, entities, _prefs, auth_method="password",
         )
 
+        _log_assistant_turn(payload, source="web_text", auth_method="password")
         return jsonify(payload)
 
     # ----- API: TTS streaming -----
@@ -854,8 +1190,17 @@ def register_routes(app):
         # Giới hạn độ dài để tránh timeout (gTTS vẫn xử lý ổn với ~500 ký tự)
         if len(text) > 500:
             text = text[:497] + "..."
+        # Resolve language: param `lang` ưu tiên, fallback theo authed user
+        # preferences.language, cuối cùng default vi.
+        lang = (request.args.get("lang", "") or "").strip()
+        if not lang:
+            _uid = _get_authed_uid("any")
+            if _uid:
+                _user = app.config["db"].get_user(_uid)
+                if _user:
+                    lang = (_user["preferences"].get("language") or "").strip()
         try:
-            mp3 = app.config["tts"].synthesize_to_mp3_bytes(text)
+            mp3 = app.config["tts"].synthesize_to_mp3_bytes(text, lang=lang or None)
         except Exception:
             # gTTS lỗi (mất mạng, rate limit...). Trả về 204 No Content thay vì
             # bytes giả "\xff\xe3..." (không phải MP3 hợp lệ, gây lỗi audio player).
@@ -943,7 +1288,7 @@ def register_routes(app):
         return sorted(
             [{"name": f.name,
               "size": f.stat().st_size,
-              "url": f"/api/music/user-tracks/{uid}/stream/{f.name}"}
+              "url": f"/api/music/user-tracks/{uid}/stream/{_quote(f.name)}"}
              for f in d.iterdir()
              if f.is_file() and f.suffix.lower() in AUDIO_EXTS],
             key=lambda x: x["name"]
@@ -981,8 +1326,8 @@ def register_routes(app):
         if _get_authed_uid("any") != user_id:
             return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         base = _music_dir(user_id).resolve()
-        fpath = (base / filename).resolve()
-        if not str(fpath).startswith(str(base)):
+        fpath = _resolve_child_path(base, filename)
+        if fpath is None:
             return jsonify({"error": "Không hợp lệ"}), 400
         if not fpath.exists():
             return jsonify({"error": "File không tồn tại"}), 404
@@ -995,8 +1340,8 @@ def register_routes(app):
         if _get_authed_uid("any") != user_id:
             return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         base = _music_dir(user_id).resolve()
-        fpath = (base / filename).resolve()
-        if not str(fpath).startswith(str(base)) or not fpath.exists():
+        fpath = _resolve_child_path(base, filename)
+        if fpath is None or not fpath.exists():
             return jsonify({"error": "File không tồn tại"}), 404
         return send_file(fpath, conditional=True)
 
@@ -1134,32 +1479,47 @@ def register_routes(app):
                         "sv_score": round(sv_score, 3)})
 
     @app.route("/api/files/verify-password", methods=["POST"])
+    @rate_limit(max_attempts=5, window_sec=60, scope="files-verify-password")
     def api_files_verify_password():
         data = _json_body()
         user_id = data.get("user_id", "")
         password = data.get("password", "")
         db = app.config["db"]
         user = db.get_user(user_id)
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
         if not user:
             return jsonify({"error": "User không tồn tại"}), 404
         if not db.check_password(user_id, password):
+            _audit("auth.password_check", user_id=user_id, scope="files",
+                   outcome="fail", ip=ip, ua=ua)
             return jsonify({"error": "Sai mật khẩu"}), 403
         _set_file_session(user_id, user.get("name", user_id), "password")
+        _audit("auth.password_check", user_id=user_id, scope="files",
+               outcome="success", ip=ip, ua=ua)
         return jsonify({"ok": True, "user_name": user.get("name", user_id)})
 
     @app.route("/api/users/<user_id>/unlock", methods=["POST"])
+    @rate_limit(max_attempts=5, window_sec=60,
+                scope="user-unlock", key_user_field="user_id")
     def api_user_unlock(user_id):
         """Xác thực mật khẩu, set file session, trả về user info.
         Dùng thay cho update-info khi chỉ cần mở khóa modal."""
         db = app.config["db"]
         user = db.get_user(user_id)
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
         if not user:
             return jsonify({"error": "User không tồn tại"}), 404
         data = _json_body()
         password = data.get("password", "")
         if not db.check_password(user_id, password):
+            _audit("auth.password_check", user_id=user_id, scope="unlock",
+                   outcome="fail", ip=ip, ua=ua)
             return jsonify({"error": "Sai mật khẩu"}), 403
         _set_file_session(user_id, user["name"], "password")
+        _audit("auth.password_check", user_id=user_id, scope="unlock",
+               outcome="success", ip=ip, ua=ua)
         result = dict(user)
         result["has_password"] = db.has_password(user_id)
         return jsonify({"ok": True, "user": result})
@@ -1226,8 +1586,8 @@ def register_routes(app):
         if not uid:
             return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         base = (config.USER_FILES_DIR / uid).resolve()
-        fpath = (base / filename).resolve()
-        if not str(fpath).startswith(str(base)):
+        fpath = _resolve_child_path(base, filename)
+        if fpath is None:
             return jsonify({"error": "Không hợp lệ"}), 400
         if not fpath.exists():
             return jsonify({"error": "File không tồn tại"}), 404
@@ -1239,8 +1599,8 @@ def register_routes(app):
         if not uid:
             return jsonify({"error": "Chưa xác thực hoặc phiên đã hết hạn"}), 403
         base = (config.USER_FILES_DIR / uid).resolve()
-        fpath = (base / filename).resolve()
-        if not str(fpath).startswith(str(base)):
+        fpath = _resolve_child_path(base, filename)
+        if fpath is None:
             return jsonify({"error": "Không hợp lệ"}), 400
         if not fpath.exists():
             return jsonify({"error": "File không tồn tại"}), 404
@@ -1250,6 +1610,7 @@ def register_routes(app):
     # ----- Admin -----
     @app.route("/api/admin/verify", methods=["POST"])
     @max_size(0.01)
+    @rate_limit(max_attempts=5, window_sec=300, scope="admin-verify")
     def api_admin_verify():
         data = _json_body()
         supplied = data.get("password", "")
@@ -1269,6 +1630,50 @@ def register_routes(app):
                 for u in users
             ],
         })
+
+    @app.route("/api/admin/users/<user_id>/reset-password", methods=["POST"])
+    @max_size(0.01)
+    @rate_limit(max_attempts=5, window_sec=300,
+                scope="admin-reset-password", key_user_field="user_id")
+    def api_admin_reset_user_password(user_id):
+        """Admin-assisted password reset.
+
+        Big-system style policy:
+        - Never recover/show old password; only replace hash with a new password.
+        - Require ADMIN_PASS on every reset request, not just a prior UI unlock.
+        - Validate new password length.
+        - Audit both success and failure without logging the password.
+        """
+        db = app.config["db"]
+        data = _json_body()
+        supplied = data.get("admin_password", "")
+        ip = _rl_client_ip()
+        ua = request.headers.get("User-Agent", "")
+
+        if (not config.ADMIN_PASS or
+                not hmac.compare_digest(str(supplied), config.ADMIN_PASS)):
+            _audit("auth.password_reset", user_id=user_id, actor="admin",
+                   outcome="fail_admin_auth", ip=ip, ua=ua)
+            return jsonify({"error": "Sai mật khẩu quản trị"}), 403
+
+        user = db.get_user(user_id)
+        if not user:
+            _audit("auth.password_reset", user_id=user_id, actor="admin",
+                   outcome="fail_user_not_found", ip=ip, ua=ua)
+            return jsonify({"error": "User không tồn tại"}), 404
+
+        new_password = str(data.get("new_password", ""))
+        if len(new_password) < 8:
+            return jsonify({"error": "Mật khẩu mới phải có ít nhất 8 ký tự"}), 400
+        if len(new_password) > 128:
+            return jsonify({"error": "Mật khẩu mới quá dài"}), 400
+
+        db.update_password(user_id, new_password)
+        if session.get("file_uid") == user_id:
+            _clear_file_session()
+        _audit("auth.password_reset", user_id=user_id, actor="admin",
+               outcome="success", ip=ip, ua=ua)
+        return jsonify({"ok": True, "user_id": user_id})
 
     # ==========================================================================
     # Google OAuth 2.0 — Gmail API authentication
@@ -1336,7 +1741,7 @@ def register_routes(app):
                 "h2{color:#c62828}pre{background:#f5f5f5;padding:12px;border-radius:6px;"
                 "text-align:left;max-width:500px;margin:auto;word-break:break-all}</style></head><body>"
                 f"<h2>✗ Xác thực thất bại</h2>"
-                f"<pre>{error}</pre>"
+                f"<pre>{html.escape(error)}</pre>"
                 "<p>Kiểm tra lại <b>Authorized Redirect URIs</b> trong Google Cloud Console.<br>"
                 "URI phải khớp chính xác với <code>GOOGLE_REDIRECT_URI</code> trong <code>.env</code>.</p>"
                 "<button onclick='window.close()' style='margin-top:16px;padding:8px 20px;"
@@ -1351,7 +1756,7 @@ def register_routes(app):
         _db = app.config["db"]
         user = _db.get_user(user_id)
         if not user:
-            return f"<h3>Không tìm thấy user '{user_id}'</h3>", 404
+            return f"<h3>Không tìm thấy user '{html.escape(user_id)}'</h3>", 404
 
         try:
             tokens     = exchange_code(code, code_verifier=code_verifier)
@@ -1362,19 +1767,34 @@ def register_routes(app):
             prefs = dict(user["preferences"])
             prefs["email"] = gmail_addr
             _db.update_preferences(user_id, prefs)
+
+            # Đánh dấu user vừa hoàn tất OAuth — cho phép /api/oauth/status trả
+            # về gmail address trong vài phút polling sau (UX modal đóng + show
+            # "Đã xác thực: user@gmail.com"). Sau đó marker tự expire.
+            recent = session.get("oauth_recent", {})
+            recent[user_id] = time.time()
+            # Xoá entry quá cũ (> 10 phút) để cookie không phình ra.
+            recent = {u: t for u, t in recent.items() if time.time() - t < 600}
+            session["oauth_recent"] = recent
+
+            _audit("oauth.granted", user_id=user_id, outcome="success",
+                   gmail_hash=hashlib.sha256(gmail_addr.encode()).hexdigest()[:12],
+                   ip=_rl_client_ip(),
+                   ua=request.headers.get("User-Agent", ""))
         except Exception as e:
             return (
                 "<!doctype html><html><head><meta charset='utf-8'>"
                 "<style>body{font-family:sans-serif;text-align:center;padding:60px}"
                 "h2{color:#c62828}pre{background:#f5f5f5;padding:12px;border-radius:6px;"
                 "text-align:left;max-width:500px;margin:auto;word-break:break-all}</style></head><body>"
-                f"<h2>✗ Lỗi trao đổi token</h2><pre>{e}</pre>"
+                f"<h2>✗ Lỗi trao đổi token</h2><pre>{html.escape(str(e))}</pre>"
                 "<button onclick='window.close()' style='margin-top:16px;padding:8px 20px;"
                 "background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
                 "Đóng tab</button></body></html>"
             ), 500
 
         # Tab tự đóng sau 3s, đồng thời báo hiệu cho cửa sổ mẹ (nếu có)
+        _nonce = getattr(g, "csp_nonce", "")
         return (
             "<!doctype html><html><head><meta charset='utf-8'>"
             "<style>body{font-family:sans-serif;text-align:center;padding:60px}"
@@ -1382,13 +1802,13 @@ def register_routes(app):
             "border:1px solid #a5d6a7;border-radius:8px;padding:12px 24px;margin:12px 0}"
             ".cnt{font-size:2rem;font-weight:bold;color:#1565c0}</style></head><body>"
             f"<h2>✓ Xác thực Gmail thành công!</h2>"
-            f"<div class='badge'>📧 <strong>{gmail_addr}</strong></div>"
+            f"<div class='badge'>📧 <strong>{html.escape(gmail_addr)}</strong></div>"
             "<p>Tab sẽ tự đóng trong <span id='cnt' class='cnt'>3</span> giây.<br>"
             "Quay lại trang trợ lý và nói <b>\"có\"</b> để gửi email.</p>"
             "<button onclick='window.close()' style='margin-top:8px;padding:8px 20px;"
             "background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
             "Đóng ngay</button>"
-            "<script>"
+            f"<script nonce='{_nonce}'>"
             "try{new BroadcastChannel('oauth').postMessage({type:'oauth_done'});}catch(_){}"
             "if(window.opener){try{window.opener.postMessage({type:'oauth_done'},'*');}catch(_){}}"
             "let s=3;const t=setInterval(()=>{s--;document.getElementById('cnt').textContent=s;"
@@ -1399,12 +1819,29 @@ def register_routes(app):
 
     @app.route("/api/oauth/status/<user_id>")
     def api_oauth_status(user_id):
-        """Kiểm tra trạng thái OAuth của user — dùng bởi frontend polling."""
+        """Kiểm tra trạng thái OAuth của user — dùng bởi frontend polling.
+
+        Authenticated flag là public (chỉ là bool, không leak PII).
+        Gmail address CHỈ trả khi caller có quyền:
+          - file session match user_id (đã unlock bằng password / voice),
+          - đang trong OAuth flow của chính user_id này (oauth_pending_uid),
+          - vừa hoàn tất OAuth (oauth_recent marker, ~10 min) — UX hiển thị
+            "Đã xác thực: user@gmail.com" sau callback.
+        Caller không quyền chỉ thấy `gmail = ""`.
+        """
         _db  = app.config["db"]
         tok  = _db.get_oauth_token(user_id)
+        in_oauth_flow = session.get("oauth_pending_uid") == user_id
+        recent_ts     = session.get("oauth_recent", {}).get(user_id, 0)
+        recently_done = time.time() - recent_ts < 600  # 10 phút
+        can_see_gmail = (
+            _get_authed_uid("any") == user_id
+            or in_oauth_flow
+            or recently_done
+        )
         return jsonify({
             "authenticated": tok is not None,
-            "gmail":         tok["gmail_address"] if tok else "",
+            "gmail":         (tok["gmail_address"] if (tok and can_see_gmail) else ""),
         })
 
     @app.route("/api/oauth/debug/<user_id>", methods=["POST"])
@@ -1445,8 +1882,35 @@ def register_routes(app):
         return jsonify({"ok": True, "google_revoked": google_ok})
 
     # ----- Misc -----
+    # ----- Liveness vs Readiness vs Info -----
+    # Pattern chuẩn Kubernetes / production:
+    #   /healthz  → liveness: process còn sống không (đáp ngay, không touch ML)
+    #   /readyz   → readiness: model đã load chưa (depends_on init)
+    #   /api/health → info dump (legacy, giữ cho backward compat)
+    @app.route("/healthz")
+    def healthz():
+        """Liveness probe — server process còn responsive.
+        KHÔNG check model/DB → trả 200 ngay cả khi đang load."""
+        return jsonify({"status": "alive"})
+
+    @app.route("/readyz")
+    def readyz():
+        """Readiness probe — tất cả dependency đã sẵn sàng phục vụ.
+        Check: DB query OK, encoder loaded, ASR loaded. 503 nếu chưa ready."""
+        try:
+            _ = app.config["db"].list_users()
+            encoder_ok = app.config["spk_mgr"].encoder is not None
+            asr_ok     = app.config["asr"] is not None
+            if encoder_ok and asr_ok:
+                return jsonify({"status": "ready"})
+            return jsonify({"status": "not_ready",
+                            "encoder": encoder_ok, "asr": asr_ok}), 503
+        except Exception as e:
+            return jsonify({"status": "not_ready", "error": str(e)[:120]}), 503
+
     @app.route("/api/health")
     def health():
+        """Info dump — backward compat. Cho debug, không phải probe."""
         return jsonify({
             "ok": True,
             "n_users": len(app.config["db"].list_users()),

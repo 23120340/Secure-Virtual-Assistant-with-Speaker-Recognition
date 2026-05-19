@@ -33,7 +33,7 @@ def main(args):
                        channels=[512, 512, 512, 512, 1536]).to(device).eval()
     classifier = AAMSoftmax(192, len(spk2idx)).to(device).eval()
 
-    ckpt = torch.load(args.ckpt, map_location=device, weights_only=False)
+    ckpt = torch.load(args.ckpt, map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model"])
     classifier.load_state_dict(ckpt["classifier"])
     print(f"Loaded checkpoint từ epoch {ckpt.get('epoch', '?')}")

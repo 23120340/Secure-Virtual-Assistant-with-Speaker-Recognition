@@ -6,6 +6,13 @@ numpy
 
 # ASR
 faster-whisper>=1.0.0
+# Optional: cần khi ASR_BACKEND=phowhisper (vinai/PhoWhisper-*) hoặc
+# SPEAKER_BACKEND=wavlm (microsoft/wavlm-base-plus-sv).
+transformers>=4.40.0
+sentencepiece>=0.2.0
+
+# Optional: chỉ cần khi SPEAKER_DENOISE=true.
+# noisereduce>=3.0.0
 
 # VAD
 silero-vad>=5.0.0
@@ -24,9 +31,8 @@ google-genai>=1.0.0
 
 # Web
 flask>=3.0.0
-flask-cors>=4.0.0
 pyopenssl>=24.0.0  # HTTPS ad-hoc cho getUserMedia qua IP
-cryptography>=42.0.0  # self-signed cert generation (gen_cert.py)
+cryptography>=42.0.0  # self-signed cert generation (gen_cert.py) + Fernet OAuth token encryption
 
 # Misc
 python-dotenv>=1.0.0

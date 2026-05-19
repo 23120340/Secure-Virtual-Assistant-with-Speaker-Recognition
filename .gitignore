@@ -28,7 +28,10 @@ checkpoints/
 # Data người dùng
 data/users.db
 data/enroll_audio/
+data/user_files/
 data/log/
+data/turn_log.json
+data/*.log
 
 # IDE
 .vscode/

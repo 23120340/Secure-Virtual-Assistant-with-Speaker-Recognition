@@ -1,281 +1,355 @@
 # Secure Virtual Assistant with Speaker Recognition
 
-Trợ lý ảo tiếng Việt **bảo mật bằng giọng nói** — kết hợp Speaker Identification (SID) và Speaker Verification (SV) dựa trên ECAPA-TDNN để phân quyền truy cập theo cấp độ nhạy cảm của từng tác vụ.
+Trợ lý ảo tiếng Việt có phân quyền bằng giọng nói, kết hợp **Speaker Identification (SID)** và **Speaker Verification (SV)** để quyết định tác vụ nào được phép chạy theo mức độ nhạy cảm.
 
-> Hệ thống gồm 3 phần: (1) train mô hình nhận dạng giọng nói, (2) CLI assistant để test pipeline, (3) Flask web app full-stack với Gmail API, music player và file manager cá nhân.
+Đồ án gồm hai yêu cầu chính theo đề:
+
+- **YC1 - Train & evaluate speaker model**: ECAPA-TDNN cho speaker identification và speaker verification.
+- **YC2 - Virtual assistant tích hợp SV/SID**: trợ lý có voice interaction, enrollment, user management và các tác vụ `NORMAL` / `IMPORTANT` / `PERSONAL`.
+
+> Trạng thái hiện tại: phần runtime/web đã khá đầy đủ; phần còn thiếu quan trọng trước khi nộp là **artifact kết quả training/evaluation thật** và **calibration benchmark thật** trong `training/results/` hoặc `docs/results/`. Xem checklist chi tiết ở [docs/PROJECT_REVIEW_AND_TODO.md](docs/PROJECT_REVIEW_AND_TODO.md).
 
 ---
 
-## Tính năng chính
+## Tính Năng Chính
 
 - **3 lớp bảo mật theo intent**
-  - `NORMAL` — ai cũng dùng được (hỏi giờ, thời tiết, kể chuyện cười, Q&A tổng quát).
-  - `IMPORTANT` — yêu cầu SV (verify giọng): đọc ghi chú, gửi email, xem số dư, xoá dữ liệu, mở file cá nhân.
-  - `PERSONAL` — cá nhân hoá theo SID: chào theo tên, phát nhạc theo gu, hiển thị lịch riêng.
-- **Pipeline voice end-to-end**: Mic → Silero VAD → faster-whisper (ASR) → ECAPA-TDNN (Speaker Encoder) → Gemini NLU → Router (gate auth) → gTTS (TTS).
-- **Web app full-stack** (Flask): đăng ký user qua trình duyệt, push-to-talk, text mode, music player (YouTube + nhạc cá nhân), file manager, admin panel.
-- **Gmail API tích hợp** (OAuth 2.0): user xác thực Google một lần, sau đó assistant gửi email trực tiếp qua API.
-- **Đa kênh fallback**: SV thất bại → cho phép dùng password; Gemini quota hết → rule-based NLU; thiếu checkpoint riêng → tự fallback pretrained SpeechBrain.
+  - `NORMAL`: không cần xác thực, ví dụ hỏi giờ, thời tiết demo, kể chuyện cười, hỏi đáp tổng quát.
+  - `IMPORTANT`: cần speaker verification, ví dụ đọc ghi chú, gửi email, xem số dư demo, xoá dữ liệu, mở file cá nhân, thêm ghi chú/lịch/liên hệ.
+  - `PERSONAL`: cần speaker identification để cá nhân hoá, ví dụ chào theo tên, phát nhạc theo gu, xem lịch cá nhân.
+- **Voice pipeline end-to-end**: browser/CLI audio -> decode 16 kHz mono -> Silero VAD -> ASR -> speaker encoder -> NLU -> router auth gate -> handler -> TTS.
+- **ASR backend có thể đổi qua `.env`**:
+  - `faster-whisper` mặc định.
+  - `phowhisper` cho PhoWhisper/VinAI nếu cài thêm dependency phù hợp.
+- **Speaker backend có thể đổi qua `.env`**:
+  - `ecapa` mặc định: dùng checkpoint tự train nếu có, fallback SpeechBrain pretrained nếu thiếu.
+  - `wavlm`: dùng `microsoft/wavlm-base-plus-sv`.
+- **Web app Flask**: enrollment bằng trình duyệt, push-to-talk assistant, text mode, file manager, music player, admin panel, Google OAuth/Gmail send.
+- **Security/polish đã có**: password PBKDF2, OAuth PKCE + nonce, Fernet token encryption, rate limit, audit log JSONL, request ID, health/readiness endpoints, cascade delete, consent banner, data export, challenge-response opt-in.
+- **Test suite**: `97` unit/integration tests hiện pass với `pytest`.
 
 ---
 
-## Cấu trúc project
+## Cấu Trúc Repo
 
-```
+```text
 Secure-Virtual-Assistant-with-Speaker-Recognition/
-│
-├── training/              # Phần 1 — Train ECAPA-TDNN (chạy trên Kaggle GPU)
-│   ├── README.md
+├── core/                    # Logic dùng chung CLI + Web
+│   ├── audio_io.py          # Decode audio, VAD, preprocess
+│   ├── asr.py               # faster-whisper / PhoWhisper
+│   ├── audit.py             # JSONL audit log
+│   ├── challenge.py         # Challenge-response cho IMPORTANT voice flow
+│   ├── config.py            # Env/config/thresholds
+│   ├── database.py          # SQLite UserDB + SpeakerManager
+│   ├── email_flow.py        # Multi-turn email composer
+│   ├── gmail_api.py         # Gmail REST API send
+│   ├── handlers.py          # Intent handlers
+│   ├── intents.py           # AuthLevel + intent registry
+│   ├── nlu.py               # Gemini function-calling + rule-based fallback
+│   ├── oauth.py             # Google OAuth 2.0
+│   ├── resilience.py        # Retry + circuit breaker
+│   ├── router.py            # SID/SV gating + dispatch
+│   ├── speaker_encoder.py   # ECAPA / WavLM encoder
+│   ├── tts.py               # gTTS stream, multi-language
+│   └── turn_logging.py      # JSONL turn logs + NLU training candidates
+├── training/                # YC1: train/evaluate ECAPA-TDNN
 │   ├── train_ecapa.py
 │   ├── evaluate_sid.py
 │   ├── evaluate_sv.py
-│   ├── requirements.txt
-│   └── data/              # iden_split.txt, veri_test.txt
-│
-├── core/                  # Business logic dùng chung cho CLI + Web
-│   ├── config.py          # paths, thresholds, env vars
-│   ├── audio_io.py        # mic record, file I/O, Silero VAD, browser audio decode
-│   ├── asr.py             # faster-whisper wrapper + transcript corrector
-│   ├── tts.py             # gTTS wrapper (CLI play + web MP3 stream)
-│   ├── speaker_encoder.py # ECAPA-TDNN (own ckpt hoặc pretrained SpeechBrain)
-│   ├── database.py        # SQLite UserDB + SpeakerManager (enroll/SID/SV)
-│   ├── intents.py         # 12 intents × 3 nhóm bảo mật
-│   ├── nlu.py             # Gemini NLU + rule-based fallback
-│   ├── handlers.py        # logic mỗi intent
-│   ├── router.py          # orchestrator + SV/SID gating
-│   ├── email_flow.py      # state machine cho luồng soạn email nhiều turn
-│   ├── oauth.py           # Google OAuth 2.0 (auth URL, exchange code, refresh)
-│   └── gmail_api.py       # gửi email qua Gmail REST API
-│
-├── cli/                   # Phần 2 — CLI Virtual Assistant
+│   ├── MODEL_CARD.md
 │   ├── README.md
-│   ├── enroll_user.py     # đăng ký user qua CLI mic
-│   ├── run_assistant.py   # REPL chạy assistant
-│   └── test_pipeline.py   # smoke test với file wav (không cần mic)
-│
-├── web/                   # Phần 3 — Flask Web App
+│   ├── data/
+│   └── results/             # Cần commit artifact thật trước khi nộp
+├── web/                     # YC2: Flask web app
+│   ├── app.py
+│   ├── gen_cert.py
 │   ├── README.md
-│   ├── app.py             # Flask routes + API
-│   ├── gen_cert.py        # tạo TLS self-signed cert (cho mic qua LAN)
-│   ├── cert.pem / key.pem # TLS cert (không commit key.pem)
-│   ├── requirements.txt
 │   ├── templates/
-│   │   ├── base.html
-│   │   ├── home.html          # danh sách users
-│   │   ├── enroll.html        # đăng ký + record N mẫu
-│   │   ├── user_detail.html   # xem/sửa preferences, đổi password, xoá
-│   │   ├── assistant.html     # chat push-to-talk + text mode
-│   │   ├── music.html         # player + playlist + YouTube search
-│   │   └── files.html         # file manager (SV-protected)
-│   └── static/style.css
-│
-├── data/                  # Runtime artifacts
-│   ├── users.db           # SQLite: users + embeddings + oauth_tokens
-│   ├── enroll_audio/      # wav samples của mỗi user
-│   ├── user_files/        # file & nhạc upload theo user_id
-│   ├── profiles/          # preferences JSON mẫu (minh.json, lan.json)
-│   └── turn_log.json      # log mỗi turn cho báo cáo
-│
-├── checkpoints/
-│   └── best_model.pt      # ECAPA-TDNN weights (từ training/)
-│
-├── requirements.txt       # deps cho CLI (Phần 2)
-├── .env                   # API keys (không commit)
-└── .env.example           # template cho .env
+│   └── static/
+├── cli/                     # CLI enrollment/assistant/smoke test
+├── scripts/                 # benchmark, re-enroll backend, password migration
+├── tests/                   # pytest suite
+├── docs/
+│   ├── PROJECT_REVIEW_AND_TODO.md
+│   ├── Secure_Virtual_Assistant_with_Speaker_Recognition.pdf
+│   └── results/             # Runtime benchmark/calibration artifacts
+├── data/                    # Runtime DB/audio/files/logs, không nên commit dữ liệu nhạy cảm
+├── checkpoints/             # best_model.pt, dùng Git LFS nếu commit checkpoint
+├── .env.example             # Khung config
+├── requirements.txt
+├── requirements.lock.txt
+└── README.md
 ```
 
 ---
 
-## Bắt đầu nhanh
+## Cài Đặt Nhanh
 
-| Phần | Mô tả | Tài liệu chi tiết |
-|---|---|---|
-| **Phần 1** | Train ECAPA-TDNN trên VoxCeleb1 (Kaggle GPU) | [training/README.md](training/README.md) |
-| **Phần 2** | CLI Virtual Assistant — REPL trên terminal | [cli/README.md](cli/README.md) |
-| **Phần 3** | Flask Web App — UI + Gmail + Music + Files | [web/README.md](web/README.md) |
+### 1. Tạo môi trường
 
-### 1. Cài đặt
-
-```bash
-# Tạo virtual env
+```powershell
 python -m venv venv
-venv\Scripts\activate          # Windows
-# source venv/bin/activate     # Linux/macOS
+./venv/Scripts/Activate.ps1
+pip install -r requirements.txt
+```
 
-# Cài deps (chọn 1 trong 2)
-pip install -r requirements.txt        # đủ cho CLI
-pip install -r web/requirements.txt    # đủ cho cả Web + CLI
+Nếu chạy web đầy đủ mà thiếu dependency, dùng thêm:
 
-# System deps:
-#   Windows: winget install Gyan.FFmpeg  (cần ffmpeg trong PATH)
-#   Linux:   sudo apt install ffmpeg portaudio19-dev
-#   macOS:   brew install ffmpeg portaudio
+```powershell
+pip install -r web/requirements.txt
+```
+
+System dependency cần có:
+
+- **FFmpeg** để decode WebM/Opus từ browser.
+- **PortAudio** nếu dùng CLI mic qua `sounddevice`.
+
+Windows:
+
+```powershell
+winget install Gyan.FFmpeg
 ```
 
 ### 2. Cấu hình `.env`
 
-```bash
-cp .env.example .env
+Repo có sẵn `.env.example`. Tạo `.env` theo file đó:
+
+```powershell
+Copy-Item .env.example .env
 ```
 
-Điền tối thiểu:
-- `GEMINI_API_KEY` — lấy free tại [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Bỏ trống → fallback rule-based NLU.
-- `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` — chỉ cần nếu dùng tính năng gửi email (xem hướng dẫn trong `.env.example`).
-- `ADMIN_PASS` — chỉ cần nếu mở admin panel.
+Các biến quan trọng:
 
-### 3. Speaker checkpoint
-
-Copy `best_model.pt` từ Kaggle (Phần 1) vào `checkpoints/`.
-**Chưa có cũng được** — hệ thống tự fallback sang **SpeechBrain pretrained ECAPA-TDNN (VoxCeleb2)**.
-
-### 4. Chạy
-
-```bash
-# CLI assistant (REPL)
-python cli/run_assistant.py
-
-# Web app (HTTPS, hỗ trợ mic qua LAN)
-python web/gen_cert.py          # tạo cert 1 lần
-python -m web.app --ssl         # → https://localhost:5000
-```
-
----
-
-## Kiến trúc tổng quan
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│   FRONTEND (Browser / CLI)                                       │
-│   - MediaRecorder API push-to-talk (web)                         │
-│   - sounddevice mic recording (CLI)                              │
-└──────────────────────────────────────────────────────────────────┘
-                          ↓ audio bytes (WebM/Opus hoặc wav)
-┌──────────────────────────────────────────────────────────────────┐
-│   AUDIO PIPELINE                                                 │
-│   decode → 16kHz mono → Silero VAD trim                          │
-└──────────────────────────────────────────────────────────────────┘
-                          ↓
-        ┌─────────────────┴─────────────────┐
-        ↓                                   ↓
-┌──────────────────┐               ┌──────────────────────┐
-│ faster-whisper   │               │ ECAPA-TDNN encoder   │
-│ (medium / int8)  │               │ → 192-d embedding    │
-└──────────────────┘               └──────────────────────┘
-        ↓                                   ↓
-┌──────────────────┐               ┌──────────────────────┐
-│ Gemini NLU       │               │ SpeakerManager       │
-│ → {intent,       │               │ - identify (SID)     │
-│    entities}     │               │ - verify  (SV)       │
-└──────────────────┘               └──────────────────────┘
-        └─────────────────┬─────────────────┘
-                          ↓
-┌──────────────────────────────────────────────────────────────────┐
-│   ROUTER — auth gate theo INTENTS[intent].level                  │
-│   - NORMAL    → handler trực tiếp                                │
-│   - IMPORTANT → SV check → handler hoặc block                    │
-│   - PERSONAL  → handler(user) để cá nhân hoá                     │
-└──────────────────────────────────────────────────────────────────┘
-                          ↓
-                  response text + entities
-                          ↓
-                 gTTS → MP3 stream / play
-```
-
----
-
-## 3 lớp bảo mật — Intent map
-
-| Nhóm | Auth | Intent | Use case |
-|---|---|---|---|
-| **NORMAL** | Không | `get_time`, `get_weather`, `tell_joke`, `general_question` | Guest cũng dùng được |
-| **IMPORTANT** | SV (hoặc password fallback) | `read_notes`, `send_email`, `check_balance`, `delete_data`, `open_files` | Phải verify đúng giọng / mật khẩu |
-| **PERSONAL** | SID | `greet`, `play_music`, `show_schedule` | Identify ai → response cá nhân hoá theo preferences |
-
-**Demo case chấm điểm**:
-- `"Mấy giờ rồi?"` — guest cũng trả lời (NORMAL).
-- `"Đọc ghi chú của tôi"` giọng Minh → SV pass → đọc notes Minh.
-- Cùng câu nhưng người lạ nói → SID = guest → block.
-- `"Phát nhạc đi"` giọng Minh thích rock → phát rock; giọng Lan thích ballad → phát ballad.
-
----
-
-## Quy trình lưu trữ và xác thực
-
-```
-Đăng ký (enroll):
-   audio_1 ... audio_N (mỗi mẫu 4s, N ≥ 2)
-      ↓ Silero VAD trim
-      ↓ ECAPA-TDNN encode
-   emb_1 ... emb_N           (192-d, L2-normalized)
-      ↓ trung bình + L2-normalize
-   centroid                  (đại diện user)
-      ↓ store
-   SQLite users.db           (BLOB ~768 bytes mỗi user)
-
-Một turn (identify + verify):
-   audio_query → VAD → ECAPA → emb_query (192-d)
-
-   SID: argmax cosine(emb_query, centroid_i)
-        nếu max < SID_MIN_THRESHOLD → guest
-
-   SV (cho IMPORTANT): cosine(emb_query, centroid_claimed)
-        nếu score ≥ SV_THRESHOLD → pass
-        ngược lại → block (cho phép fallback password)
-```
-
-Threshold mặc định (calibrate lại sau khi enroll thật):
-
-```python
-# core/config.py
-SV_THRESHOLD       = 0.45   # cosine ≥ → cùng người
-SID_MIN_THRESHOLD  = 0.35   # < → guest
-```
-
----
-
-## Tech stack
-
-| Lớp | Công nghệ |
+| Biến | Mục đích |
 |---|---|
-| Speaker recognition | ECAPA-TDNN (SpeechBrain), AAM-Softmax loss, cosine similarity |
-| ASR | faster-whisper (CTranslate2) — tiếng Việt |
-| NLU | Google Gemini 2.0 Flash + rule-based fallback |
-| TTS | gTTS (Google Translate TTS) |
-| VAD | Silero VAD |
-| Web | Flask 3, vanilla JS, MediaRecorder API |
-| Auth | Speaker Verification + bcrypt password + Google OAuth 2.0 |
-| Music | YouTube via yt-dlp, Deezer search API |
-| Storage | SQLite (users, embeddings, OAuth tokens) + filesystem (audio, files) |
+| `FLASK_SECRET` | Secret cho session Flask. Không để trống khi demo ổn định. |
+| `TOKEN_ENCRYPTION_KEY` | Key riêng để mã hoá OAuth token. Nếu trống, fallback derive từ `FLASK_SECRET`. |
+| `GEMINI_API_KEY` | Dùng Gemini NLU/Q&A. Nếu trống, fallback rule-based NLU. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | OAuth Gmail API cho intent gửi email. |
+| `ADMIN_PASS` | Mật khẩu admin panel. |
+| `ASR_BACKEND` | `faster-whisper` hoặc `phowhisper`. |
+| `SPEAKER_BACKEND` | `ecapa` hoặc `wavlm`. |
+| `ALLOW_PASSWORD_FOR_IMPORTANT` | Mặc định `false`: text mode block IMPORTANT. |
+| `CHALLENGE_RESPONSE_ENABLED` | Mặc định `false`: bật nếu muốn demo chống replay đơn giản. |
+| `SPEAKER_INCREMENTAL_REENROLL` | Mặc định `false`: cập nhật centroid sau SV pass. |
+
+Sinh `TOKEN_ENCRYPTION_KEY`:
+
+```powershell
+./venv/Scripts/python.exe -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+```
+
+### 3. Checkpoint speaker model
+
+Đặt checkpoint tự train vào:
+
+```text
+checkpoints/best_model.pt
+```
+
+Nếu chưa có, app vẫn chạy bằng fallback SpeechBrain pretrained ECAPA. Tuy nhiên để đáp ứng YC1, vẫn cần training/evaluation artifact thật từ `training/`.
 
 ---
 
-## Calibrate threshold (khuyến nghị)
+## Chạy Ứng Dụng
 
-Sau khi enroll vài users, chạy assistant nhiều lần và xem `sid_score` / `sv_score`:
+### Web app
 
-- **Genuine** (cùng người): score ≈ 0.55 – 0.85
-- **Impostor** (khác người): score ≈ 0.10 – 0.40
+Chạy HTTP local nhanh:
 
-Đặt `SV_THRESHOLD` ở giữa hai cụm.
-Phương pháp chính thức: chạy `training/evaluate_sv.py` → lấy threshold tại điểm EER.
+```powershell
+$env:FLASK_DEV_HTTP="true"
+python -m web.app
+```
+
+Mở:
+
+```text
+http://localhost:5000
+```
+
+Chạy HTTPS để browser cho phép microphone ổn định hơn:
+
+```powershell
+python web/gen_cert.py
+python -m web.app --ssl
+```
+
+Mở:
+
+```text
+https://localhost:5000
+```
+
+Các trang chính:
+
+| Path | Chức năng |
+|---|---|
+| `/` | Danh sách user |
+| `/enroll` | Đăng ký user, record nhiều mẫu giọng |
+| `/users/<id>` | Xem/sửa user, preferences, password, export/delete |
+| `/assistant` | Push-to-talk assistant + text mode |
+| `/music` | Music player |
+| `/files` | File manager sau xác thực |
+| `/healthz` | Liveness |
+| `/readyz` | Readiness |
+| `/api/health` | Health/info legacy |
+
+### CLI
+
+```powershell
+python cli/enroll_user.py --user_id minh --name "Minh" --preferences_file data/profiles/minh.json
+python cli/run_assistant.py
+python cli/test_pipeline.py --audio data/enroll_audio/minh/sample_1.wav
+```
+
+---
+
+## Intent Và AuthLevel
+
+| Nhóm | Auth | Intent |
+|---|---|---|
+| `NORMAL` | Không cần xác thực | `get_time`, `get_weather`, `tell_joke`, `general_question` |
+| `IMPORTANT` | Speaker Verification | `read_notes`, `send_email`, `check_balance`, `delete_data`, `open_files`, `add_note`, `add_schedule`, `add_contact` |
+| `PERSONAL` | Speaker Identification | `greet`, `play_music`, `show_schedule` |
+
+Lưu ý cho báo cáo:
+
+- `get_weather` hiện là demo/stub, chưa gọi API thời tiết thật.
+- `check_balance` đọc `preferences.balance`, không kết nối ngân hàng thật.
+- `send_email` gọi Gmail API thật với OAuth scope `gmail.send`.
+- Text mode không có audio để verify giọng, nên mặc định block `IMPORTANT`. Nếu bật `ALLOW_PASSWORD_FOR_IMPORTANT=true`, password fallback là chế độ demo/convenience, không phải biometric gate.
+
+---
+
+## Security Model Tóm Tắt
+
+- Password user/admin: PBKDF2-HMAC-SHA256, salt ngẫu nhiên.
+- Quên mật khẩu: không khôi phục password cũ; admin có thể reset password mới qua Admin Panel sau khi xác thực `ADMIN_PASS`.
+- OAuth token: Fernet encryption; ưu tiên `TOKEN_ENCRYPTION_KEY`, fallback HKDF từ `FLASK_SECRET`.
+- OAuth flow: server-side nonce + PKCE, callback escape HTML.
+- CSRF guard: yêu cầu `X-Requested-With` cho request thay đổi trạng thái.
+- Session cookie: `HttpOnly`, `SameSite=Lax`, `Secure` trừ khi `FLASK_DEV_HTTP=true`.
+- Rate limit: password endpoints, enroll, assistant text, challenge response.
+- Audit log: JSONL ở `data/audit.log`, không log nội dung nhạy cảm dài.
+- Turn log để train/debug: `data/turn_log.jsonl`, append mỗi lượt web/CLI với `schema_version`, transcript đã redact email/số điện thoại, intent/entity dự đoán, auth level, SID/SV score, trạng thái block và source.
+- Candidate NLU dataset: `data/nlu_training_candidates.jsonl`, dùng cho labeling thủ công. Export CSV bằng:
+
+```powershell
+python scripts/export_nlu_dataset.py --out data/nlu_training_candidates.csv
+```
+- File path safety: `_resolve_child_path(...).relative_to(...)`, không dùng string `startswith`.
+- Privacy: consent banner khi enroll, cascade delete WAV/files/tokens/embeddings, data export ZIP password-gated.
+
+Challenge-response cho IMPORTANT voice flow là opt-in:
+
+```env
+CHALLENGE_RESPONSE_ENABLED=true
+```
+
+Khi bật, sau khi SID+SV pass, server yêu cầu user đọc lại phrase random. Handler chỉ chạy nếu audio thứ hai vừa khớp phrase vừa pass SV.
+
+---
+
+## Training Và Evaluation YC1
+
+Chi tiết ở [training/README.md](training/README.md).
+
+Dataset hiện được mô tả là VoxCeleb1 Indian subset:
+
+- 24 speakers.
+- `training/data/iden_split.txt`: 4857 utterance.
+- `training/data/veri_test.txt`: 552 trial pairs.
+- Có caveat methodology: split theo utterance có thể leak session, trial pair nhỏ, bias Indian subset, chưa có augmentation.
+
+Các script chính:
+
+```powershell
+python training/train_ecapa.py --help
+python training/evaluate_sid.py --help
+python training/evaluate_sv.py --help
+```
+
+Artifact cần có trước khi nộp:
+
+| Folder | Artifact |
+|---|---|
+| `training/results/` | `training_log.json`, `spk2idx.json`, `sid_results.json`, `sv_results.json`, khuyến nghị thêm ROC/confusion/loss plots |
+| `docs/results/` | `benchmark_ecapa.json`, `benchmark_wavlm.json` hoặc `benchmark_all.json`, `threshold_calibration.md` |
+
+Hiện repo đã có README/checklist placeholder cho hai folder này, nhưng số liệu thật cần được generate bằng Kaggle/GPU và audio enroll demo thật.
+
+---
+
+## Benchmark Và Re-enroll
+
+Xem [scripts/README.md](scripts/README.md).
+
+Chạy benchmark runtime sau khi enroll vài user:
+
+```powershell
+python scripts/benchmark.py --out docs/results/benchmark_ecapa.json
+python scripts/benchmark.py --all --out docs/results/benchmark_all.json
+```
+
+File benchmark JSON có schema `secva.benchmark.v1`, metadata backend, summary WER/SID/SV và từng sample để phân tích lỗi/calibration.
+
+Nếu đổi speaker backend:
+
+```powershell
+$env:SPEAKER_BACKEND="wavlm"
+python scripts/reenroll_backend.py
+python scripts/benchmark.py --speaker-only
+```
+
+---
+
+## Test
+
+Chạy toàn bộ test suite:
+
+```powershell
+./venv/Scripts/python.exe -m pytest tests/ -q --basetemp .pytest_tmp
+```
+
+Kết quả gần nhất:
+
+```text
+94 passed, 4 warnings
+```
+
+`--basetemp .pytest_tmp` hữu ích trên máy Windows nếu thư mục temp mặc định bị permission denied.
 
 ---
 
 ## Troubleshooting
 
-| Triệu chứng | Khắc phục |
+| Triệu chứng | Cách xử lý |
 |---|---|
-| `getUserMedia` block mic | Web phải chạy HTTPS hoặc `localhost`. Dùng `python web/gen_cert.py` + `--ssl`. |
-| `OSError: PortAudio library not found` | `sudo apt install portaudio19-dev` (Linux) / `brew install portaudio` (macOS) |
-| Whisper quá chậm trên CPU | Đổi `WHISPER_MODEL=tiny` hoặc `base` trong `.env`, hoặc `WHISPER_DEVICE=cuda WHISPER_COMPUTE=float16` |
-| `ffmpeg not found` | Cài ffmpeg và đảm bảo trong PATH (pydub cần để decode WebM) |
-| SID luôn ra "guest" | Threshold cao, hoặc audio enroll quá ngắn/noisy — check `sid_score` trong log |
-| SV pass cả khi sai giọng | Tăng `SV_THRESHOLD` lên 0.5 – 0.6 |
-| Gemini quota exceeded | Bỏ `GEMINI_API_KEY` trong `.env` → tự fallback rule-based |
-| YouTube search lỗi bot check | Tạo `web/youtube_cookies.txt` từ browser cookies, hoặc đăng nhập Chrome/Edge để yt-dlp tự đọc |
+| Browser không cho dùng mic | Dùng `localhost` hoặc chạy HTTPS bằng `python -m web.app --ssl`. |
+| `ffmpeg not found` | Cài FFmpeg và đảm bảo có trong `PATH`. |
+| Whisper chậm trên CPU | Đổi `WHISPER_MODEL=tiny` hoặc `base`; nếu có GPU dùng `WHISPER_DEVICE=cuda`, `WHISPER_COMPUTE=float16`. |
+| SID luôn ra guest | Audio enroll quá ngắn/noisy hoặc threshold cao; kiểm tra `sid_score` trong response/log. |
+| SV quá dễ pass | Tăng threshold tương ứng backend trong `.env`, rồi benchmark lại. |
+| Gemini lỗi/quota | Bỏ `GEMINI_API_KEY` để fallback rule-based NLU. |
+| Gmail OAuth redirect lỗi | `GOOGLE_REDIRECT_URI` trong `.env` phải khớp tuyệt đối với Google Cloud Console. |
+| Cookie/session không hoạt động trên HTTP | Set `FLASK_DEV_HTTP=true` khi chạy local HTTP, hoặc dùng HTTPS. |
 
 ---
 
-## Đóng góp
+## Checklist Trước Khi Nộp
 
-Mỗi sub-folder có README riêng với hướng dẫn chi tiết hơn — xem [training/](training/README.md), [cli/](cli/README.md), [web/](web/README.md).
+- [ ] Chạy training thật và commit artifact vào `training/results/`.
+- [ ] Chạy evaluation SID/SV thật và có `sid_results.json`, `sv_results.json`.
+- [ ] Enroll vài user demo qua web, chạy `scripts/benchmark.py --out docs/results/...`.
+- [ ] Cập nhật report với caveat dataset/split/threshold và các chức năng demo/stub.
+- [ ] Quay demo đủ 3 nhóm: `NORMAL`, `IMPORTANT pass/fail`, `PERSONAL`.
+- [ ] Không commit `.env`, `data/users.db`, OAuth token, audio/biometric data nhạy cảm nếu repo public.
+
+Tài liệu nên đọc tiếp:
+
+- [docs/PROJECT_REVIEW_AND_TODO.md](docs/PROJECT_REVIEW_AND_TODO.md): review tổng hợp và todo theo ưu tiên.
+- [training/README.md](training/README.md): hướng dẫn train/evaluate ECAPA-TDNN.
+- [web/README.md](web/README.md): hướng dẫn web app chi tiết.
+- [scripts/README.md](scripts/README.md): benchmark, re-enroll backend, migration.
+- [training/MODEL_CARD.md](training/MODEL_CARD.md): model card và caveat sử dụng.

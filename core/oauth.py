@@ -19,6 +19,11 @@ import urllib.parse
 import requests as _req
 
 from . import config
+from .resilience import CircuitBreaker, retry
+
+# Circuit breaker chung cho Google OAuth endpoints. 5 fail consecutive → open
+# 60s. Tránh hammer Google khi backend đang down + giảm tail latency cho user.
+_GOOGLE_OAUTH_BREAKER = CircuitBreaker("google-oauth", fail_threshold=5, reset_after=60)
 
 
 def gen_pkce_pair() -> tuple[str, str]:
@@ -89,11 +94,16 @@ def _extract_oauth_error(r) -> str:
     return (r.text or "")[:200]
 
 
+@_GOOGLE_OAUTH_BREAKER
+@retry(max_attempts=3, backoff_base=0.5, retriable=(_req.RequestException, RuntimeError))
 def exchange_code(code: str, code_verifier: str | None = None) -> dict:
     """Trao đổi authorization code lấy access_token + refresh_token.
 
     Trả về dict: {access_token, refresh_token, expires_in, expiry (absolute timestamp)}.
     code_verifier: nếu authorization request đã gửi code_challenge → phải gửi kèm.
+
+    Retry 3 lần với exponential backoff cho network hiccup. Circuit breaker
+    open sau 5 fail consecutive (60s reset).
     """
     payload = {
         "code":          code,
@@ -114,10 +124,13 @@ def exchange_code(code: str, code_verifier: str | None = None) -> dict:
     return data
 
 
+@_GOOGLE_OAUTH_BREAKER
+@retry(max_attempts=3, backoff_base=0.5, retriable=(_req.RequestException, RuntimeError))
 def refresh_access_token(refresh_token: str) -> dict:
     """Làm mới access_token bằng refresh_token (không cần user interaction).
 
-    Trả về dict với access_token mới và expiry mới.
+    Trả về dict với access_token mới và expiry mới. Retry + circuit breaker
+    cùng config với exchange_code.
     """
     r = _req.post(_TOKEN_URL, data={
         "refresh_token": refresh_token,
@@ -132,6 +145,8 @@ def refresh_access_token(refresh_token: str) -> dict:
     return data
 
 
+@_GOOGLE_OAUTH_BREAKER
+@retry(max_attempts=3, backoff_base=0.5, retriable=(_req.RequestException, RuntimeError))
 def get_user_email(access_token: str) -> str:
     """Lấy địa chỉ Gmail của user đã xác thực."""
     r = _req.get(_USERINFO_URL,

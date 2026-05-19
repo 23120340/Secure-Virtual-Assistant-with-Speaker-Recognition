@@ -6,12 +6,9 @@ Trả về: response_text (str) HOẶC HandlerResult (cho intent cần signal ac
 """
 import random
 import time
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
-
-from .oauth import build_auth_url
 
 
 @dataclass
@@ -30,23 +27,32 @@ class HandlerResult:
 # User authenticated có thể gửi từ Gmail API → chống spam nếu account bị compromise.
 EMAIL_RATE_MAX    = 10
 EMAIL_RATE_WINDOW = 3600  # 1 giờ
-_email_sent_log: dict = defaultdict(list)
+# Trước đây dùng in-process dict (defaultdict(list)) — reset mỗi restart và
+# không share giữa worker. Đã chuyển sang SQLite (xem UserDB.count_emails_sent_within
+# / oldest_email_within / record_email_sent).
 
 
-def _email_rate_check(user_id: str) -> tuple[bool, int]:
-    """Returns (allowed, remaining). allowed=False → từ chối, có quota khi nào."""
-    now = time.time()
-    log = _email_sent_log[user_id]
-    log[:] = [t for t in log if now - t < EMAIL_RATE_WINDOW]
-    if len(log) >= EMAIL_RATE_MAX:
-        oldest = log[0]
-        wait_min = int((oldest + EMAIL_RATE_WINDOW - now) / 60) + 1
-        return False, wait_min
-    return True, 0
+def _email_rate_check(user_id: str, db) -> tuple[bool, int]:
+    """Returns (allowed, wait_min). allowed=False → từ chối, có quota khi nào.
+
+    `db`: UserDB instance (caller phải truyền). Khi db=None (vd: unit test)
+    fallback allowed=True để không break test.
+    """
+    if db is None:
+        return True, 0
+    count = db.count_emails_sent_within(user_id, EMAIL_RATE_WINDOW)
+    if count < EMAIL_RATE_MAX:
+        return True, 0
+    oldest = db.oldest_email_within(user_id, EMAIL_RATE_WINDOW)
+    if oldest is None:
+        return True, 0
+    wait_min = int((oldest + EMAIL_RATE_WINDOW - time.time()) / 60) + 1
+    return False, max(wait_min, 1)
 
 
-def _email_rate_record(user_id: str):
-    _email_sent_log[user_id].append(time.time())
+def _email_rate_record(user_id: str, db):
+    if db is not None:
+        db.record_email_sent(user_id)
 
 
 # ==========================================================================
@@ -121,7 +127,7 @@ def handle_send_email(entities, user, **kwargs) -> str:
     user_id = user["user_id"]
 
     # Rate limit: chặn trước khi tốn cycle (lookup recipient, OAuth refresh, ...)
-    allowed, wait_min = _email_rate_check(user_id)
+    allowed, wait_min = _email_rate_check(user_id, db)
     if not allowed:
         return (f"Bạn đã gửi {EMAIL_RATE_MAX} email trong giờ vừa qua. "
                 f"Vui lòng đợi khoảng {wait_min} phút rồi thử lại.")
@@ -130,15 +136,14 @@ def handle_send_email(entities, user, **kwargs) -> str:
     token_data = db.get_oauth_token(user_id) if db else None
 
     if not token_data:
-        try:
-            auth_url = build_auth_url(state=user_id)
-        except RuntimeError as e:
-            return f"Chưa cấu hình Gmail OAuth: {e}"
+        # KHÔNG build_auth_url ở đây — URL với state=user_id là predictable.
+        # Frontend dùng identified_user_id để redirect qua /auth/google route,
+        # nơi server generate nonce + PKCE đúng chuẩn (web/app.py:auth_google).
         return HandlerResult(
             text=(f"{user['name']} ơi, bạn chưa xác thực Gmail. "
                   "Nhấn nút 'Đăng nhập Google' trên màn hình để tiếp tục."),
             action_type="oauth_required",
-            action_data={"auth_url": auth_url},
+            action_data={"user_id": user_id},
         )
 
     # ── 2. Refresh nếu access_token hết hạn ────────────────────────────────
@@ -151,14 +156,10 @@ def handle_send_email(entities, user, **kwargs) -> str:
         except Exception:
             if db:
                 db.delete_oauth_token(user_id)
-            try:
-                auth_url = build_auth_url(state=user_id)
-            except RuntimeError:
-                return "Token Gmail hết hạn và không thể làm mới. Kiểm tra cấu hình OAuth."
             return HandlerResult(
                 text="Token Gmail hết hạn. Vui lòng đăng nhập lại.",
                 action_type="oauth_required",
-                action_data={"auth_url": auth_url},
+                action_data={"user_id": user_id},
             )
 
     access_token  = token_data["access_token"]
@@ -191,7 +192,7 @@ def handle_send_email(entities, user, **kwargs) -> str:
             body=body or f"Email từ {user['name']} qua Trợ lý Ảo.",
             from_name=user["name"],
         )
-        _email_rate_record(user_id)
+        _email_rate_record(user_id, db)
         from_note = f" (từ {gmail_address})" if gmail_address else ""
         return (f"Đã gửi email thành công đến "
                 f"{recipient_name or recipient_email}!{from_note}")
@@ -260,10 +261,112 @@ def handle_delete_data(entities, user, **kwargs) -> str:
     return f"Đã xóa {label} của {user['name']}."
 
 
-def handle_open_files(entities, user, **kwargs) -> str:
+def handle_open_files(entities, user, **kwargs) -> str | HandlerResult:
     if user is None:
         return "Chưa xác thực được người dùng — không thể mở file."
-    return f"Đã xác thực thành công. Đang mở file của {user['name']}."
+    file_count = kwargs.get("file_count")
+    if file_count is None:
+        try:
+            from . import config
+            user_dir = config.USER_FILES_DIR / user["user_id"]
+            file_count = sum(1 for p in user_dir.iterdir() if p.is_file()) if user_dir.exists() else 0
+        except Exception:
+            file_count = None
+
+    if file_count == 0:
+        text = f"{user['name']} chưa có file nào đã upload. Mình sẽ mở trang file để bạn thêm file."
+    elif file_count is None:
+        text = f"Đã xác thực thành công. Đang mở file của {user['name']}."
+    else:
+        text = f"Đã xác thực thành công. Đang mở {file_count} file của {user['name']}."
+
+    return HandlerResult(
+        text=text,
+        action_type="show_files",
+        action_data={"user_id": user["user_id"], "file_count": file_count},
+    )
+
+
+# Cap để tránh user bị spam khiến preferences phình to vô hạn.
+_MAX_NOTES = 50
+_MAX_SCHEDULE = 50
+_MAX_CONTACTS = 100
+
+
+def handle_add_note(entities, user, **kwargs) -> str:
+    """Thêm ghi chú mới vào preferences.notes của user (FIFO khi vượt cap)."""
+    if user is None:
+        return "Chưa nhận ra giọng — không thể thêm ghi chú."
+    content = (entities.get("content") or "").strip()
+    if not content:
+        return "Bạn muốn ghi chú nội dung gì? Mình chưa nghe rõ."
+    db = kwargs.get("db")
+    if db is None:
+        return "Không thể lưu ghi chú — thiếu kết nối database."
+
+    prefs = dict(user["preferences"])
+    notes = list(prefs.get("notes", []))
+    notes.append(content)
+    if len(notes) > _MAX_NOTES:
+        notes = notes[-_MAX_NOTES:]  # giữ N gần nhất
+    prefs["notes"] = notes
+    db.update_preferences(user["user_id"], prefs)
+    return f"Đã thêm ghi chú cho {user['name']}: \"{content}\". Tổng cộng {len(notes)} ghi chú."
+
+
+def handle_add_schedule(entities, user, **kwargs) -> str:
+    """Thêm 1 mục lịch. Nội dung + thời gian (nếu có) ghép vào 1 string."""
+    if user is None:
+        return "Chưa nhận ra giọng — không thể thêm lịch."
+    content = (entities.get("content") or "").strip()
+    time_str = (entities.get("time") or "").strip()
+    if not content:
+        return "Bạn muốn thêm lịch nội dung gì? Mình chưa rõ."
+    db = kwargs.get("db")
+    if db is None:
+        return "Không thể lưu lịch — thiếu kết nối database."
+
+    entry = f"{time_str} - {content}" if time_str else content
+    prefs = dict(user["preferences"])
+    schedule = list(prefs.get("schedule", []))
+    schedule.append(entry)
+    if len(schedule) > _MAX_SCHEDULE:
+        schedule = schedule[-_MAX_SCHEDULE:]
+    prefs["schedule"] = schedule
+    db.update_preferences(user["user_id"], prefs)
+    return f"Đã thêm vào lịch của {user['name']}: \"{entry}\"."
+
+
+def handle_add_contact(entities, user, **kwargs) -> str:
+    """Thêm contact mới (name + email) vào preferences.contacts."""
+    if user is None:
+        return "Chưa nhận ra giọng — không thể thêm liên hệ."
+    name = (entities.get("name") or "").strip()
+    email = (entities.get("email") or "").strip()
+    if not name or not email:
+        return ("Cần cả tên và email để thêm liên hệ. Bạn có thể nói "
+                "\"thêm liên hệ Tuấn email tuan@example.com\".")
+    # Validate email format đơn giản — không strict RFC.
+    if "@" not in email or " " in email or len(email) > 254:
+        return f"Email '{email}' không hợp lệ."
+    db = kwargs.get("db")
+    if db is None:
+        return "Không thể lưu liên hệ — thiếu kết nối database."
+
+    prefs = dict(user["preferences"])
+    contacts = list(prefs.get("contacts", []))
+    # Nếu name đã tồn tại → update email (idempotent), không duplicate.
+    for c in contacts:
+        if (c.get("name") or "").strip().lower() == name.lower():
+            c["email"] = email
+            db.update_preferences(user["user_id"], prefs)
+            return f"Đã cập nhật email của {name} thành {email}."
+    contacts.append({"name": name, "email": email})
+    if len(contacts) > _MAX_CONTACTS:
+        contacts = contacts[-_MAX_CONTACTS:]
+    prefs["contacts"] = contacts
+    db.update_preferences(user["user_id"], prefs)
+    return f"Đã thêm liên hệ {name} ({email}) vào danh bạ."
 
 
 # ==========================================================================
@@ -277,7 +380,7 @@ def handle_greet(entities, user, **kwargs) -> str:
 
 def handle_play_music(entities, user, **kwargs) -> str:
     if user is None:
-        genre = entities.get("genre", "pop")
+        genre = entities.get("genre", "v-pop")
         return f"Phát một bản nhạc {genre} cho khách nghe đây."
 
     fav = user["preferences"].get("favorite_genre", "pop")
@@ -317,6 +420,9 @@ HANDLERS = {
     "check_balance": handle_check_balance,
     "delete_data": handle_delete_data,
     "open_files": handle_open_files,
+    "add_note": handle_add_note,
+    "add_schedule": handle_add_schedule,
+    "add_contact": handle_add_contact,
     "greet": handle_greet,
     "play_music": handle_play_music,
     "show_schedule": handle_show_schedule,

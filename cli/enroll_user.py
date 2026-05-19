@@ -29,7 +29,8 @@ ENROLL_PROMPTS = [
 ]
 
 
-def enroll_via_mic(user_id: str, name: str, num_samples: int):
+def enroll_via_mic(user_id: str, name: str, num_samples: int,
+                   max_retries_per_slot: int = 3):
     print(f"\n=== Đăng ký user: {name} ({user_id}) ===")
     print(f"Sẽ thu {num_samples} mẫu giọng nói, mỗi mẫu {config.ENROLL_DURATION}s.")
     print("Hãy đọc từng câu prompt khi được yêu cầu.\n")
@@ -38,7 +39,10 @@ def enroll_via_mic(user_id: str, name: str, num_samples: int):
     user_audio_dir = config.ENROLL_AUDIO_DIR / user_id
     user_audio_dir.mkdir(parents=True, exist_ok=True)
 
-    for i in range(num_samples):
+    # Dùng while + counter để retry slot bị fail thay vì for-loop với `i -= 1`
+    # (không có tác dụng — Python for không re-evaluate iteration variable).
+    i = 0
+    while i < num_samples:
         prompt = ENROLL_PROMPTS[i % len(ENROLL_PROMPTS)]
         print(f"\n[{i+1}/{num_samples}] Đọc câu: \"{prompt}\"")
         input("        Nhấn Enter khi sẵn sàng...")
@@ -49,10 +53,16 @@ def enroll_via_mic(user_id: str, name: str, num_samples: int):
         if audio.size < config.SAMPLE_RATE:  # < 1s sau trim
             print(f"        ⚠ Audio quá ngắn sau VAD ({audio.size/config.SAMPLE_RATE:.2f}s)."
                   " Hãy thử lại.")
-            i -= 1
+            # Re-record slot i (không advance) tối đa max_retries_per_slot lần
+            # để tránh loop vô hạn nếu mic hỏng.
+            max_retries_per_slot -= 1
+            if max_retries_per_slot <= 0:
+                print("        ✗ Quá nhiều lần retry — bỏ qua slot này.")
+                i += 1
             continue
         audios.append(audio)
         print(f"        ✓ Recorded ({audio.size/config.SAMPLE_RATE:.2f}s)")
+        i += 1
 
     return audios
 

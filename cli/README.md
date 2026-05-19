@@ -49,6 +49,24 @@ cp .env.example .env       # sửa GEMINI_API_KEY trong này
 **Copy checkpoint từ Tuần 1** vào `checkpoints/best_model.pt`.
 Nếu chưa train xong → vẫn chạy được, hệ thống sẽ tự fallback sang **pretrained SpeechBrain ECAPA-TDNN (VoxCeleb2)** để bạn dev song song.
 
+### Switch backend (optional)
+
+Hai backend chính có thể đổi qua env, không cần sửa code:
+
+| Env | Giá trị | Ghi chú |
+|---|---|---|
+| `ASR_BACKEND` | `faster-whisper` (default) / `phowhisper` | PhoWhisper fine-tune VN, cần `pip install transformers sentencepiece` |
+| `SPEAKER_BACKEND` | `ecapa` (default) / `wavlm` | WavLM-SV pretrained Microsoft, cần transformers |
+
+Khi đổi `SPEAKER_BACKEND`, chạy lại:
+
+```bash
+python scripts/reenroll_backend.py     # re-encode audio cũ cho backend mới
+python scripts/benchmark.py --all      # so sánh WER + TPR/FPR giữa 2 backend
+```
+
+Xem thêm: [scripts/README.md](../scripts/README.md), [.env.example](../.env.example) cho danh sách env vars đầy đủ (multi-window, AS-Norm, preprocessing flags).
+
 ## 3 nhóm chức năng — đáp ứng yêu cầu đề bài
 
 | Nhóm | Auth | Intents | Behavior |

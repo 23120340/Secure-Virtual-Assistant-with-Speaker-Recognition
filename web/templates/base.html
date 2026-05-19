@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Alfa+Slab+One&family=Vina+Sans&display=swap" rel="stylesheet">
   <link href="https://fonts.cdnfonts.com/css/monument-extended" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script>
+  <script nonce="{{ csp_nonce }}">
     // CSRF guard: gắn header X-Requested-With cho mọi fetch() POST/PUT/DELETE.
     // Server từ chối state-changing request thiếu header này → chặn CSRF cross-origin.
     (function(){

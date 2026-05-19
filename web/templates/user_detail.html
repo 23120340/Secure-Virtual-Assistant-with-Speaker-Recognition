@@ -115,11 +115,11 @@
   </div>
 </div>
 
-<script type="application/json" id="__page_data__">
+<script nonce="{{ csp_nonce }}" type="application/json" id="__page_data__">
 {"userId": {{ user.user_id | tojson }}, "contacts": {{ user.preferences.get('contacts', []) | tojson }}}
 </script>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 const __d     = JSON.parse(document.getElementById("__page_data__").textContent);
 const userId  = __d.userId;
 

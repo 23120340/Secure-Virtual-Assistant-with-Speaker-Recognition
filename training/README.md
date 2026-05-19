@@ -30,11 +30,19 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 | Thông số | Giá trị |
 |---|---|
 | Dataset Kaggle | `gaurav41/voxceleb1-audio-wav-files-for-india-celebrity` |
-| Số speaker | ~24 (Indian celebrities) |
+| Số speaker | 24 (Indian celebrities, ID range `id10002` → `id11209`) |
 | Sampling rate | 16kHz |
 | Audio root | `/kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian` |
+| Split file đã commit | `training/data/iden_split.txt` (4857 utterance), `training/data/veri_test.txt` (552 trial pair) |
 
-**Lưu ý**: Dataset này không có sẵn `iden_split.txt` và `veri_test.txt` — cần tạo thủ công (xem bước 2 bên dưới).
+**Lưu ý**: Dataset này không có sẵn `iden_split.txt` và `veri_test.txt` — cần tạo thủ công (xem bước 2 bên dưới). File đã commit trong `training/data/` là output của script bước 2 với seed=42, dùng để reproduce kết quả.
+
+### Caveat methodology (cần ghi rõ trong báo cáo)
+
+1. **Random shuffle utterance** — Split 70/15/15 chia theo utterance, KHÔNG group theo `video_id` (YouTube session). Hậu quả: utterance cùng một session có thể leak qua train/val/test → metric có thể đẹp hơn closed-set thật. Đề chuẩn của VoxCeleb1 là `iden_split.txt` per-utt với cùng speaker xuất hiện ở cả 3 split, và `veri_test.txt` (VoxCeleb1-O) là trial pair từ 40 speaker held-out. Phiên bản đang dùng KHÔNG phải VoxCeleb1-O chính thức.
+2. **Trial pair số lượng nhỏ** — Cap positive ở `min(i+4, len(files))` mỗi speaker, sample 1 impostor mỗi cặp speaker → ~24×23/2 = 276 cặp âm. EER trên trial set nhỏ này ít nghĩa thống kê.
+3. **Indian subset bias** — Train trên 24 Indian celebrity → có bias domain (accent, gender ratio, microphone). Khi deploy cho user Việt là OOD scenario — báo cáo cần discuss khoảng cách này.
+4. **Không augmentation** — Chưa có MUSAN noise / RIR reverb / SpecAugment / speed perturb. Đây là lever lớn nhất cho ECAPA-TDNN khi dataset nhỏ; có thể bổ sung future work.
 
 ## Setup trên Kaggle
 

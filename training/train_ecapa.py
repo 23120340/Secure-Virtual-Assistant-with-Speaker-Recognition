@@ -198,6 +198,28 @@ def main(args):
     with open(save_dir / "spk2idx.json", "w") as f:
         json.dump(train_ds.spk2idx, f, indent=2)
 
+    # Hparams snapshot: cần cho reproducibility ở báo cáo.
+    import sys, subprocess
+    try:
+        git_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        git_sha = "unknown"
+    hparams = {
+        "args":          vars(args),
+        "n_train":       len(train_ds),
+        "n_val":         len(val_ds),
+        "n_speakers":    len(train_ds.spk2idx),
+        "device":        device,
+        "python":        sys.version.split()[0],
+        "torch_version": torch.__version__,
+        "git_sha":       git_sha,
+        "seed":          42,
+    }
+    with open(save_dir / "hparams.json", "w") as f:
+        json.dump(hparams, f, indent=2)
+
     log = []
     best_val = 0.0
     for epoch in range(1, args.epochs + 1):
