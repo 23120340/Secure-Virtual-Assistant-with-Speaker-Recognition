@@ -44,6 +44,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+for _noisy_logger in ("httpx", "httpcore", "huggingface_hub"):
+    logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 _log = logging.getLogger("secva.app")
 
 from flask import (Flask, render_template, request, jsonify, send_file,
@@ -411,6 +413,8 @@ def _json_body() -> dict:
 
 def _log_assistant_turn(payload: dict, *, source: str, auth_method: str):
     """Best-effort structured turn logging with request correlation."""
+    if not payload.get("blocked"):
+        _remember_assistant_user(payload.get("identified_user_id"))
     return _log_turn(payload, source=source, auth_method=auth_method,
                      request_id=getattr(g, "request_id", ""))
 
@@ -551,6 +555,23 @@ def _get_authed_uid(level: str = "any") -> str | None:
         _clear_file_session()
         return None
     if level == "voice" and session.get("file_auth_method") != "voice":
+        return None
+    return uid
+
+
+def _remember_assistant_user(uid: str | None):
+    """Remember the last identified assistant user for same-session UI polling."""
+    if uid:
+        session["assistant_uid"] = uid
+        session["assistant_seen_at"] = time.time()
+
+
+def _get_recent_assistant_uid() -> str | None:
+    uid = session.get("assistant_uid")
+    seen_at = session.get("assistant_seen_at", 0)
+    if not uid or time.time() - seen_at > SESSION_LIFETIME_SEC:
+        session.pop("assistant_uid", None)
+        session.pop("assistant_seen_at", None)
         return None
     return uid
 
@@ -1096,7 +1117,7 @@ def register_routes(app):
         # POST cần file session match → chống attacker mark-fired reminder của
         # user khác.
         if request.method == "POST":
-            if _get_authed_uid("any") != user_id:
+            if _get_authed_uid("any") != user_id and _get_recent_assistant_uid() != user_id:
                 return jsonify({"error": "Chưa xác thực"}), 403
             ids = (_json_body() or {}).get("ack_ids", []) or []
             prefs = dict(user["preferences"])

@@ -64,9 +64,11 @@ class SpeakerEncoder:
     def _load_pretrained(self):
         # SpeechBrain có sẵn pretrained model trên VoxCeleb2
         from speechbrain.inference.speaker import EncoderClassifier
+        from speechbrain.utils.fetching import LocalStrategy
         self.encoder = EncoderClassifier.from_hparams(
             source="speechbrain/spkrec-ecapa-voxceleb",
             savedir=str(Path(config.DATA_DIR) / "pretrained_ecapa"),
+            local_strategy=LocalStrategy.COPY,
             run_opts={"device": self.device},
         )
 

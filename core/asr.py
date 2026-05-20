@@ -276,12 +276,15 @@ class PhoWhisperASR:
     """
 
     def __init__(self, model_name: str = config.PHOWHISPER_MODEL,
-                 device: str = ""):
+                 device: str = config.PHOWHISPER_DEVICE):
         from transformers import pipeline
         import torch as _torch
 
         if not device:
             device = "cuda" if _torch.cuda.is_available() else "cpu"
+        elif device == "cuda" and not _torch.cuda.is_available():
+            _log.warning("PHOWHISPER_DEVICE=cuda nhưng CUDA không khả dụng → fallback CPU")
+            device = "cpu"
 
         _log.info("Loading PhoWhisper '%s' on %s...", model_name, device)
         # device là str ('cuda'/'cpu') hoặc int (GPU index); pipeline accept cả 2.

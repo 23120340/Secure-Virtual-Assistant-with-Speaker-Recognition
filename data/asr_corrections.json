@@ -137,5 +137,425 @@
     "replacement": "Mở file",
     "regex": false,
     "ignore_case": true
+  },
+  {
+    "pattern": "mào phai.",
+    "replacement": "Mở file",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mấy giờ rời",
+    "replacement": "mấy giờ rồi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mấy giờ rùi",
+    "replacement": "mấy giờ rồi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mây giờ rồi",
+    "replacement": "mấy giờ rồi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mấy dờ rồi",
+    "replacement": "mấy giờ rồi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mấy giờ gồi",
+    "replacement": "mấy giờ rồi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thời tiếc",
+    "replacement": "thời tiết",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thời tiệc",
+    "replacement": "thời tiết",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thơi tiết",
+    "replacement": "thời tiết",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "trời tiết",
+    "replacement": "thời tiết",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thời tiết hà lội",
+    "replacement": "thời tiết Hà Nội",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thủ đổ việt nam",
+    "replacement": "thủ đô Việt Nam",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thù đô việt nam",
+    "replacement": "thủ đô Việt Nam",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thủ đô việt năn",
+    "replacement": "thủ đô Việt Nam",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "gởi email",
+    "replacement": "gửi email",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "gởi mail",
+    "replacement": "gửi mail",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "gửi meo",
+    "replacement": "gửi mail",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "gửi mèo",
+    "replacement": "gửi mail",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "gử email",
+    "replacement": "gửi email",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "gừi email",
+    "replacement": "gửi email",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "gửi y mail",
+    "replacement": "gửi email",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "gmail cho",
+    "replacement": "gửi mail cho",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "độc ghi chú",
+    "replacement": "đọc ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "độc ghi chu",
+    "replacement": "đọc ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "đọc nghi chú",
+    "replacement": "đọc ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "ghi trú",
+    "replacement": "ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "nghi chú",
+    "replacement": "ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thêm ghi chu",
+    "replacement": "thêm ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thêm nghi chú",
+    "replacement": "thêm ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "tạo nghi chú",
+    "replacement": "tạo ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "lưu ghi chu",
+    "replacement": "lưu ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "sổ dư",
+    "replacement": "số dư",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "sô dư",
+    "replacement": "số dư",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "số du",
+    "replacement": "số dư",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "sơ dư",
+    "replacement": "số dư",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "kiểm cha số dư",
+    "replacement": "kiểm tra số dư",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "kiểm tra sổ dư",
+    "replacement": "kiểm tra số dư",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mở fai",
+    "replacement": "mở file",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mở phile",
+    "replacement": "mở file",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mở phai của tôi",
+    "replacement": "mở file của tôi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "danh sách phai",
+    "replacement": "danh sách file",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "xem phai",
+    "replacement": "xem file",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "xóa phai",
+    "replacement": "xóa file",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "phát nhạt",
+    "replacement": "phát nhạc",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "bật nhạt",
+    "replacement": "bật nhạc",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mở nhạt",
+    "replacement": "mở nhạc",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "nghe nhạt",
+    "replacement": "nghe nhạc",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "v pop",
+    "replacement": "v-pop",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "nhắt tôi",
+    "replacement": "nhắc tôi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "nhấc tôi",
+    "replacement": "nhắc tôi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "nhắc tối",
+    "replacement": "nhắc tôi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "đặt riminder",
+    "replacement": "đặt reminder",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "đặt re minder",
+    "replacement": "đặt reminder",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mốt phút nữa",
+    "replacement": "một phút nữa",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "nam phút nữa",
+    "replacement": "năm phút nữa",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mười phúc nữa",
+    "replacement": "mười phút nữa",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "đặt lịt",
+    "replacement": "đặt lịch",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "đặt nịch",
+    "replacement": "đặt lịch",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "lên lịt",
+    "replacement": "lên lịch",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thêm nịch",
+    "replacement": "thêm lịch",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "lịch hôm nai",
+    "replacement": "lịch hôm nay",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "lịch của tối",
+    "replacement": "lịch của tôi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "xóa dự liệu",
+    "replacement": "xóa dữ liệu",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "xóa giữ liệu",
+    "replacement": "xóa dữ liệu",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "xoá dự liệu",
+    "replacement": "xóa dữ liệu",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "xóa ghi chu",
+    "replacement": "xóa ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "xóa nghi chú",
+    "replacement": "xóa ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thêm liên lạc",
+    "replacement": "thêm liên hệ",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "thêm lên hệ",
+    "replacement": "thêm liên hệ",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "lưu con tắc",
+    "replacement": "lưu contact",
+    "regex": false,
+    "ignore_case": true
   }
 ]

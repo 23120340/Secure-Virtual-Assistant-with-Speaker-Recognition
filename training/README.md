@@ -42,7 +42,37 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 1. **Random shuffle utterance** — Split 70/15/15 chia theo utterance, KHÔNG group theo `video_id` (YouTube session). Hậu quả: utterance cùng một session có thể leak qua train/val/test → metric có thể đẹp hơn closed-set thật. Đề chuẩn của VoxCeleb1 là `iden_split.txt` per-utt với cùng speaker xuất hiện ở cả 3 split, và `veri_test.txt` (VoxCeleb1-O) là trial pair từ 40 speaker held-out. Phiên bản đang dùng KHÔNG phải VoxCeleb1-O chính thức.
 2. **Trial pair số lượng nhỏ** — Cap positive ở `min(i+4, len(files))` mỗi speaker, sample 1 impostor mỗi cặp speaker → ~24×23/2 = 276 cặp âm. EER trên trial set nhỏ này ít nghĩa thống kê.
 3. **Indian subset bias** — Train trên 24 Indian celebrity → có bias domain (accent, gender ratio, microphone). Khi deploy cho user Việt là OOD scenario — báo cáo cần discuss khoảng cách này.
-4. **Không augmentation** — Chưa có MUSAN noise / RIR reverb / SpecAugment / speed perturb. Đây là lever lớn nhất cho ECAPA-TDNN khi dataset nhỏ; có thể bổ sung future work.
+4. **Augmentation cần retrain** — Đã có khung MUSAN noise / RIR reverb / SpecAugment / speed perturb, nhưng metric mới chỉ có ý nghĩa sau khi retrain trên Kaggle GPU và commit artifact EER/minDCF.
+
+## Training augmentation (Task 2 - P2)
+
+`train_ecapa.py` có pipeline augmentation tùy chọn, chỉ chạy lúc training:
+
+| Augmentation | Vị trí | Flag |
+|---|---|---|
+| MUSAN noise | waveform, sau crop 3s | `--augment --musan-root /path/to/musan` |
+| RIR reverb | waveform, sau crop 3s | `--augment --rir-root /path/to/rirs` |
+| Speed perturb | waveform, sample 0.9x/1.0x/1.1x | `--augment --speed-rates 0.9 1.0 1.1` |
+| SpecAugment | log-mel `[B,T,F]` trước ECAPA | `--augment --specaugment` |
+
+Ví dụ train trên Kaggle khi đã add dataset MUSAN/RIR:
+
+```bash
+!python train_ecapa.py \
+    --data_root /kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian \
+    --split_file /kaggle/working/iden_split.txt \
+    --save_dir /kaggle/working/checkpoints_aug \
+    --epochs 20 --batch_size 64 --lr 1e-3 --num_workers 2 \
+    --augment --specaugment \
+    --musan-root /kaggle/input/musan \
+    --rir-root /kaggle/input/rir-noises \
+    --speed-rates 0.9 1.0 1.1 \
+    --noise-prob 0.5 --rir-prob 0.3 --snr-min 5 --snr-max 20
+```
+
+Nếu chưa có MUSAN/RIR path, flag `--augment --specaugment --speed-rates 0.9 1.0 1.1`
+vẫn chạy được: script sẽ bỏ qua noise/reverb khi không tìm thấy file audio. Đây là
+pipeline retrain từ đầu trên GPU, không làm thay đổi runtime của assistant.
 
 ## Setup trên Kaggle
 

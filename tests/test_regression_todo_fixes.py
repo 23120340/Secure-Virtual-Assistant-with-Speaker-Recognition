@@ -6,7 +6,41 @@ import numpy as np
 from core import handlers
 from core.database import UserDB
 from core.intents import INTENTS, AuthLevel
-from core.nlu import GeminiChat, GeminiNLU
+from core.nlu import GeminiChat, GeminiNLU, RuleBasedNLU
+
+
+def test_explanatory_weather_question_stays_general_question():
+    result = RuleBasedNLU().parse("Vì sao trời mưa")
+
+    assert result == {
+        "intent": "general_question",
+        "entities": {"query": "Vì sao trời mưa"},
+    }
+
+
+def test_gemini_tool_call_for_explanatory_question_is_guarded():
+    class DummyModels:
+        def generate_content(self, **kwargs):
+            return SimpleNamespace(function_calls=[SimpleNamespace(name="get_weather", args={})])
+
+    class DummyTypes:
+        GenerateContentConfig = staticmethod(lambda **kwargs: kwargs)
+        ToolConfig = staticmethod(lambda **kwargs: kwargs)
+        FunctionCallingConfig = staticmethod(lambda **kwargs: kwargs)
+
+    nlu = object.__new__(GeminiNLU)
+    nlu._client = SimpleNamespace(models=DummyModels())
+    nlu._model = "dummy"
+    nlu._types = DummyTypes
+    nlu._tools = []
+    nlu._system = "system"
+
+    result = nlu.parse("Tại sao trời nắng")
+
+    assert result == {
+        "intent": "general_question",
+        "entities": {"query": "Tại sao trời nắng"},
+    }
 
 
 def _add_user(db: UserDB, user_id: str, name: str):
@@ -71,4 +105,55 @@ def test_gemini_chat_handles_empty_text_response():
     chat._model = "dummy"
     chat._types = SimpleNamespace(GenerateContentConfig=lambda **kwargs: kwargs)
 
-    assert "chưa tra được" in chat.answer("hello")
+    assert "không trả nội dung" in chat.answer("hello")
+
+
+def test_gemini_chat_uses_offline_answer_on_api_failure():
+    class DummyModels:
+        def generate_content(self, **kwargs):
+            raise RuntimeError("429 RESOURCE_EXHAUSTED quota")
+
+    chat = object.__new__(GeminiChat)
+    chat._client = SimpleNamespace(models=DummyModels())
+    chat._model = "dummy"
+    chat._types = SimpleNamespace(GenerateContentConfig=lambda **kwargs: kwargs)
+
+    assert chat.answer("thủ đô Việt Nam là gì?") == "Thủ đô Việt Nam là Hà Nội."
+
+
+def test_gemini_chat_reports_key_or_quota_errors():
+    class DummyModels:
+        def generate_content(self, **kwargs):
+            raise RuntimeError("API key was reported as leaked")
+
+    chat = object.__new__(GeminiChat)
+    chat._client = SimpleNamespace(models=DummyModels())
+    chat._model = "dummy"
+    chat._types = SimpleNamespace(GenerateContentConfig=lambda **kwargs: kwargs)
+
+    assert "GEMINI_API_KEY" in chat.answer("câu hỏi lạ")
+
+
+def test_gemini_nlu_no_function_call_becomes_general_question():
+    class DummyModels:
+        def generate_content(self, **kwargs):
+            return SimpleNamespace(function_calls=[])
+
+    class DummyTypes:
+        GenerateContentConfig = staticmethod(lambda **kwargs: kwargs)
+        ToolConfig = staticmethod(lambda **kwargs: kwargs)
+        FunctionCallingConfig = staticmethod(lambda **kwargs: kwargs)
+
+    nlu = object.__new__(GeminiNLU)
+    nlu._client = SimpleNamespace(models=DummyModels())
+    nlu._model = "dummy"
+    nlu._types = DummyTypes
+    nlu._tools = []
+    nlu._system = "system"
+
+    result = nlu.parse("vì sao trời mưa")
+
+    assert result == {
+        "intent": "general_question",
+        "entities": {"query": "vì sao trời mưa"},
+    }

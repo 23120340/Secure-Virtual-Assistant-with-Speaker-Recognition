@@ -5,6 +5,15 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
+# Quiet Windows/HuggingFace startup noise:
+# - SpeechBrain/HF cache may warn about symlinks on Windows; we use COPY where
+#   needed, so the warning is not actionable for this app.
+# - Transformers 5.x can spawn a background safetensors-conversion thread for
+#   .bin-only models such as PhoWhisper. Some repos disable discussions, which
+#   causes a noisy 403 traceback even though model loading succeeds.
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+os.environ.setdefault("DISABLE_SAFETENSORS_CONVERSION", "1")
+
 # ==========================================================================
 # Paths
 # ==========================================================================

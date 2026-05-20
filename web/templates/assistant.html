@@ -398,6 +398,7 @@ async function sendAudio(blob) {
       _playTts();
     }
 
+    rememberAssistantUser(data);
     document.getElementById("flow-indicator")
             .classList.toggle("hidden", !data.flow_active);
     handleTurnAction(data);
@@ -474,6 +475,54 @@ document.getElementById("panel-close").onclick = hidePanel;
 // ════════════════════════════════════════════════════════════
 // SHARED ACTION HANDLER  (voice + text mode)
 // ════════════════════════════════════════════════════════════
+// Reminder polling: backend stores reminders, frontend is the active notifier.
+let _reminderUserId = null;
+let _reminderTimer = null;
+const _reminderSeen = new Set();
+
+function rememberAssistantUser(data) {
+  if (!data || data.blocked || !data.identified_user_id) return;
+  _reminderUserId = data.identified_user_id;
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission().catch(() => {});
+  }
+  if (!_reminderTimer) {
+    pollDueReminders();
+    _reminderTimer = setInterval(pollDueReminders, 15000);
+  }
+}
+
+async function pollDueReminders() {
+  if (!_reminderUserId) return;
+  try {
+    const r = await fetch(`/api/users/${encodeURIComponent(_reminderUserId)}/due-reminders`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const due = (d.due || []).filter(x => !_reminderSeen.has(x.id));
+    if (!due.length) return;
+
+    const ids = due.map(x => x.id);
+    ids.forEach(id => _reminderSeen.add(id));
+    const msg = due.length === 1
+      ? `Đến giờ nhắc: ${due[0].content}`
+      : `Bạn có ${due.length} nhắc việc đã đến hạn. ` + due.map(x => x.content).join("; ");
+
+    showToast(msg);
+    addMsg("bot", msg);
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("Secure VA nhắc việc", { body: msg });
+    }
+    $tts.src = `/api/tts?text=${encodeURIComponent(msg)}`;
+    _playTts();
+
+    await fetch(`/api/users/${encodeURIComponent(_reminderUserId)}/due-reminders`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ack_ids: ids}),
+    });
+  } catch (_) {}
+}
+
 function handleTurnAction(data) {
   if (data.action_type === "oauth_required") {
     showOAuthModal(data.action_data.auth_url, data.identified_user_id);
@@ -644,6 +693,7 @@ let _musicUserId = null;
 let userPlaylist  = [];
 let searchResults = [];
 let queue = [], queueIdx = -1;
+let _suppressAudioError = false;
 
 // Audio controls
 $audio.volume = 0.8;
@@ -659,7 +709,11 @@ $audio.addEventListener("timeupdate", () => {
 $audio.addEventListener("ended", () => { playNext(); });
 $audio.addEventListener("play",  () => { document.getElementById("play-btn").textContent="⏸"; });
 $audio.addEventListener("pause", () => { document.getElementById("play-btn").textContent="▶"; });
-$audio.addEventListener("error", () => { showToast("Không tải được bài này",true); playNext(); });
+$audio.addEventListener("error", () => {
+  if (_suppressAudioError) return;
+  showToast("Không tải được bài này",true);
+  playNext();
+});
 
 document.getElementById("prog-track").addEventListener("click", e => {
   if ($audio.duration) $audio.currentTime = (e.offsetX / e.currentTarget.offsetWidth) * $audio.duration;
@@ -672,9 +726,15 @@ document.getElementById("play-btn").onclick = () => {
 document.getElementById("prev-btn").onclick = () => { if (queueIdx>0) playAt(queueIdx-1); };
 document.getElementById("next-btn").onclick = () => playNext();
 document.getElementById("player-bar-close").onclick = () => {
-  $audio.pause(); $audio.src="";
+  _suppressAudioError = true;
+  $audio.pause();
+  $audio.removeAttribute("src");
+  $audio.load();
+  queue = [];
+  queueIdx = -1;
   $playerBar.classList.add("hidden");
   setPbPad(false);
+  setTimeout(() => { _suppressAudioError = false; }, 0);
 };
 
 function playNext() { if (queueIdx < queue.length-1) playAt(queueIdx+1); }
@@ -1071,6 +1131,7 @@ function showToast(msg, isErr=false) {
       addMsg("bot", data.response);
       if (data.tts_url) { $tts.src = data.tts_url; _playTts(); }
 
+      rememberAssistantUser(data);
       if (data.sv_required && data.blocked && data.identified_user_id) {
         $pwRow.classList.remove("hidden");
         $pw.focus();

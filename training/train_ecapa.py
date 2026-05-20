@@ -25,6 +25,11 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from speechbrain.lobes.models.ECAPA_TDNN import ECAPA_TDNN
 
+try:
+    from .augmentations import SpecAugment, WaveformAugmenter
+except ImportError:
+    from augmentations import SpecAugment, WaveformAugmenter
+
 
 # ==========================================================================
 # AAM-Softmax (ArcFace) loss: chuẩn cho speaker recognition hiện đại
@@ -63,11 +68,13 @@ class VoxCelebSID(Dataset):
     SPLIT_MAP = {"train": 1, "val": 2, "test": 3}
 
     def __init__(self, root_dir, split_file, split,
-                 sample_rate=16000, duration=3.0, spk2idx=None):
+                 sample_rate=16000, duration=3.0, spk2idx=None,
+                 waveform_augmenter=None):
         self.root_dir = Path(root_dir)
         self.sample_rate = sample_rate
         self.num_samples = int(sample_rate * duration)
         self.split = split
+        self.waveform_augmenter = waveform_augmenter
 
         target = self.SPLIT_MAP[split]
         self.files = []
@@ -103,6 +110,8 @@ class VoxCelebSID(Dataset):
             wav = wav[start:start + self.num_samples]
         else:
             wav = F.pad(wav, (0, self.num_samples - wav.size(0)))
+        if self.split == "train" and self.waveform_augmenter is not None:
+            wav = self.waveform_augmenter(wav)
         return wav
 
     def __getitem__(self, idx):
@@ -136,7 +145,7 @@ class FbankExtractor(nn.Module):
 # Train loop
 # ==========================================================================
 def run_epoch(loader, feat, model, classifier, optimizer, device, train=True,
-              *, metric_logger=None, epoch_idx: int = 0):
+              *, metric_logger=None, epoch_idx: int = 0, spec_augment=None):
     """Run 1 epoch train hoặc eval.
 
     `metric_logger` (optional MetricLogger): nếu truyền, log per-batch loss/acc
@@ -154,6 +163,8 @@ def run_epoch(loader, feat, model, classifier, optimizer, device, train=True,
         for batch_idx, (wav, label) in enumerate(tqdm(loader, desc=desc, leave=False)):
             wav, label = wav.to(device), label.to(device)
             mel = feat(wav)
+            if train and spec_augment is not None:
+                mel = spec_augment(mel)
             emb = model(mel).squeeze(1)  # [B, 1, D] -> [B, D]
             loss, acc = classifier(emb, label)
 
@@ -186,10 +197,37 @@ def main(args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
-    train_ds = VoxCelebSID(args.data_root, args.split_file, "train")
+    waveform_augmenter = None
+    if args.augment:
+        waveform_augmenter = WaveformAugmenter(
+            sample_rate=args.sample_rate,
+            num_samples=int(args.sample_rate * args.duration),
+            musan_root=args.musan_root,
+            rir_root=args.rir_root,
+            speed_rates=args.speed_rates,
+            speed_prob=args.speed_prob,
+            noise_prob=args.noise_prob,
+            rir_prob=args.rir_prob,
+            snr_db=(args.snr_min, args.snr_max),
+        )
+        print(
+            "Augmentation enabled | "
+            f"MUSAN files={len(waveform_augmenter.musan_files)} | "
+            f"RIR files={len(waveform_augmenter.rir_files)} | "
+            f"speed={args.speed_rates}"
+        )
+
+    train_ds = VoxCelebSID(
+        args.data_root, args.split_file, "train",
+        sample_rate=args.sample_rate, duration=args.duration,
+        waveform_augmenter=waveform_augmenter,
+    )
     # Giữ chung mapping speaker giữa train/val
-    val_ds = VoxCelebSID(args.data_root, args.split_file, "val",
-                         spk2idx=train_ds.spk2idx)
+    val_ds = VoxCelebSID(
+        args.data_root, args.split_file, "val",
+        sample_rate=args.sample_rate, duration=args.duration,
+        spk2idx=train_ds.spk2idx,
+    )
     print(f"Train: {len(train_ds)} | Val: {len(val_ds)} | "
           f"Speakers: {len(train_ds.spk2idx)}")
 
@@ -199,7 +237,15 @@ def main(args):
     val_loader = DataLoader(val_ds, batch_size=args.batch_size,
                             shuffle=False, num_workers=args.num_workers)
 
-    feat = FbankExtractor().to(device)
+    feat = FbankExtractor(sample_rate=args.sample_rate).to(device)
+    spec_augment = None
+    if args.augment and args.specaugment:
+        spec_augment = SpecAugment(
+            freq_masks=args.freq_masks,
+            time_masks=args.time_masks,
+            max_freq_width=args.max_freq_width,
+            max_time_width=args.max_time_width,
+        ).to(device)
     model = ECAPA_TDNN(input_size=80, lin_neurons=192,
                        channels=[512, 512, 512, 512, 1536]).to(device)
     classifier = AAMSoftmax(192, len(train_ds.spk2idx)).to(device)
@@ -256,6 +302,7 @@ def main(args):
             tr_loss, tr_acc = run_epoch(
                 train_loader, feat, model, classifier, optimizer, device,
                 train=True, metric_logger=metric_logger, epoch_idx=epoch - 1,
+                spec_augment=spec_augment,
             )
             val_loss, val_acc = run_epoch(val_loader, feat, model, classifier,
                                           optimizer, device, train=False)
@@ -305,6 +352,30 @@ if __name__ == "__main__":
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--num_workers", type=int, default=4)
+    p.add_argument("--sample_rate", type=int, default=16000)
+    p.add_argument("--duration", type=float, default=3.0,
+                   help="Training crop length in seconds")
+    # Training augmentation (optional; best run on Kaggle/GPU retrain)
+    p.add_argument("--augment", action="store_true",
+                   help="Enable training-only augmentation pipeline")
+    p.add_argument("--musan-root", default=None,
+                   help="Root folder containing MUSAN speech/music/noise audio")
+    p.add_argument("--rir-root", default=None,
+                   help="Root folder containing RIR impulse-response audio")
+    p.add_argument("--speed-rates", type=float, nargs="+",
+                   default=[0.9, 1.0, 1.1],
+                   help="Speed perturb factors sampled during training")
+    p.add_argument("--speed-prob", type=float, default=1.0)
+    p.add_argument("--noise-prob", type=float, default=0.5)
+    p.add_argument("--rir-prob", type=float, default=0.3)
+    p.add_argument("--snr-min", type=float, default=5.0)
+    p.add_argument("--snr-max", type=float, default=20.0)
+    p.add_argument("--specaugment", action="store_true",
+                   help="Apply SpecAugment on log-mel features during training")
+    p.add_argument("--freq-masks", type=int, default=2)
+    p.add_argument("--time-masks", type=int, default=2)
+    p.add_argument("--max-freq-width", type=int, default=8)
+    p.add_argument("--max-time-width", type=int, default=40)
     # ── Metric logging (optional) ────────────────────────────────────────
     # Cả 2 backend đều no-op khi flag tắt (default). Bật khi cần debug/share:
     #   --tensorboard         → log local vào <save_dir>/runs (no API key)

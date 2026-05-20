@@ -19,6 +19,14 @@ from .intents import INTENTS
 _log = logging.getLogger("secva.nlu")
 
 
+def _looks_like_explanatory_question(text: str) -> bool:
+    """Questions asking why/how should go to general QA, not action intents."""
+    t = text.lower().strip()
+    if re.match(r"^(vì sao|tại sao|do đâu|nguyên nhân|lý do)\b", t):
+        return True
+    return bool(re.search(r"\b(giải thích|vì sao|tại sao)\b", t))
+
+
 # ==========================================================================
 # Gemini function-calling NLU
 # ==========================================================================
@@ -144,10 +152,12 @@ class GeminiNLU:
             return GeminiNLU._fallback.parse(text)
 
         if not fcs:
-            return {"intent": "unknown", "entities": {}}
+            return {"intent": "general_question", "entities": {"query": text}}
 
         fc = fcs[0]  # single-intent semantics — bỏ qua multi-tool composition
         intent = fc.name if fc.name in INTENTS else "unknown"
+        if intent != "unknown" and _looks_like_explanatory_question(text):
+            return {"intent": "general_question", "entities": {"query": text}}
         if intent == "unknown":
             return {"intent": "unknown", "entities": {}}
 
@@ -181,7 +191,40 @@ class GeminiChat:
         self._model  = model_name
         self._types  = types
 
+    @staticmethod
+    def _offline_answer(question: str) -> str:
+        q = question.lower().strip(" ?.!,")
+        facts = [
+            (("thủ đô việt nam", "thu do viet nam"), "Thủ đô Việt Nam là Hà Nội."),
+            (("thủ đô pháp", "thu do phap"), "Thủ đô nước Pháp là Paris."),
+            (("thủ đô nhật", "thu do nhat"), "Thủ đô Nhật Bản là Tokyo."),
+            (("thủ đô mỹ", "thu do my", "thủ đô hoa kỳ"), "Thủ đô Hoa Kỳ là Washington, D.C."),
+            (("1 năm có bao nhiêu ngày", "một năm có bao nhiêu ngày"), "Một năm thường có 365 ngày; năm nhuận có 366 ngày."),
+            (("python là gì", "python la gi"), "Python là một ngôn ngữ lập trình bậc cao, dễ đọc, thường dùng cho web, AI, dữ liệu và tự động hóa."),
+            (("blockchain là gì", "blockchain la gi"), "Blockchain là sổ cái dữ liệu phân tán, lưu các khối thông tin nối với nhau bằng mã hóa để khó bị sửa đổi."),
+            (("ai phát minh ra điện thoại", "ai phat minh ra dien thoai"), "Alexander Graham Bell thường được ghi nhận là người phát minh ra điện thoại."),
+            (("vì sao trời mưa", "tại sao trời mưa", "vi sao troi mua", "tai sao troi mua"), "Trời mưa vì hơi nước bốc lên, ngưng tụ thành mây; khi giọt nước đủ nặng, chúng rơi xuống thành mưa."),
+            (("vì sao trời nắng", "tại sao trời nắng", "vi sao troi nang", "tai sao troi nang"), "Trời nắng khi mây ít hoặc mỏng, ánh sáng Mặt Trời chiếu xuống mặt đất rõ hơn."),
+        ]
+        for needles, answer in facts:
+            if any(needle in q for needle in needles):
+                return answer
+        return ""
+
+    @staticmethod
+    def _error_answer(error: Exception) -> str:
+        detail = str(error)
+        if "API key was reported as leaked" in detail or "PERMISSION_DENIED" in detail:
+            return "Gemini API key hiện bị Google từ chối vì đã bị lộ. Hãy tạo key mới và cập nhật GEMINI_API_KEY trong file .env."
+        if "RESOURCE_EXHAUSTED" in detail or "quota" in detail.lower() or "429" in detail:
+            return "Gemini đang hết quota cho API key hiện tại. Hãy đợi reset quota hoặc thay GEMINI_API_KEY mới để mình trả lời câu hỏi tổng quát."
+        return "Xin lỗi, mình chưa tra được thông tin lúc này. Thử lại sau nhé."
+
     def answer(self, question: str, user_name: str = "") -> str:
+        offline = self._offline_answer(question)
+        if offline:
+            return offline
+
         prompt = f"{user_name} hỏi: {question}" if user_name else question
         try:
             resp = self._client.models.generate_content(
@@ -194,10 +237,11 @@ class GeminiChat:
             )
             answer = (resp.text or "").strip()
             if not answer:
-                return "Xin lỗi, mình chưa tra được thông tin lúc này. Thử lại sau nhé."
+                return "Gemini không trả nội dung cho câu hỏi này. Bạn thử hỏi lại cụ thể hơn nhé."
             return answer
-        except Exception:
-            return "Xin lỗi, mình chưa tra được thông tin lúc này. Thử lại sau nhé."
+        except Exception as e:
+            _log.warning("GeminiChat error: %s", e)
+            return self._error_answer(e)
 
 
 _chat_instance: "GeminiChat | None" = None
@@ -255,6 +299,8 @@ class RuleBasedNLU:
 
     def parse(self, text: str) -> Dict[str, Any]:
         t = text.lower().strip()
+        if _looks_like_explanatory_question(text):
+            return {"intent": "general_question", "entities": {"query": text}}
         for intent, kws in self.KEYWORD_MAP:
             if any(kw in t for kw in kws):
                 return {"intent": intent, "entities": self._extract(intent, t)}
