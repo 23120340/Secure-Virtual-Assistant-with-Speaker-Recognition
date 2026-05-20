@@ -238,7 +238,8 @@ class RuleBasedNLU:
                           "thêm cuộc hẹn", "thêm vào lịch", "tạo lịch",
                           "thêm task vào lịch"]),
         ("read_notes", ["đọc ghi chú", "mở nhật ký", "đọc nhật ký", "ghi chú của tôi"]),
-        ("send_email", ["gửi email", "gửi mail", "soạn mail", "viết mail", "viết email"]),
+        ("send_email", ["gửi email", "gửi mail", "soạn mail", "viết mail", "viết email",
+                        "mail cho", "email cho"]),
         ("check_balance", ["số dư", "bao nhiêu tiền", "kiểm tra tài khoản"]),
         # open_files đặt TRƯỚC delete_data: "xóa file" phải match open_files (giả định
         # user muốn vào panel files để xóa, không phải xóa preferences/notes).
@@ -271,10 +272,19 @@ class RuleBasedNLU:
                     return {"genre": genre}
         if intent == "send_email":
             # "gửi email cho anh Tuấn" / "soạn mail tới lan@gmail.com"
-            m = re.search(r"(?:cho|tới|đến|gửi)\s+([^.,!?\n]+?)(?:\s+về|\s+với|\s+nội dung|$)",
-                          text)
+            m = re.search(
+                r"(?:mail|email|thư điện tử)\s+(?:cho|tới|đến)\s+([^.,!?\n]+?)(?:\s+về|\s+với|\s+nội dung|$)",
+                text,
+            )
+            if not m:
+                m = re.search(r"(?:cho|tới|đến)\s+([^.,!?\n]+?)(?:\s+về|\s+với|\s+nội dung|$)",
+                              text)
+            if not m:
+                m = re.search(r"(?:gửi|soạn|viết)\s+(?:mail|email|thư điện tử)?\s*([^.,!?\n]+?)(?:\s+về|\s+với|\s+nội dung|$)",
+                              text)
             if m:
                 recipient = m.group(1).strip()
+                recipient = re.sub(r"^(?:mail|email|thư điện tử)\s+", "", recipient).strip()
                 if "@" in recipient:
                     return {"recipient_email": recipient}
                 return {"recipient": recipient}

@@ -93,15 +93,7 @@
               <span id="ptt-label" style="font-size:.68rem">Bấm &amp; giữ</span>
             </button>
           </div>
-          <!-- VU Meter bars -->
-          <div id="vu-meter" class="vu-meter">
-            <div class="vu-bar"></div><div class="vu-bar"></div><div class="vu-bar"></div>
-            <div class="vu-bar"></div><div class="vu-bar"></div><div class="vu-bar"></div>
-            <div class="vu-bar"></div><div class="vu-bar"></div><div class="vu-bar"></div>
-            <div class="vu-bar"></div><div class="vu-bar"></div><div class="vu-bar"></div>
-            <div class="vu-bar"></div><div class="vu-bar"></div><div class="vu-bar"></div>
-            <div class="vu-bar"></div>
-          </div>
+          <!-- VU Meter bars đã xoá theo yêu cầu — voice-rings + nút PTT là đủ feedback. -->
         </div>
 
         <!-- ── Text mode ──────────────────────────────────── -->
@@ -431,19 +423,23 @@
    USER DETAIL MODAL
    ───────────────────────────────────────────────────────── #}
 <div id="user-modal"
-     class="hidden fixed inset-0 bg-black/50 z-50 flex items-start justify-center py-8 overflow-y-auto">
-  <div class="max-w-lg w-full mx-4 bg-white rounded-xl shadow-2xl">
+     class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="max-w-lg w-full bg-white rounded-xl shadow-2xl flex flex-col"
+       style="max-height:calc(100vh - 2rem)">
 
-    <!-- Header -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.1rem 1.5rem;border-bottom:1px solid rgba(0,0,0,.07)">
-      <div>
-        <h3 id="modal-user-name" style="font-size:1.1rem;font-weight:700;margin:0"></h3>
-        <p  id="modal-user-id"   style="font-size:.78rem;color:var(--txt-2);margin:.15rem 0 0"></p>
+    <!-- Header (sticky-ish — luôn ở đầu card khi scroll body) -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:1px solid rgba(0,0,0,.07);background:#fff;border-top-left-radius:.75rem;border-top-right-radius:.75rem;flex-shrink:0">
+      <div style="min-width:0;flex:1;padding-right:.5rem">
+        <h3 id="modal-user-name" style="font-size:1.15rem;font-weight:700;margin:0;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></h3>
+        <p  id="modal-user-id"   style="font-size:.78rem;color:var(--txt-2);margin:.2rem 0 0;line-height:1.3"></p>
       </div>
       <button id="modal-close"
-              style="color:var(--txt-2);background:none;border:none;cursor:pointer;font-size:1.5rem;line-height:1;padding:.25rem .5rem;border-radius:.5rem"
+              style="color:var(--txt-2);background:none;border:none;cursor:pointer;font-size:1.5rem;line-height:1;padding:.25rem .5rem;border-radius:.5rem;flex-shrink:0"
               onmouseover="this.style.color='var(--txt)'" onmouseout="this.style.color='var(--txt-2)'">✕</button>
     </div>
+
+    <!-- Scrollable body wrapper — chỉ phần này scroll, header luôn nhìn thấy -->
+    <div id="modal-body-scroll" style="overflow-y:auto;flex:1;min-height:0">
 
     <!-- Password lock -->
     <div id="modal-lock" style="padding:1.25rem 1.5rem">
@@ -630,7 +626,7 @@
           <div id="modal-voice-revoke-banner" class="hidden"
                style="margin-bottom:.7rem;padding:.6rem .75rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;font-size:.78rem;color:#b91c1c">
             Admin đã thu hồi vector giọng. Bạn phải <strong>Đăng ký lại</strong> trước khi
-            dùng được tác vụ IMPORTANT (đọc ghi chú, gửi email…).
+            dùng được tác vụ quan trọng (đọc ghi chú, gửi email…).
           </div>
           <div style="display:flex;flex-direction:column;gap:.5rem">
             <div id="modal-voice-samples-list" style="display:flex;flex-direction:column;gap:.35rem"></div>
@@ -747,6 +743,7 @@
       </div><!-- end modal-tab-music -->
 
     </div><!-- end modal-editor -->
+    </div><!-- end modal-body-scroll -->
   </div><!-- end card -->
 </div><!-- end user-modal -->
 
@@ -954,7 +951,9 @@ function togglePwEye(inputId, btnEl) {
 // PTT  (Push-to-talk)
 // ════════════════════════════════════════════════════════════
 let _mr = null, _chunks = [], _stream = null;
-let _starting = false, _pendingStop = false;
+let _starting = false, _pendingStop = false, _aborted = false;
+let _recStartTime = 0;
+const MIN_REC_MS = 500;
 
 const $chat   = document.getElementById("chat");
 const $pttBtn = document.getElementById("ptt-btn");
@@ -1048,9 +1047,10 @@ async function startRec() {
     _mr.ondataavailable = e => { if (e.data.size > 0) _chunks.push(e.data); };
     _mr.onstop = async () => {
       _stream.getTracks().forEach(t => t.stop());
+      if (_aborted) { _aborted = false; return; }
       await sendAudio(new Blob(_chunks, {type: _mr.mimeType}));
     };
-    _mr.start(); _starting = false;
+    _mr.start(); _recStartTime = Date.now(); _starting = false;
     setPttRec(true); $pttSts.textContent = "Đang nghe… thả tay để gửi";
   } catch(e) {
     _starting = false;
@@ -1063,6 +1063,13 @@ async function startRec() {
 function stopRec() {
   if (_starting) { _pendingStop = true; return; }
   if (_mr?.state === "recording") {
+    if (Date.now() - _recStartTime < MIN_REC_MS) {
+      _aborted = true;
+      _mr.stop(); setPttRec(false);
+      $pttSts.textContent = "Sẵn sàng";
+      document.getElementById("voice-rings").className = "voice-rings idle";
+      return;
+    }
     _mr.stop(); setPttRec(false);
     document.getElementById("voice-rings").className = "voice-rings processing";
     $pttSts.textContent = "Đang xử lý...";
@@ -1096,6 +1103,12 @@ async function sendAudio(blob) {
   try {
     const r = await fetch("/api/assistant/turn", {method: "POST", body: fd});
     const data = await r.json();
+    if (data && data.no_audio) {
+      // Click không giữ / audio rỗng → silently reset, không show lỗi.
+      $pttSts.textContent = "Sẵn sàng";
+      document.getElementById("voice-rings").className = "voice-rings idle";
+      return;
+    }
     if (!r.ok) { addMsg("bot", "Lỗi: " + data.error); $pttSts.textContent = "Sẵn sàng"; return; }
     addMsg("user", data.transcript);
     addMeta(data);
@@ -1221,6 +1234,26 @@ function handleTurnAction(data) {
 // ════════════════════════════════════════════════════════════
 let _modalOAuthTimer = null;
 
+// Monochrome SVG icons cho trạng thái OAuth — match style các icon khác trong app
+// (stroke-based, 1.5px stroke width).
+const _ICON_CHECK = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
+const _ICON_ALERT = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+
+function _oauthStatusHtml(authed, gmail) {
+  if (authed) {
+    return (
+      `<span style="display:inline-flex;align-items:center;gap:.4rem;color:#047857">`
+      + _ICON_CHECK
+      + `<span>Đã xác thực: <strong>${esc(gmail)}</strong></span></span>`
+    );
+  }
+  return (
+    `<span style="display:inline-flex;align-items:center;gap:.4rem;color:#b45309">`
+    + _ICON_ALERT
+    + `<span>Chưa xác thực Gmail</span></span>`
+  );
+}
+
 function loadModalOAuth(uid) {
   const $status  = document.getElementById("modal-oauth-status-text");
   const $authBtn = document.getElementById("modal-oauth-auth-btn");
@@ -1233,11 +1266,11 @@ function loadModalOAuth(uid) {
     .then(r => r.json())
     .then(d => {
       if (d.authenticated) {
-        $status.textContent = `✅ Đã xác thực: ${d.gmail}`;
+        $status.innerHTML = _oauthStatusHtml(true, d.gmail);
         $authBtn.classList.add("hidden");
         $revBtn.classList.remove("hidden");
       } else {
-        $status.textContent = "⚠ Chưa xác thực Gmail";
+        $status.innerHTML = _oauthStatusHtml(false, "");
         $authBtn.classList.remove("hidden");
         $revBtn.classList.add("hidden");
       }
@@ -1275,7 +1308,7 @@ function _onModalOAuthSuccess(gmail) {
   const $authBtn = document.getElementById("modal-oauth-auth-btn");
   const $revBtn  = document.getElementById("modal-oauth-revoke-btn");
   const $msg     = document.getElementById("modal-oauth-msg");
-  $status.textContent = `✅ Đã xác thực: ${gmail}`;
+  $status.innerHTML = _oauthStatusHtml(true, gmail);
   $authBtn.classList.add("hidden");
   $revBtn.classList.remove("hidden");
   $msg.style.display = "none";
@@ -1325,7 +1358,7 @@ function startOAuthPolling() {
 
 function _onOAuthSuccess(gmail) {
   if (_oauthTimer) { clearInterval(_oauthTimer); _oauthTimer = null; }
-  document.getElementById("oauth-poll-status").textContent = `✅ Đã xác thực: ${gmail}`;
+  document.getElementById("oauth-poll-status").innerHTML = _oauthStatusHtml(true, gmail);
   setTimeout(() => {
     document.getElementById("oauth-modal").classList.add("hidden");
     addMsg("bot", `✅ Gmail đã xác thực (${gmail}). Nói "có" để gửi email.`);
@@ -1677,8 +1710,11 @@ async function startFv() {
       const fd = new FormData(); fd.append("audio", blob, "fv.webm");
       const r = await fetch("/api/files/verify", {method:"POST", body:fd});
       const d = await r.json();
-      if (!r.ok) {
-        $fvStatus.textContent = "✗ " + d.error;
+      if (d && d.no_audio) {
+        $fvStatus.textContent = "Giữ nút để xác thực"; return;
+      }
+      if (!r.ok || d.error) {
+        $fvStatus.textContent = "✗ " + (d.error || "Xác thực thất bại");
         $fvStatus.style.color = "#ef4444"; return;
       }
       onFilesVerified(d);
@@ -2011,6 +2047,8 @@ async function openModal(uid, name) {
   document.getElementById("modal-forgot-code-row").classList.add("hidden");
   document.getElementById("modal-forgot-code-row").style.display = "none";
   document.getElementById("modal-forgot-confirm-btn").classList.add("hidden");
+  document.getElementById("modal-forgot-request-btn").dataset.adminFallback = "";
+  document.getElementById("modal-forgot-request-btn").textContent = "Gửi mã / yêu cầu";
   ["modal-forgot-code", "modal-forgot-new-pw", "modal-forgot-new-pw2"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = "";
@@ -2118,11 +2156,16 @@ document.getElementById("modal-forgot-pw-btn").onclick = () => {
 
 document.getElementById("modal-forgot-request-btn").onclick = async () => {
   const $info = document.getElementById("modal-forgot-pw-info");
+  const $btn = document.getElementById("modal-forgot-request-btn");
   if (!_modalUid) return;
+  const forceAdmin = $btn.dataset.adminFallback === "1";
   const r = await fetch(`/api/users/${_modalUid}/forgot-password/request`, {
     method: "POST",
     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
-    body: JSON.stringify({}),
+    body: JSON.stringify(forceAdmin ? {
+      force_admin_request: true,
+      note: "User chose admin fallback after Gmail reset failed/expired",
+    } : {}),
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) {
@@ -2136,8 +2179,26 @@ document.getElementById("modal-forgot-request-btn").onclick = async () => {
     row.classList.remove("hidden");
     row.style.display = "grid";
     document.getElementById("modal-forgot-confirm-btn").classList.remove("hidden");
+    $btn.dataset.adminFallback = "";
+    $btn.textContent = "Gửi mã / yêu cầu";
+  } else if (d.mode === "email_failed" && d.allow_admin_request) {
+    $info.textContent = d.message || "Không gửi được email reset. Bạn có thể gửi yêu cầu cho quản trị viên.";
+    $info.style.color = "#be123c";
+    $btn.dataset.adminFallback = "1";
+    $btn.textContent = "Gửi yêu cầu cho admin";
+    document.getElementById("modal-forgot-code-row").classList.add("hidden");
+    document.getElementById("modal-forgot-code-row").style.display = "none";
+    document.getElementById("modal-forgot-confirm-btn").classList.add("hidden");
+    return;
   } else {
-    $info.textContent = d.message || "Đã gửi yêu cầu cho quản trị viên.";
+    $info.textContent = (d.message || "Đã gửi yêu cầu cho quản trị viên.") +
+      " Khi admin cấp mã reset, nhập mã và mật khẩu mới bên dưới.";
+    const row = document.getElementById("modal-forgot-code-row");
+    row.classList.remove("hidden");
+    row.style.display = "grid";
+    document.getElementById("modal-forgot-confirm-btn").classList.remove("hidden");
+    $btn.dataset.adminFallback = "";
+    $btn.textContent = "Gửi mã / yêu cầu";
   }
   $info.style.color = "#047857";
 };
@@ -2844,13 +2905,13 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
         <div style="margin-bottom:.4rem">${pwBadge}</div>
         <div style="margin-top:.7rem;padding:.6rem;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:6px;font-size:.78rem;color:#92400e">
           Admin KHÔNG xem được password / preferences / token. Chính sách no-recover.
-          Nếu user mất quyền truy cập, dùng <strong>Yêu cầu re-enroll</strong> để bắt user đăng ký lại giọng.
+          Nếu user mất quyền truy cập, dùng <strong>Yêu cầu đăng ký lại</strong> để bắt user đăng ký lại giọng.
           Nút <strong>Revoke</strong> bên ngoài dùng để xoá hẳn user.
         </div>
       </div>`;
     showAdminDialog(`Thông tin ${name || userId}`, html, [
       { label: "Đóng", style: "secondary" },
-      { label: "Yêu cầu re-enroll", style: "danger",
+      { label: "Yêu cầu đăng ký lại", style: "danger",
         onClick: () => requestReenroll(userId, name) },
     ]);
   }
@@ -2871,7 +2932,7 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) {
-      showToast(d.error || "Gửi yêu cầu re-enroll thất bại", true);
+      showToast(d.error || "Gửi yêu cầu đăng ký lại thất bại", true);
       return;
     }
     showToast(`Đã yêu cầu ${name || userId} đăng ký lại giọng nói.`);
@@ -2934,7 +2995,7 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     if ($dlg) $dlg.remove();
   }
 
-  function renderResetRequests(requests) {
+  function renderResetRequestsLegacy(requests) {
     const wrap = document.getElementById("admin-reset-requests");
     const list = document.getElementById("admin-reset-list");
     if (!wrap || !list) return;
@@ -2966,6 +3027,121 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
     });
   }
 
+  function renderResetRequests(requests) {
+    const wrap = document.getElementById("admin-reset-requests");
+    const list = document.getElementById("admin-reset-list");
+    if (!wrap || !list) return;
+    if (!requests.length) {
+      wrap.classList.add("hidden");
+      list.innerHTML = "";
+      return;
+    }
+    wrap.classList.remove("hidden");
+    list.innerHTML = "";
+    requests.forEach(req => {
+      const row = document.createElement("div");
+      const when = req.requested_at
+        ? new Date(req.requested_at * 1000).toLocaleString("vi-VN")
+        : "";
+      row.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;padding:.65rem .75rem;border:1px solid rgba(0,0,0,.08);border-radius:8px;background:rgba(248,250,252,.8);font-size:.82rem";
+      row.innerHTML =
+        `<div style="min-width:0;line-height:1.45">` +
+          `<div><strong>${esc(req.name || req.user_id)}</strong> <code style="color:var(--txt-2)">${esc(req.user_id)}</code></div>` +
+          `<div style="color:var(--txt-2);font-size:.76rem">${esc(when)}</div>` +
+          `${req.note ? `<div style="color:var(--txt-2);font-size:.76rem;white-space:normal">${esc(req.note)}</div>` : ""}` +
+        `</div>` +
+        `<div style="display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end">` +
+          `<button class="btn-reset-approve" style="font-size:.76rem;color:#fff;background:var(--c-violet);border:1px solid rgba(124,58,237,.25);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer">Duyệt & cấp mã</button>` +
+          `<button class="btn-reset-reject" style="font-size:.76rem;color:#991b1b;background:#fff;border:1px solid rgba(153,27,27,.22);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer">Từ chối</button>` +
+        `</div>`;
+      row.querySelector(".btn-reset-approve").onclick = () => approveResetRequest(req, row);
+      row.querySelector(".btn-reset-reject").onclick = async () => {
+        const adminNote = window.prompt(
+          `Lý do từ chối yêu cầu của "${req.name || req.user_id}"?`,
+          "Không xác minh được danh tính"
+        );
+        if (adminNote === null) return;
+        const r = await fetch(`/api/admin/password-reset-requests/${req.id}/resolve`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"},
+          body: JSON.stringify({
+            admin_password: _adminPw,
+            status: "rejected",
+            verification_method: "other",
+            admin_note: adminNote,
+          }),
+        });
+        if (!r.ok) return showToast("Không cập nhật được yêu cầu", true);
+        row.remove();
+        if (!list.children.length) wrap.classList.add("hidden");
+      };
+      list.appendChild(row);
+    });
+  }
+
+  function approveResetRequest(req, row) {
+    const html = `
+      <div style="font-size:.84rem;line-height:1.5">
+        <div style="margin-bottom:.65rem">
+          Chỉ cấp mã sau khi đã xác minh đúng người dùng
+          <strong>${esc(req.name || req.user_id)}</strong>.
+        </div>
+        <label style="display:block;font-weight:600;margin-bottom:.25rem">Phương thức xác minh</label>
+        <select id="reset-verify-method" style="width:100%;padding:.55rem .65rem;border:1px solid rgba(15,23,42,.14);border-radius:8px;margin-bottom:.75rem">
+          <option value="known_channel">Kênh đã biết trước</option>
+          <option value="gmail_reconsent">Gmail / re-consent</option>
+          <option value="in_person">Gặp trực tiếp / giấy tờ</option>
+          <option value="voice_check">Kiểm tra giọng nói</option>
+          <option value="other">Khác</option>
+        </select>
+        <label style="display:block;font-weight:600;margin-bottom:.25rem">Ghi chú xác minh</label>
+        <textarea id="reset-admin-note" rows="3" placeholder="VD: Đã xác minh qua tài khoản lớp chính thức lúc 14:20"
+          style="width:100%;resize:vertical;padding:.55rem .65rem;border:1px solid rgba(15,23,42,.14);border-radius:8px"></textarea>
+        <div style="margin-top:.65rem;padding:.55rem .65rem;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:8px;color:#92400e;font-size:.78rem">
+          Mã reset sẽ chỉ hiện một lần. Không gửi qua kênh chưa xác minh.
+        </div>
+      </div>`;
+    showAdminDialog("Duyệt yêu cầu reset", html, [
+      { label: "Hủy", style: "secondary" },
+      { label: "Cấp mã reset", style: "primary", onClick: async () => {
+        const method = document.getElementById("reset-verify-method").value;
+        const note = document.getElementById("reset-admin-note").value.trim();
+        if (note.length < 8) {
+          showToast("Cần ghi chú xác minh tối thiểu 8 ký tự", true);
+          return;
+        }
+        const r = await fetch(`/api/admin/password-reset-requests/${req.id}/approve`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"},
+          body: JSON.stringify({
+            admin_password: _adminPw,
+            verification_method: method,
+            admin_note: note,
+          }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          showToast(d.error || "Không cấp được mã reset", true);
+          return;
+        }
+        row.remove();
+        const list = document.getElementById("admin-reset-list");
+        const wrap = document.getElementById("admin-reset-requests");
+        if (list && wrap && !list.children.length) wrap.classList.add("hidden");
+        showAdminDialog("Mã reset một lần", `
+          <div style="font-size:.86rem;line-height:1.55">
+            <div style="margin-bottom:.6rem">${esc(d.message || "Chuyển mã này cho user qua kênh đã xác minh.")}</div>
+            <div style="font-size:1.8rem;font-weight:800;letter-spacing:.16em;text-align:center;padding:.7rem;border:1px dashed rgba(124,58,237,.35);border-radius:8px;color:var(--c-violet);background:rgba(124,58,237,.06)">${esc(d.code)}</div>
+            <div style="margin-top:.6rem;color:var(--txt-2);font-size:.78rem">Hết hạn sau ${Math.round((d.expires_in_sec || 900) / 60)} phút. User nhập mã này ở phần Quên mật khẩu để tự đặt mật khẩu mới.</div>
+          </div>`, [
+          { label: "Đã hiểu", style: "primary" },
+        ]);
+      }},
+    ]);
+  }
+
   function renderAdminTable(users) {
     $tbody.innerHTML = "";
     if (!users.length) { $empty.classList.remove("hidden"); return; }
@@ -2982,7 +3158,7 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
         `<td style="padding:.65rem 1.1rem;color:var(--txt-2);font-size:.82rem">${esc(u.created_at)}</td>` +
         `<td style="padding:.65rem 1.1rem;text-align:right;white-space:nowrap">` +
           `<button class="btn-admin-info" style="font-size:.76rem;color:#334155;background:#fff;border:1px solid rgba(51,65,85,.18);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.35rem">Xem</button>` +
-          `<button class="btn-admin-reroll" style="font-size:.76rem;color:#334155;background:#fff;border:1px solid rgba(51,65,85,.18);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.35rem">Yêu cầu</button>` +
+          `<button class="btn-admin-reroll" style="font-size:.76rem;color:#334155;background:#fff;border:1px solid rgba(51,65,85,.18);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.35rem">Reroll</button>` +
           `<button class="btn-admin-revoke" style="font-size:.76rem;color:#991b1b;background:#fff;border:1px solid rgba(153,27,27,.22);border-radius:var(--r-btn);padding:.35rem .65rem;cursor:pointer;margin-right:.35rem">Revoke</button>` +
           `<button class="btn-admin-edit btn-primary btn-sm">Sửa</button>` +
         `</td>`;

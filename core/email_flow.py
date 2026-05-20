@@ -103,10 +103,11 @@ def start_flow(initial_recipient: str = "", contacts: list = None) -> tuple:
                          recipient_email=initial_recipient)
             return (f"Đã nhận địa chỉ {initial_recipient}. "
                     "Chủ đề email là gì?"), state
-        # Tên nhưng không tìm được → hỏi email
+        # Tên nhưng không tìm được → hỏi email HOẶC tên lại
         state.update(step="email", recipient_name=initial_recipient)
         return (f"Không tìm thấy '{initial_recipient}' trong danh bạ. "
-                "Vui lòng nhập địa chỉ email của người nhận:"), state
+                "Bạn có thể đọc lại tên rõ hơn, hoặc đọc / nhập trực tiếp "
+                "địa chỉ email người nhận (vd: ten@gmail.com):"), state
 
     return "Bạn muốn gửi email cho ai?", state
 
@@ -146,15 +147,27 @@ def continue_flow(text: str, state: dict, contacts: list = None) -> tuple:
             return f"Đã nhận địa chỉ {t}. Chủ đề email là gì?", state, False
         state.update(step="email", recipient_name=t)
         return (f"Không tìm thấy '{t}' trong danh bạ. "
-                "Vui lòng nhập địa chỉ email người nhận:"), state, False
+                "Bạn có thể đọc lại tên rõ hơn, hoặc đọc / nhập trực tiếp "
+                "địa chỉ email người nhận (vd: ten@gmail.com):"), state, False
 
     if step == "email":
         t = text.strip()
         if _looks_like_email(t):
             state.update(step="subject", recipient_email=t)
             return f"Đã nhận địa chỉ {t}. Chủ đề email là gì?", state, False
-        return ("Địa chỉ email không đúng định dạng. "
-                "Vui lòng nhập lại (vd: ten@gmail.com):"), state, False
+        # User nhập tên mới (không phải email) → thử lookup contacts lại.
+        # Trường hợp: ở step "recipient" tên đầu không match, user đọc lại tên
+        # rõ hơn ở step "email" → vẫn cần tìm trong danh bạ.
+        contact = _find_contact(t, contacts)
+        if contact:
+            state.update(step="subject",
+                         recipient_name=contact["name"],
+                         recipient_email=contact["email"])
+            return (f"Tìm thấy {contact['name']} ({contact['email']}). "
+                    "Chủ đề email là gì?"), state, False
+        return ("Không nhận diện được tên hoặc email. "
+                "Hãy đọc rõ tên người trong danh bạ, hoặc đọc địa chỉ email "
+                "(vd: ten@gmail.com):"), state, False
 
     if step == "subject":
         subj = text.strip()

@@ -148,8 +148,12 @@ async function submitVerify(blob) {
   try {
     const r = await fetch("/api/files/verify", {method: "POST", body: fd});
     const d = await r.json();
-    if (!r.ok) {
-      $vStatus.textContent = "✗ " + d.error;
+    if (d && d.no_audio) {
+      $vStatus.textContent = "Giữ nút và nói rõ để xác thực";
+      return;
+    }
+    if (!r.ok || d.error) {
+      $vStatus.textContent = "✗ " + (d.error || "Xác thực thất bại");
       $vStatus.classList.add("text-rose-600");
       return;
     }

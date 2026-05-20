@@ -100,6 +100,136 @@ def _resolve_child_path(base: Path, child: str) -> Path | None:
     return candidate
 
 
+def _render_oauth_page(title: str, body_html: str, *,
+                       kind: str = "success",
+                       extra_script: str = "") -> str:
+    """Render trang OAuth callback (success/error) match style chính của app.
+
+    Dùng Montserrat + Tailwind CDN + violet/emerald palette giống `home.html`
+    + `base.html`. Mono-chrome SVG icons thay vì emoji.
+
+    Args:
+        title: Heading lớn (vd "Xác thực Gmail thành công!").
+        body_html: HTML inner (đã escape) — caller chịu trách nhiệm escape input.
+        kind: "success" (emerald) | "error" (rose).
+        extra_script: JS string thêm (nonce-applied) — vd auto-close timer.
+    """
+    # Mono SVG icon — match style các icon khác (stroke-based).
+    if kind == "success":
+        accent = "#047857"        # emerald-700
+        accent_bg = "#ecfdf5"     # emerald-50
+        accent_border = "#a7f3d0" # emerald-200
+        icon_svg = (
+            "<svg xmlns='http://www.w3.org/2000/svg' width='42' height='42' "
+            "viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' "
+            "stroke-linecap='round' stroke-linejoin='round'>"
+            "<circle cx='12' cy='12' r='10'/><polyline points='16 9 11 15 8 12'/></svg>"
+        )
+    else:  # error
+        accent = "#b91c1c"        # rose-700
+        accent_bg = "#fff1f2"     # rose-50
+        accent_border = "#fecaca" # rose-200
+        icon_svg = (
+            "<svg xmlns='http://www.w3.org/2000/svg' width='42' height='42' "
+            "viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' "
+            "stroke-linecap='round' stroke-linejoin='round'>"
+            "<circle cx='12' cy='12' r='10'/>"
+            "<line x1='15' y1='9' x2='9' y2='15'/><line x1='9' y1='9' x2='15' y2='15'/></svg>"
+        )
+
+    nonce = getattr(g, "csp_nonce", "")
+    safe_title = html.escape(title)
+    # CSS: glass card + Montserrat font + accent palette. Match base.html.
+    return f"""<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{safe_title} — Secure VA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {{
+      --c-violet:#7c3aed; --c-violet-soft:#ede9fe;
+      --bg-grad-1:#fafafe; --bg-grad-2:#f5f3ff;
+      --txt:#0f172a; --txt-2:#64748b;
+      --accent:{accent}; --accent-bg:{accent_bg}; --accent-border:{accent_border};
+    }}
+    *{{box-sizing:border-box}}
+    body {{
+      margin:0; min-height:100vh;
+      font-family:"Montserrat",system-ui,-apple-system,sans-serif;
+      background: radial-gradient(circle at 20% 0%, var(--c-violet-soft), transparent 40%),
+                  linear-gradient(135deg, var(--bg-grad-1), var(--bg-grad-2));
+      display:flex; align-items:center; justify-content:center; padding:24px;
+      color:var(--txt);
+    }}
+    .card {{
+      background:#fff; border-radius:1rem; padding:2.5rem 2rem;
+      max-width:480px; width:100%; text-align:center;
+      box-shadow:0 24px 64px -12px rgba(15,23,42,.12),
+                 0 0 0 1px rgba(15,23,42,.04);
+    }}
+    .icon-wrap {{
+      width:72px; height:72px; margin:0 auto 1rem;
+      display:flex; align-items:center; justify-content:center;
+      background:var(--accent-bg); color:var(--accent);
+      border-radius:50%; border:1px solid var(--accent-border);
+    }}
+    h1 {{
+      font-size:1.35rem; font-weight:700; margin:0 0 1rem;
+      color:var(--accent); line-height:1.3;
+    }}
+    .gmail-badge {{
+      display:inline-flex; align-items:center; gap:.6rem;
+      background:var(--accent-bg); border:1px solid var(--accent-border);
+      color:var(--accent); padding:.75rem 1.2rem; border-radius:.75rem;
+      margin:.5rem 0 1rem; font-size:.95rem;
+    }}
+    .icon-mail {{ flex-shrink:0 }}
+    .oauth-hint {{
+      font-size:.88rem; color:var(--txt-2); line-height:1.6; margin:.75rem 0;
+    }}
+    .oauth-hint code, .oauth-err {{
+      font-family:"SFMono-Regular",Menlo,Consolas,monospace;
+      background:#f1f5f9; padding:.1rem .35rem; border-radius:.25rem;
+      font-size:.82rem;
+    }}
+    .oauth-err {{
+      display:block; text-align:left; padding:.75rem 1rem;
+      max-height:200px; overflow:auto; word-break:break-all;
+      margin:1rem 0;
+    }}
+    .oauth-cnt {{
+      display:inline-block; min-width:1.5rem;
+      color:var(--c-violet); font-weight:700; font-size:1.15rem;
+    }}
+    .btn-close {{
+      margin-top:1rem; padding:.65rem 1.5rem; border-radius:.6rem;
+      background:var(--c-violet); color:#fff;
+      border:none; cursor:pointer; font-weight:600; font-size:.9rem;
+      font-family:inherit;
+      transition: background .15s;
+    }}
+    .btn-close:hover {{ background:#6d28d9 }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap">{icon_svg}</div>
+    <h1>{safe_title}</h1>
+    {body_html}
+    <button id="btn-close" class="btn-close">Đóng tab</button>
+  </div>
+  <script nonce="{nonce}">
+    document.getElementById("btn-close").addEventListener("click", () => window.close());
+    {extra_script}
+  </script>
+</body>
+</html>"""
+
+
 def _mask_email(email: str) -> str:
     """Mask email cho admin view — show first 3 char + ***@domain.
     Vd: nguyenvanminh@gmail.com → ngu***@gmail.com.
@@ -443,9 +573,15 @@ def _continue_email_flow_if_active(text: str, db, nlu):
     _user = db.get_user(uid) if uid else None
     contacts = (_user["preferences"].get("contacts", []) if _user else [])
 
-    # Intent guard: nếu user nói intent khác (vd "phát nhạc đi"), thoát flow
-    # để tránh câu đó bị nuốt thành recipient/subject/body.
-    if flow_state.get("step") in ("recipient", "subject", "body"):
+    # Intent guard: CHỈ áp dụng ở step "recipient" — user chưa cam kết flow.
+    # Khi user đang nói recipient mà sub câu lệnh khác (vd "phát nhạc đi"),
+    # exit flow để xử lý intent mới.
+    # Step "subject" và "body" KHÔNG có guard — đây là free-form text user
+    # đang đọc cho assistant chép, intent classifier sẽ phá luồng nếu chủ đề
+    # nghe giống lệnh (vd "đọc ghi chú" → bị classify read_notes → kill flow).
+    # Step "email" cũng skip guard vì user chỉ nhập địa chỉ email.
+    # Step "confirm" cũng skip — "có/không" tự xử lý trong email_flow.continue_flow.
+    if flow_state.get("step") == "recipient":
         _quick_nlu = nlu.parse(text)
         if _quick_nlu.get("intent", "unknown") not in (
                 "send_email", "unknown", "general_question"):
@@ -1233,18 +1369,27 @@ def register_routes(app):
           }
         """
         if "audio" not in request.files:
+            app.logger.warning("turn 400: missing audio file in request")
             return jsonify({"error": "Thiếu file 'audio'"}), 400
 
         blob = request.files["audio"].read()
         try:
             audio = audio_io.decode_browser_audio(blob)
+        except audio_io.EmptyAudio:
+            # User click không giữ / blob rỗng / ffmpeg fail vì không có audio
+            # thật. Trả 200 với cờ `no_audio` → frontend silently reset, không
+            # show error toast cho user.
+            return jsonify({"ok": False, "no_audio": True}), 200
         except Exception as e:
+            app.logger.warning("turn 400: decode_browser_audio failed: %s (blob=%d bytes)",
+                               e, len(blob) if blob else 0)
             return jsonify({"error": f"Giải mã audio thất bại: {e}"}), 400
 
         audio, has_speech = audio_io.SileroVAD.trim(audio, return_speech_detected=True)
         _min_turn = int(config.SAMPLE_RATE * config.MIN_AUDIO_SEC_TURN)
         if not has_speech or audio.size < _min_turn:
-            return jsonify({"error": "Audio quá ngắn hoặc không có giọng nói"}), 400
+            return jsonify({"ok": False, "no_audio": True,
+                            "reason": "no_speech"}), 200
 
         # ASR → NLU → Router
         db     = app.config["db"]
@@ -1254,6 +1399,12 @@ def register_routes(app):
 
         transcript = asr.transcribe(audio)
         if not transcript:
+            app.logger.warning(
+                "turn 400: ASR returned empty (audio=%.2fs, backend=%s) — "
+                "either model output empty or hallucination filter triggered",
+                audio.size / config.SAMPLE_RATE,
+                type(asr).__name__,
+            )
             return jsonify({"error": "ASR không nhận diện được"}), 400
 
         transcript = correct_transcript(transcript)
@@ -1364,12 +1515,15 @@ def register_routes(app):
         blob = request.files["audio"].read()
         try:
             audio = audio_io.decode_browser_audio(blob)
+        except audio_io.EmptyAudio:
+            return jsonify({"ok": False, "no_audio": True}), 200
         except Exception as e:
             return jsonify({"error": f"Giải mã audio thất bại: {e}"}), 400
         audio, has_speech = audio_io.SileroVAD.trim(audio, return_speech_detected=True)
         _min_turn = int(config.SAMPLE_RATE * config.MIN_AUDIO_SEC_TURN)
         if not has_speech or audio.size < _min_turn:
-            return jsonify({"error": "Audio quá ngắn hoặc không có giọng"}), 400
+            return jsonify({"ok": False, "no_audio": True,
+                            "reason": "no_speech"}), 200
 
         # ASR + complete
         asr    = app.config["asr"]
@@ -1474,7 +1628,7 @@ def register_routes(app):
             elif not uid:
                 blocked  = True
                 response = ("Tác vụ này yêu cầu xác thực. "
-                            "Vui lòng chọn người dùng và nhập mật khẩu.")
+                            "Vui lòng chọn người dùng và nhập mật khẩu hoặc xác thực bằng giọng nói.")
             elif not password:
                 # User chưa nhập password (turn đầu tiên với IMPORTANT intent)
                 # → prompt nhập password, KHÔNG báo "sai mật khẩu".
@@ -1846,11 +2000,15 @@ def register_routes(app):
         blob = request.files["audio"].read()
         try:
             aud = audio_io.decode_browser_audio(blob)
+        except audio_io.EmptyAudio:
+            # Click không giữ → no-op, frontend tự reset.
+            return jsonify({"ok": False, "no_audio": True}), 200
         except Exception as e:
             return jsonify({"error": f"Giải mã audio thất bại: {e}"}), 400
         aud, has_speech = audio_io.SileroVAD.trim(aud, return_speech_detected=True)
         if not has_speech or aud.size < int(config.SAMPLE_RATE * config.MIN_AUDIO_SEC_TURN):
-            return jsonify({"error": "Audio quá ngắn / không có giọng nói"}), 400
+            return jsonify({"ok": False, "no_audio": True,
+                            "reason": "no_speech"}), 200
         spk_mgr = app.config["spk_mgr"]
         uid, name, sid_score = spk_mgr.identify(aud)
         if uid is None:
@@ -2050,11 +2208,88 @@ def register_routes(app):
         status = str(data.get("status", "resolved")).strip() or "resolved"
         if status not in ("resolved", "rejected"):
             return jsonify({"error": "Status không hợp lệ"}), 400
-        app.config["db"].update_password_reset_request_status(request_id, status)
+        verification_method = str(data.get("verification_method", "")).strip()
+        admin_note = str(data.get("admin_note", "")).strip()
+        app.config["db"].update_password_reset_request_status(
+            request_id, status,
+            verification_method=verification_method,
+            admin_note=admin_note,
+        )
         _audit("admin.password_reset_request", request_id=request_id,
-               outcome=status, ip=_rl_client_ip(),
+               outcome=status, verification_method=verification_method,
+               ip=_rl_client_ip(),
                ua=request.headers.get("User-Agent", ""))
         return jsonify({"ok": True})
+
+    @app.route("/api/admin/password-reset-requests/<int:request_id>/approve",
+               methods=["POST"])
+    @max_size(0.03)
+    @rate_limit(max_attempts=5, window_sec=300, scope="admin-reset-request-approve")
+    def api_admin_password_reset_request_approve(request_id):
+        """Approve admin-assisted reset after identity verification.
+
+        Admin does not set the user's password directly. The server creates a
+        one-time reset code, stores only its hash, and shows the raw code once
+        so the user can set their own new password through the normal confirm
+        endpoint.
+        """
+        data = _json_body()
+        if not _check_admin_pass(data.get("admin_password", "")):
+            return jsonify({"error": "Sai mật khẩu quản trị"}), 403
+
+        verification_method = str(data.get("verification_method", "")).strip()
+        admin_note = str(data.get("admin_note", "")).strip()
+        allowed_methods = {
+            "gmail_reconsent",
+            "known_channel",
+            "in_person",
+            "voice_check",
+            "other",
+        }
+        if verification_method not in allowed_methods:
+            return jsonify({"error": "Phương thức xác minh không hợp lệ"}), 400
+        if len(admin_note) < 8:
+            return jsonify({"error": "Cần ghi chú xác minh tối thiểu 8 ký tự"}), 400
+
+        db = app.config["db"]
+        req = db.get_password_reset_request(request_id)
+        if not req:
+            return jsonify({"error": "Yêu cầu không tồn tại"}), 404
+        if req["status"] != "pending":
+            return jsonify({"error": "Yêu cầu này đã được xử lý"}), 409
+        user_id = req["user_id"]
+        if not db.get_user(user_id):
+            db.update_password_reset_request_status(
+                request_id, "rejected",
+                verification_method=verification_method,
+                admin_note="User no longer exists",
+            )
+            return jsonify({"error": "User không tồn tại"}), 404
+
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        now = time.time()
+        expires_in = 900
+        db.save_password_reset_code(
+            user_id, _reset_code_hash(code),
+            now + expires_in, now,
+        )
+        db.update_password_reset_request_status(
+            request_id, "approved",
+            verification_method=verification_method,
+            admin_note=admin_note,
+        )
+        _audit("admin.password_reset_request", request_id=request_id,
+               user_id=user_id, outcome="approved",
+               verification_method=verification_method,
+               ip=_rl_client_ip(), ua=request.headers.get("User-Agent", ""))
+        return jsonify({
+            "ok": True,
+            "mode": "admin_reset_code",
+            "user_id": user_id,
+            "code": code,
+            "expires_in_sec": expires_in,
+            "message": "Mã reset chỉ hiển thị một lần. Chuyển cho user qua kênh đã xác minh.",
+        })
 
     def _reset_code_hash(code: str) -> str:
         return hashlib.sha256(str(code).encode("utf-8")).hexdigest()
@@ -2094,10 +2329,21 @@ def register_routes(app):
         if not user:
             return jsonify({"error": "User không tồn tại"}), 404
 
+        data = _json_body()
+        force_admin_request = bool(data.get("force_admin_request"))
         token_data = db.get_oauth_token(user_id)
         gmail_addr = (token_data or {}).get("gmail_address", "")
         ip = _rl_client_ip()
         ua = request.headers.get("User-Agent", "")
+        if force_admin_request:
+            note = data.get("note") or "User requested admin password reset fallback"
+            req_id = db.create_password_reset_request(user_id, note=str(note))
+            _audit("auth.password_reset_request", user_id=user_id,
+                   outcome="admin_pending_forced", request_id=req_id, ip=ip, ua=ua)
+            return jsonify({"ok": True, "mode": "admin_request",
+                            "request_id": req_id,
+                            "message": "Đã gửi yêu cầu cho quản trị viên."})
+
         if token_data and gmail_addr:
             code = f"{secrets.randbelow(1_000_000):06d}"
             db.save_password_reset_code(
@@ -2110,10 +2356,13 @@ def register_routes(app):
                 _audit("auth.password_reset_request", user_id=user_id,
                        outcome="email_send_failed", ip=ip, ua=ua,
                        error=str(exc)[:120])
+                db.delete_password_reset_code(user_id)
                 return jsonify({
-                    "error": "Không gửi được email reset. Vui lòng thử lại hoặc gửi yêu cầu cho admin.",
+                    "ok": False,
                     "mode": "email_failed",
-                }), 503
+                    "allow_admin_request": True,
+                    "message": "Email đã liên kết nhưng không gửi được mã reset. Bạn có thể gửi yêu cầu cho quản trị viên.",
+                }), 200
             _audit("auth.password_reset_request", user_id=user_id,
                    outcome="email_code_sent", ip=ip, ua=ua)
             return jsonify({"ok": True, "mode": "email_code",
@@ -2421,44 +2670,42 @@ def register_routes(app):
                 hint = ("State trả về từ Google không khớp nonce trong session. "
                         "Có thể bạn mở nhiều tab OAuth song song, hoặc bị CSRF "
                         "thật. Đóng tất cả tab OAuth rồi thử lại từ đầu.")
-            return (
-                "<!doctype html><html><head><meta charset='utf-8'>"
-                "<style>body{font-family:sans-serif;text-align:center;padding:48px;max-width:600px;margin:auto}"
-                "h2{color:#c62828}.hint{background:#fff8e1;border:1px solid #ffe082;"
-                "padding:12px;border-radius:6px;text-align:left;margin:16px 0;font-size:14px}"
-                "</style></head><body>"
-                f"<h2>✗ Xác thực Google bị từ chối</h2>"
-                f"<p>State không hợp lệ ({html.escape(reason)}).</p>"
-                f"<div class='hint'>{html.escape(hint)}</div>"
-                "<button onclick='window.close()' style='padding:8px 20px;"
-                "background:#1565c0;color:#fff;border:none;border-radius:6px;"
-                "cursor:pointer'>Đóng tab</button></body></html>"
-            ), 400
+            body = (
+                f"<p class='oauth-hint'>State không hợp lệ "
+                f"(<code>{html.escape(reason)}</code>).</p>"
+                "<div style='background:#fffbeb;border:1px solid #fde68a;"
+                "color:#92400e;padding:.85rem 1rem;border-radius:.6rem;"
+                "text-align:left;margin:1rem 0;font-size:.85rem;line-height:1.55'>"
+                f"{html.escape(hint)}</div>"
+            )
+            return _render_oauth_page(
+                "Xác thực Google bị từ chối", body, kind="error"), 400
 
         # Lỗi từ Google (vd: user từ chối, redirect_uri_mismatch)
         if error:
-            return (
-                "<!doctype html><html><head><meta charset='utf-8'>"
-                "<style>body{font-family:sans-serif;text-align:center;padding:60px}"
-                "h2{color:#c62828}pre{background:#f5f5f5;padding:12px;border-radius:6px;"
-                "text-align:left;max-width:500px;margin:auto;word-break:break-all}</style></head><body>"
-                f"<h2>✗ Xác thực thất bại</h2>"
-                f"<pre>{html.escape(error)}</pre>"
-                "<p>Kiểm tra lại <b>Authorized Redirect URIs</b> trong Google Cloud Console.<br>"
+            body = (
+                f"<pre class='oauth-err'>{html.escape(error)}</pre>"
+                "<p class='oauth-hint'>Kiểm tra lại <strong>Authorized Redirect URIs</strong> "
+                "trong Google Cloud Console.<br>"
                 "URI phải khớp chính xác với <code>GOOGLE_REDIRECT_URI</code> trong <code>.env</code>.</p>"
-                "<button onclick='window.close()' style='margin-top:16px;padding:8px 20px;"
-                "background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
-                "Đóng tab</button>"
-                "</body></html>"
-            ), 400
+            )
+            return _render_oauth_page("Xác thực thất bại", body, kind="error"), 400
 
         if not code or not user_id:
-            return "<h3>Thiếu tham số (code hoặc state)</h3>", 400
+            return _render_oauth_page(
+                "Thiếu tham số",
+                "<p class='oauth-hint'>Callback từ Google thiếu <code>code</code> hoặc <code>state</code>.</p>",
+                kind="error",
+            ), 400
 
         _db = app.config["db"]
         user = _db.get_user(user_id)
         if not user:
-            return f"<h3>Không tìm thấy user '{html.escape(user_id)}'</h3>", 404
+            return _render_oauth_page(
+                "Không tìm thấy user",
+                f"<p class='oauth-hint'>User <code>{html.escape(user_id)}</code> không tồn tại.</p>",
+                kind="error",
+            ), 404
 
         try:
             tokens     = exchange_code(code, code_verifier=code_verifier)
@@ -2484,40 +2731,35 @@ def register_routes(app):
                    ip=_rl_client_ip(),
                    ua=request.headers.get("User-Agent", ""))
         except Exception as e:
-            return (
-                "<!doctype html><html><head><meta charset='utf-8'>"
-                "<style>body{font-family:sans-serif;text-align:center;padding:60px}"
-                "h2{color:#c62828}pre{background:#f5f5f5;padding:12px;border-radius:6px;"
-                "text-align:left;max-width:500px;margin:auto;word-break:break-all}</style></head><body>"
-                f"<h2>✗ Lỗi trao đổi token</h2><pre>{html.escape(str(e))}</pre>"
-                "<button onclick='window.close()' style='margin-top:16px;padding:8px 20px;"
-                "background:#1565c0;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
-                "Đóng tab</button></body></html>"
+            return _render_oauth_page(
+                "Lỗi trao đổi token",
+                f"<pre class='oauth-err'>{html.escape(str(e))}</pre>",
+                kind="error",
             ), 500
 
         # Tab tự đóng sau 3s, đồng thời báo hiệu cho cửa sổ mẹ (nếu có)
-        _nonce = getattr(g, "csp_nonce", "")
-        return (
-            "<!doctype html><html><head><meta charset='utf-8'>"
-            "<style>body{font-family:sans-serif;text-align:center;padding:60px}"
-            "h2{color:#2e7d32}.badge{display:inline-block;background:#e8f5e9;"
-            "border:1px solid #a5d6a7;border-radius:8px;padding:12px 24px;margin:12px 0}"
-            ".cnt{font-size:2rem;font-weight:bold;color:#1565c0}</style></head><body>"
-            f"<h2>✓ Xác thực Gmail thành công!</h2>"
-            f"<div class='badge'>📧 <strong>{html.escape(gmail_addr)}</strong></div>"
-            "<p>Tab sẽ tự đóng trong <span id='cnt' class='cnt'>3</span> giây.<br>"
-            "Quay lại trang trợ lý và nói <b>\"có\"</b> để gửi email.</p>"
-            "<button onclick='window.close()' style='margin-top:8px;padding:8px 20px;"
-            "background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
-            "Đóng ngay</button>"
-            f"<script nonce='{_nonce}'>"
+        body = (
+            "<div class='gmail-badge'>"
+            "<svg class='icon-mail' xmlns='http://www.w3.org/2000/svg' width='18' height='18' "
+            "viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' "
+            "stroke-linecap='round' stroke-linejoin='round'>"
+            "<path d='M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z'/>"
+            "<polyline points='22,6 12,13 2,6'/></svg>"
+            f"<strong>{html.escape(gmail_addr)}</strong>"
+            "</div>"
+            "<p class='oauth-hint'>Tab sẽ tự đóng trong "
+            "<span id='cnt' class='oauth-cnt'>3</span> giây.<br>"
+            "Quay lại trang trợ lý và nói <strong>\"có\"</strong> để gửi email.</p>"
+        )
+        extra_script = (
             "try{new BroadcastChannel('oauth').postMessage({type:'oauth_done'});}catch(_){}"
             "if(window.opener){try{window.opener.postMessage({type:'oauth_done'},'*');}catch(_){}}"
-            "let s=3;const t=setInterval(()=>{s--;document.getElementById('cnt').textContent=s;"
+            "let s=3;const t=setInterval(()=>{s--;"
+            "const el=document.getElementById('cnt');if(el)el.textContent=s;"
             "if(s<=0){clearInterval(t);window.close();}},1000);"
-            "</script>"
-            "</body></html>"
         )
+        return _render_oauth_page("Xác thực Gmail thành công!",
+                                  body, kind="success", extra_script=extra_script)
 
     @app.route("/api/oauth/status/<user_id>")
     def api_oauth_status(user_id):

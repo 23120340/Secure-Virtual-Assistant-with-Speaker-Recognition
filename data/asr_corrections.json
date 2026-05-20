@@ -1,0 +1,141 @@
+[
+  {
+    "pattern": "đã phía chú",
+    "replacement": "đọc ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "\\bnào,?\\s*ghi chú\\b",
+    "replacement": "đọc ghi chú",
+    "regex": true,
+    "ignore_case": true
+  },
+  {
+    "pattern": "ghi chu",
+    "replacement": "ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "sờ dư",
+    "replacement": "số dư",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "Nào, ghi chú",
+    "replacement": "đọc ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "Đặt ghi chú",
+    "replacement": "đọc ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "Khi chú",
+    "replacement": "đọc ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "Mẹ nhờ rồi",
+    "replacement": "Mấy giờ rồi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "Mênh ghi rồi",
+    "replacement": "Mấy giờ rồi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "Ghi chú email",
+    "replacement": "Gửi email",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "_comment": "Whisper-small mis-recognize 'Mấy giờ rồi' sang English phonetic.",
+    "pattern": "^May\\s+(your\\s+)?(roy|rồi|roll|role|joy|hoy|joy|boy|toy)\\.?!?$",
+    "replacement": "Mấy giờ rồi",
+    "regex": true,
+    "ignore_case": true
+  },
+  {
+    "pattern": "^May\\s+r[oôơồ]i.?$",
+    "replacement": "Mấy giờ rồi",
+    "regex": true,
+    "ignore_case": true
+  },
+  {
+    "pattern": "đọc kỹ chú.",
+    "replacement": "Đọc ghi chú",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "kẻ chuyện cười.",
+    "replacement": "Kể chuyện cười",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "giới mail",
+    "replacement": "gửi mail",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "bị email",
+    "replacement": "gửi email",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "đi mail",
+    "replacement": "gửi mail",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mèo trương nhi",
+    "replacement": "gửi mail cho nhi",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "chín miếu",
+    "replacement": "gửi mail",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "unk email",
+    "replacement": "gửi email",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "chuyển che số dư.",
+    "replacement": "Kiểm tra số dư",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mở phai.",
+    "replacement": "Mở file",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "mở sai.",
+    "replacement": "Mở file",
+    "regex": false,
+    "ignore_case": true
+  }
+]

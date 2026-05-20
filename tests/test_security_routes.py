@@ -6,6 +6,7 @@ Chậm hơn unit test (eager-load model ~30s) — chạy riêng:
 Nếu CI environment không có ML deps, mark `--ignore=tests/test_security_routes.py`.
 """
 import pytest
+from io import BytesIO
 
 
 @pytest.fixture(scope="module")
@@ -109,6 +110,42 @@ def test_text_mode_open_files_password_fallback_no_500(client, app, reset_rate_l
             assert "file" in data.get("response", "").lower()
     finally:
         db.delete_user(uid)
+
+
+def test_voice_turn_empty_audio_is_noop(client, monkeypatch):
+    """Click nhanh nút push-to-talk sinh blob lỗi → server trả no_audio, không 400."""
+    from core import audio_io
+
+    def _raise_empty(_blob):
+        raise audio_io.EmptyAudio("empty")
+
+    monkeypatch.setattr(audio_io, "decode_browser_audio", _raise_empty)
+    r = client.post(
+        "/api/assistant/turn",
+        data={"audio": (BytesIO(b"not-a-real-webm"), "rec.webm")},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 200
+    assert r.get_json()["no_audio"] is True
+
+
+def test_files_verify_empty_audio_is_noop(client, monkeypatch):
+    """File verify cũng coi blob rỗng/invalid là no-op thay vì hiện lỗi ffmpeg."""
+    from core import audio_io
+
+    def _raise_empty(_blob):
+        raise audio_io.EmptyAudio("empty")
+
+    monkeypatch.setattr(audio_io, "decode_browser_audio", _raise_empty)
+    r = client.post(
+        "/api/files/verify",
+        data={"audio": (BytesIO(b"not-a-real-webm"), "verify.webm")},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 200
+    assert r.get_json()["no_audio"] is True
 
 
 # ----- Session cookie flags ----------------------------------------------------
@@ -309,6 +346,46 @@ def test_forgot_password_without_gmail_creates_admin_request(client, app, reset_
         db.delete_user(uid)
 
 
+def test_forgot_password_email_failure_offers_admin_fallback(client, app, reset_rate_limit,
+                                                             monkeypatch):
+    """Nếu Gmail đã link nhưng token/API lỗi, user có thể chọn gửi request admin."""
+    import numpy as np
+    db = app.config["db"]
+    uid = "forgot-email-fail-test"
+    if db.get_user(uid) is None:
+        db.add_user(uid, "Forgot Email Fail", np.zeros(192, dtype=np.float32),
+                    preferences={}, password="old-password")
+    db.save_oauth_token(uid, {
+        "access_token": "bad-access",
+        "refresh_token": "bad-refresh",
+        "gmail_address": "user@example.com",
+        "expiry": 9999999999.0,
+    })
+
+    def _fail_send(*_args, **_kwargs):
+        raise RuntimeError("token expired")
+
+    monkeypatch.setattr("core.gmail_api.send_email", _fail_send)
+    try:
+        r = client.post(f"/api/users/{uid}/forgot-password/request",
+                        json={}, headers=_xhr_headers())
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["mode"] == "email_failed"
+        assert body["allow_admin_request"] is True
+
+        r = client.post(f"/api/users/{uid}/forgot-password/request",
+                        json={"force_admin_request": True},
+                        headers=_xhr_headers())
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["mode"] == "admin_request"
+        reqs = db.list_password_reset_requests()
+        assert any(x["user_id"] == uid for x in reqs)
+    finally:
+        db.delete_user(uid)
+
+
 def test_forgot_password_confirm_updates_password(client, app, reset_rate_limit):
     """Mã reset hợp lệ đổi được mật khẩu và bị xoá sau khi dùng."""
     import time
@@ -333,6 +410,55 @@ def test_forgot_password_confirm_updates_password(client, app, reset_rate_limit)
         assert db.get_password_reset_code(uid) is None
     finally:
         db.delete_user(uid)
+
+
+def test_admin_approve_reset_request_issues_one_time_code(client, app,
+                                                          reset_rate_limit):
+    """Admin duyệt request sau xác minh -> cấp code để user tự đổi password."""
+    import numpy as np
+    from core import config
+
+    db = app.config["db"]
+    old_admin = config.ADMIN_PASS
+    config.ADMIN_PASS = "admin-pw"
+    uid = "admin-approve-reset-test"
+    if db.get_user(uid) is None:
+        db.add_user(uid, "Admin Approve Reset", np.zeros(192, dtype=np.float32),
+                    preferences={}, password="old-password")
+    try:
+        req_id = db.create_password_reset_request(
+            uid, note="User cannot use linked email")
+        r = client.post(
+            f"/api/admin/password-reset-requests/{req_id}/approve",
+            json={
+                "admin_password": "admin-pw",
+                "verification_method": "known_channel",
+                "admin_note": "Verified through official class account",
+            },
+            headers=_xhr_headers(),
+        )
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["mode"] == "admin_reset_code"
+        assert len(body["code"]) == 6
+        assert db.get_password_reset_request(req_id)["status"] == "approved"
+        assert db.get_password_reset_code(uid) is not None
+
+        r = client.post(
+            f"/api/users/{uid}/forgot-password/confirm",
+            json={
+                "code": body["code"],
+                "new_password": "new-password-123",
+                "new_password_confirm": "new-password-123",
+            },
+            headers=_xhr_headers(),
+        )
+        assert r.status_code == 200
+        assert db.check_password(uid, "new-password-123") is True
+        assert db.get_password_reset_code(uid) is None
+    finally:
+        db.delete_user(uid)
+        config.ADMIN_PASS = old_admin
 
 
 def test_admin_request_reenroll_keeps_embedding(client, app, reset_rate_limit):

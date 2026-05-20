@@ -16,18 +16,27 @@ _log = logging.getLogger("secva.asr")
 
 def _build_initial_prompt(max_chars: int = 600,
                           examples_per_intent: int = 2) -> str:
-    """Build prompt bias cho Whisper từ INTENTS.
+    """Build prompt bias cho Whisper từ INTENTS + user vocab.
 
     Whisper dùng initial_prompt như văn bản ngữ cảnh trước audio → các từ trong
     prompt được ưu tiên decode. Giúp giảm homophone errors cho từ-khóa-lệnh
     (vd: "số dư" thay vì "sờ dư", "ghi chú" thay vì "ghi chu").
 
     Giới hạn cứng: Whisper prompt limit ~244 tokens (~700 chars tiếng Việt).
-    Lấy `examples_per_intent` ví dụ đầu mỗi intent (đại diện nhất); truncate
-    tổng chars để chắc chắn dưới limit. Tự cập nhật khi sửa intents.py.
+    Ưu tiên: user vocab (file `data/asr_user_vocab.txt`) > INTENTS examples.
+    User vocab xuất hiện trước → Whisper cân nhắc kỹ hơn.
     """
-    phrases = []
-    seen = set()
+    from .asr_corrections import load_user_vocab
+    user_vocab = load_user_vocab()
+
+    phrases: list[str] = []
+    seen: set = set()
+    # User vocab đầu danh sách (highest priority).
+    for p in user_vocab:
+        if p not in seen:
+            seen.add(p)
+            phrases.append(p)
+    # INTENTS examples sau (general command vocabulary).
     for spec in INTENTS.values():
         for ex in (spec.get("examples", []) or [])[:examples_per_intent]:
             ex = ex.strip()
@@ -45,9 +54,40 @@ def _build_initial_prompt(max_chars: int = 600,
     return cut
 
 
+# Whisper được pre-train trên YouTube → khi audio im lặng / quá ngắn / nhiễu,
+# model "hallucinate" bằng các phrase outro hay gặp ở cuối video. Pattern này
+# xuất hiện trong `data/turn_log.jsonl` khi user click không giữ đủ lâu.
+# Toàn bộ pattern phải match (whole-text), không chỉ chứa — tránh false positive
+# khi user thật sự nói "xin chào".
+_WHISPER_HALLUCINATION_PATTERNS = [
+    # Standalone "Hẹn gặp lại!" — bare outro phrase, không kèm object.
+    re.compile(r"^hẹn gặp lại\s*[!.]?$", re.IGNORECASE),
+    re.compile(r"^hẹn gặp lại( với)? (mọi người|các bạn|quý vị)\.?$", re.IGNORECASE),
+    re.compile(r"^xin chào (và )?(tạm biệt|hẹn gặp lại).*$", re.IGNORECASE),
+    re.compile(r"^cảm ơn (các bạn|mọi người) đã (xem|theo dõi).*$", re.IGNORECASE),
+    re.compile(r"^(hẹn gặp lại|xin chào).*(video|tập|tuần|lần) (sau|tới|tiếp theo).*$", re.IGNORECASE),
+    re.compile(r"^(đừng quên|nhớ) (subscribe|like|đăng ký|bấm chuông).*$", re.IGNORECASE),
+    re.compile(r"^chúc.*(buổi|ngày|tuần).*(vui|tốt lành|hạnh phúc)\.?$", re.IGNORECASE),
+    re.compile(r"^.*(theo dõi|đăng ký kênh).*$", re.IGNORECASE),
+    re.compile(r"^xin chào tất cả các bạn\.?$", re.IGNORECASE),
+    # Ký tự đơn lẻ kiểu "11h", "5h", "2 giờ" — Whisper hay sinh ra khi
+    # audio quá ngắn / không có speech rõ. Threshold: tổng ≤ 4 char.
+    re.compile(r"^\d{1,2}\s*(h|giờ|phút|m|s)?\.?$", re.IGNORECASE),
+]
+
+
+def _is_whisper_youtube_hallucination(text: str) -> bool:
+    """Match text với pattern outro YouTube thường gặp."""
+    t = text.strip()
+    if not t:
+        return False
+    return any(rx.match(t) for rx in _WHISPER_HALLUCINATION_PATTERNS)
+
+
 def _is_hallucinated(text: str, n_samples: int,
                      sample_rate: int = 16000) -> bool:
-    """Phát hiện Whisper hallucination: lặp câu hoặc quá dài so với audio.
+    """Phát hiện Whisper hallucination: lặp câu, quá dài so với audio,
+    hoặc match phrase outro YouTube thường gặp.
 
     Whisper dễ sinh ra văn bản lặp lại (repetition loop) khi audio ngắn/im lặng.
     VD: 'Xin chào tất cả các bạn...' nhân lên 9 lần mặc dù chỉ nói 2 chữ.
@@ -56,6 +96,10 @@ def _is_hallucinated(text: str, n_samples: int,
         return False
 
     duration_s = n_samples / sample_rate
+
+    # YouTube outro hallucination — bắt sớm trước các check khác.
+    if _is_whisper_youtube_hallucination(text):
+        return True
 
     # Quá dài so với thời gian audio. Trước đây ngưỡng 8 ký tự/s gây false positive
     # với tiếng Việt có dấu (mỗi từ ~5 char). Câu "ngoài đường mưa rất to" 22 char
@@ -101,21 +145,41 @@ class ASR:
                 audio = audio / 32768.0
 
         with self._lock:
-            segments, _info = self.model.transcribe(
+            segments, info = self.model.transcribe(
                 audio,
                 language=self.language,
+                # task="transcribe" EXPLICIT — pin về transcribe mode, không
+                # cho model fallback sang "translate" (translate sang English)
+                # khi audio chứa từ-phonetic-giống-English. Đây là cause user-
+                # report "Mấy giờ rồi" → "May Roy" / "May your roll": Whisper-
+                # small với task default + short audio đôi khi cross sang
+                # English path. Pin task → ép decoder dùng vocab tiếng Việt.
+                task="transcribe",
                 beam_size=5,             # giảm 10 → 5: ~2x nhanh hơn, WER tương đương vi
                 best_of=1,
                 temperature=0.0,            # deterministic, tránh hallucination
                 vad_filter=False,           # đã VAD trước rồi
                 condition_on_previous_text=False,
+                # GHI CHÚ: từng siết 0.5 / -0.8 để filter outro hallucination,
+                # nhưng tone tiếng Việt làm log_prob thấp tự nhiên → false-negative
+                # toàn câu thật. Quay về ngưỡng cũ; outro hallucination giờ catch
+                # bằng `_WHISPER_HALLUCINATION_PATTERNS` ở post-process (text-level).
                 no_speech_threshold=0.6,
-                log_prob_threshold=-1.0,    # lọc segment xác suất thấp
+                log_prob_threshold=-1.0,
                 compression_ratio_threshold=1.8,  # thấp hơn = bắt lặp câu sớm hơn
                 initial_prompt=self.initial_prompt,  # bias vocab command-domain
             )
+            # Debug: log info nếu detect language ≠ "vi" (chỉ ra prompt/audio fail).
+            detected = getattr(info, "language", None)
+            if detected and detected != self.language:
+                _log.warning("Whisper detect lang=%r (prob=%.2f) thay vì %r — "
+                             "kết quả có thể bị English-ize.", detected,
+                             getattr(info, "language_probability", 0.0),
+                             self.language)
 
-            # Lọc từng segment: bỏ qua segment có khả năng cao là không có speech
+            # Lọc từng segment: bỏ qua segment có khả năng cao là không có speech.
+            # Ngưỡng nới (no_speech 0.7, log_prob -1.2) — giữ recall tiếng Việt.
+            # Hallucination outro vẫn bị catch ở text-level qua _is_hallucinated.
             parts = []
             for seg in segments:
                 if getattr(seg, "no_speech_prob", 0) > 0.7:
@@ -129,6 +193,12 @@ class ASR:
         # Post-process: phát hiện hallucination tổng thể
         if _is_hallucinated(text, len(audio)):
             return ""
+
+        # Layer 1 correction — áp dụng quy tắc sửa cố định từ
+        # `data/asr_corrections.json` (zero-cost, mỗi turn).
+        # Layer 3 (Gemini) gọi tách riêng qua `correct_transcript()` ở caller.
+        from .asr_corrections import apply_corrections
+        text = apply_corrections(text)
 
         return text
 
@@ -270,13 +340,16 @@ class PhoWhisperASR:
         # Chỉ truyền language + task. KHÔNG truyền num_beams/do_sample/temperature
         # vì xung đột với generation_config có sẵn trong PhoWhisper checkpoint
         # → transformers throw deprecation warning + empty output.
+        #
+        # KHÔNG truyền prompt_ids: trong transformers 5.x, kết hợp
+        # language+task+prompt_ids khiến Whisper "echo" lại nội dung prompt
+        # thay vì transcribe audio (xác nhận bằng test: hai audio khác hẳn ra
+        # cùng 1 string trùng phrase trong prompt). PhoWhisper đã fine-tune trên
+        # 844h tiếng Việt → không cần prompt bias.
         generate_kwargs = {
             "language": self.language,
             "task": "transcribe",
         }
-        prompt_ids = self._get_prompt_ids()
-        if prompt_ids is not None:
-            generate_kwargs["prompt_ids"] = prompt_ids
 
         with self._lock:
             try:
@@ -289,10 +362,12 @@ class PhoWhisperASR:
                 return ""
 
         text = (result.get("text") or "").strip() if isinstance(result, dict) else ""
+        _log.info("PhoWhisper raw output (%.2fs audio): %r", len(audio)/sample_rate, text)
 
         # PhoWhisper không expose no_speech_prob/avg_logprob qua pipeline → chỉ
         # dùng được length-based hallucination check.
         if _is_hallucinated(text, len(audio), sample_rate):
+            _log.info("PhoWhisper output filtered as hallucination: %r", text)
             return ""
         return text
 

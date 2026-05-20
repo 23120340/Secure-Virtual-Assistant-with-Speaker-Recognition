@@ -377,6 +377,11 @@ async function sendAudio(blob) {
   try {
     const r = await fetch("/api/assistant/turn", {method:"POST", body:fd});
     const data = await r.json();
+    // no_audio: server trả 200 + {no_audio:true} khi user click không giữ
+    // hoặc audio rỗng → silently reset, không show error/msg.
+    if (data && data.no_audio) {
+      $status.textContent = "Sẵn sàng"; return;
+    }
     if (!r.ok) {
       const silent = ["quá ngắn", "không có speech", "ASR không nhận diện"];
       if (!silent.some(k => (data.error || "").includes(k))) {
@@ -546,10 +551,13 @@ async function _checkOAuthDone() {
   } catch (_) {}
 }
 
+// Mono SVG checkmark — match icon set chung của app (tránh emoji colorful).
+const _ICON_CHECK_SM = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
+
 function _onOAuthSuccess(gmail) {
   _stopOAuthPolling();
   const $status = document.getElementById("oauth-poll-status");
-  $status.textContent = `✅ Đã xác thực: ${gmail}`;
+  $status.innerHTML = `<span style="display:inline-flex;align-items:center;gap:.4rem;color:#047857">${_ICON_CHECK_SM}<span>Đã xác thực: <strong>${esc(gmail)}</strong></span></span>`;
   setTimeout(() => {
     document.getElementById("oauth-modal").classList.add("hidden");
     addMsg("bot", `✅ Gmail đã xác thực (${gmail}). Nói "có" để gửi email.`);
@@ -857,7 +865,11 @@ async function startFv() {
       const fd=new FormData(); fd.append("audio",blob,"fv.webm");
       const r=await fetch("/api/files/verify",{method:"POST",body:fd});
       const d=await r.json();
-      if (!r.ok) { $fvStatus.textContent="✗ "+d.error; $fvStatus.classList.add("text-rose-600"); return; }
+      // no_audio: click không giữ → silently reset trạng thái, không lỗi.
+      if (d && d.no_audio) {
+        $fvStatus.textContent = "Giữ nút để xác thực"; return;
+      }
+      if (!r.ok || d.error) { $fvStatus.textContent="✗ "+(d.error||"Xác thực thất bại"); $fvStatus.classList.add("text-rose-600"); return; }
       onFilesVerified(d);
     };
     _fvMr.start(); _fvStarting=false;

@@ -33,11 +33,49 @@ def record(duration: float, sample_rate: int = config.SAMPLE_RATE) -> np.ndarray
     return audio.squeeze()
 
 
+# Audio blob phải ≥ ngưỡng này mới đáng giải mã. Quá nhỏ → coi như "user
+# click không giữ" / browser gửi blob rỗng.
+# Heuristic 200 byte: WebM container header tối thiểu ~160 byte; audio Opus
+# 0.3s ≈ 600 byte. Đặt 200 đủ catch blob rỗng (~0 byte hoặc chỉ header), nhưng
+# KHÔNG nhầm với recording ngắn legitimate.
+_MIN_AUDIO_BLOB_BYTES = 200
+
+
+class EmptyAudio(Exception):
+    """Audio blob rỗng / quá nhỏ / decode fail vì không có audio thật.
+
+    Caller nên xử lý như "no-op" thay vì báo lỗi cho user — trường hợp này
+    thường xảy ra khi user click nhanh không giữ nút push-to-talk.
+    """
+
+
 def decode_browser_audio(blob: bytes,
                          target_sr: int = config.SAMPLE_RATE) -> np.ndarray:
-    """Decode audio từ browser (WebM/Opus, OGG, WAV...) → float32 mono [N] @ 16kHz."""
+    """Decode audio từ browser (WebM/Opus, OGG, WAV...) → float32 mono [N] @ 16kHz.
+
+    Raises:
+        EmptyAudio: blob rỗng/quá nhỏ hoặc ffmpeg không decode được vì
+            không có audio data thật (vd: user click không giữ nút). Caller
+            nên catch và return early thay vì 400 error.
+    """
+    # Guard 1: blob nhỏ hơn ngưỡng → skip ngay, không gọi ffmpeg.
+    if blob is None or len(blob) < _MIN_AUDIO_BLOB_BYTES:
+        raise EmptyAudio(f"blob quá nhỏ ({len(blob) if blob else 0} byte)")
+
     from pydub import AudioSegment
-    seg = AudioSegment.from_file(io.BytesIO(blob))
+    from pydub.exceptions import CouldntDecodeError
+    try:
+        seg = AudioSegment.from_file(io.BytesIO(blob))
+    except CouldntDecodeError as e:
+        # ffmpeg fail (EBML header lỗi, audio rỗng giả webm header...) →
+        # treat as empty. Log debug, không spam stack trace ra user.
+        _log.debug("decode_browser_audio: ffmpeg fail (%s) → empty audio", e)
+        raise EmptyAudio(str(e)) from e
+
+    # Guard 2: segment quá ngắn → cũng coi như empty.
+    if len(seg) < 50:  # ms
+        raise EmptyAudio(f"audio quá ngắn ({len(seg)} ms)")
+
     seg = seg.set_frame_rate(target_sr).set_channels(1)
     samples = np.array(seg.get_array_of_samples(), dtype=np.float32)
     if seg.sample_width == 1:

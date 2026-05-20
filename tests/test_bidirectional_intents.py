@@ -147,3 +147,14 @@ def test_rule_based_does_not_confuse_read_with_add():
     assert nlu.parse("đọc ghi chú của tôi")["intent"] == "read_notes"
     assert nlu.parse("xóa ghi chú")["intent"] == "delete_data"
     assert nlu.parse("thêm ghi chú mới")["intent"] == "add_note"
+
+
+def test_rule_based_classifies_email_after_asr_correction():
+    nlu = RuleBasedNLU()
+
+    res = nlu.parse("gửi mail cho nhi")
+    assert res["intent"] == "send_email"
+    assert res["entities"].get("recipient") == "nhi"
+
+    res = nlu.parse("gửi email")
+    assert res["intent"] == "send_email"

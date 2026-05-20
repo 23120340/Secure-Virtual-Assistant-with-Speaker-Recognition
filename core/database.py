@@ -277,9 +277,23 @@ class UserDB:
                     requested_at REAL NOT NULL,
                     status       TEXT NOT NULL DEFAULT 'pending',
                     note         TEXT NOT NULL DEFAULT '',
+                    resolved_at  REAL,
+                    verification_method TEXT NOT NULL DEFAULT '',
+                    admin_note   TEXT NOT NULL DEFAULT '',
                     FOREIGN KEY(user_id) REFERENCES users(user_id)
                 )
             """)
+            for col, ddl in (
+                ("resolved_at", "ALTER TABLE password_reset_requests ADD COLUMN resolved_at REAL"),
+                ("verification_method",
+                 "ALTER TABLE password_reset_requests ADD COLUMN verification_method TEXT NOT NULL DEFAULT ''"),
+                ("admin_note",
+                 "ALTER TABLE password_reset_requests ADD COLUMN admin_note TEXT NOT NULL DEFAULT ''"),
+            ):
+                try:
+                    c.execute(ddl)
+                except sqlite3.OperationalError:
+                    pass
             c.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_requests "
                       "ON password_reset_requests(status, requested_at)")
 
@@ -482,7 +496,8 @@ class UserDB:
                                      limit: int = 20) -> list[dict]:
         with self._conn() as c:
             rows = c.execute(
-                """SELECT r.id, r.user_id, u.name, r.requested_at, r.status, r.note
+                """SELECT r.id, r.user_id, u.name, r.requested_at, r.status, r.note,
+                          r.resolved_at, r.verification_method, r.admin_note
                    FROM password_reset_requests r
                    LEFT JOIN users u ON u.user_id=r.user_id
                    WHERE r.status=?
@@ -498,15 +513,47 @@ class UserDB:
                 "requested_at": float(r[3]),
                 "status": r[4],
                 "note": r[5],
+                "resolved_at": float(r[6]) if r[6] is not None else None,
+                "verification_method": r[7] or "",
+                "admin_note": r[8] or "",
             }
             for r in rows
         ]
 
-    def update_password_reset_request_status(self, request_id: int, status: str):
+    def get_password_reset_request(self, request_id: int) -> Optional[dict]:
+        with self._conn() as c:
+            row = c.execute(
+                """SELECT r.id, r.user_id, u.name, r.requested_at, r.status, r.note,
+                          r.resolved_at, r.verification_method, r.admin_note
+                   FROM password_reset_requests r
+                   LEFT JOIN users u ON u.user_id=r.user_id
+                   WHERE r.id=?""",
+                (request_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "user_id": row[1],
+            "name": row[2] or row[1],
+            "requested_at": float(row[3]),
+            "status": row[4],
+            "note": row[5],
+            "resolved_at": float(row[6]) if row[6] is not None else None,
+            "verification_method": row[7] or "",
+            "admin_note": row[8] or "",
+        }
+
+    def update_password_reset_request_status(self, request_id: int, status: str,
+                                             verification_method: str = "",
+                                             admin_note: str = ""):
+        now = __import__("time").time()
         with self._conn() as c:
             c.execute(
-                "UPDATE password_reset_requests SET status=? WHERE id=?",
-                (status, request_id),
+                """UPDATE password_reset_requests
+                   SET status=?, resolved_at=?, verification_method=?, admin_note=?
+                   WHERE id=?""",
+                (status, now, verification_method[:80], admin_note[:500], request_id),
             )
 
     def has_password(self, user_id: str) -> bool:
