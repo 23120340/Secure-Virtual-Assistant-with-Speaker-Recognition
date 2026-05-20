@@ -1,0 +1,364 @@
+{
+  "schema_version": "secva.benchmark.v1",
+  "generated_at": "2026-05-19T16:26:46+00:00",
+  "config": {
+    "asr_backends": [
+      "faster-whisper"
+    ],
+    "speaker_backends": [
+      "ecapa"
+    ],
+    "sample_rate": 16000,
+    "enroll_audio_dir": "data\\enroll_audio"
+  },
+  "asr": {
+    "faster-whisper": {
+      "n_samples": 20,
+      "wer_mean": 0.7682539682539682,
+      "wer_median": 1.0,
+      "latency_mean_s": 1.246518361568451,
+      "total_time_s": 52.65,
+      "samples": [
+        {
+          "user_id": "lan",
+          "sample_idx": 1,
+          "expected_text": "Trợ lý ơi, hôm nay thời tiết thế nào?",
+          "hypothesis": "Trời lý ai, hôm nay, thầy tiếp theo nào.",
+          "wer": 0.5556,
+          "latency_s": 1.2013
+        },
+        {
+          "user_id": "lan",
+          "sample_idx": 2,
+          "expected_text": "Phát một bản nhạc tôi yêu thích đi.",
+          "hypothesis": "Một bản nhật, tôi yêu thích đi.",
+          "wer": 0.25,
+          "latency_s": 1.1223
+        },
+        {
+          "user_id": "lan",
+          "sample_idx": 3,
+          "expected_text": "Cho tôi xem lịch làm việc hôm nay.",
+          "hypothesis": "Chào tối xem lật làm việc hôm nay.",
+          "wer": 0.375,
+          "latency_s": 1.5231
+        },
+        {
+          "user_id": "lan",
+          "sample_idx": 4,
+          "expected_text": "Đọc cho tôi ghi chú cuối tuần.",
+          "hypothesis": "Chào tối, ghi chú, cuối tối.",
+          "wer": 0.5714,
+          "latency_s": 0.9935
+        },
+        {
+          "user_id": "lan",
+          "sample_idx": 5,
+          "expected_text": "Một hai ba bốn năm sáu bảy tám chín mười.",
+          "hypothesis": "1 2 3 4 5 6 7 8 9 10",
+          "wer": 1.0,
+          "latency_s": 0.9303
+        },
+        {
+          "user_id": "minh",
+          "sample_idx": 1,
+          "expected_text": "Trợ lý ơi, hôm nay thời tiết thế nào?",
+          "hypothesis": "Chạy lý ai, hôm nay, thay tiếp theo.",
+          "wer": 0.6667,
+          "latency_s": 0.9927
+        },
+        {
+          "user_id": "minh",
+          "sample_idx": 2,
+          "expected_text": "Phát một bản nhạc tôi yêu thích đi.",
+          "hypothesis": "Phát 1 bản nhật từ yêu thích đi.",
+          "wer": 0.375,
+          "latency_s": 0.9821
+        },
+        {
+          "user_id": "minh",
+          "sample_idx": 3,
+          "expected_text": "Cho tôi xem lịch làm việc hôm nay.",
+          "hypothesis": "Cho tôi xem lịch làm việc hôm nay.",
+          "wer": 0.0,
+          "latency_s": 1.3322
+        },
+        {
+          "user_id": "minh",
+          "sample_idx": 4,
+          "expected_text": "Đọc cho tôi ghi chú cuối tuần.",
+          "hypothesis": "Nặng cho tôi ghi chú cuối tuần.",
+          "wer": 0.1429,
+          "latency_s": 1.5875
+        },
+        {
+          "user_id": "minh",
+          "sample_idx": 5,
+          "expected_text": "Một hai ba bốn năm sáu bảy tám chín mười.",
+          "hypothesis": "1 2 3 4 5 6 7 9 10",
+          "wer": 1.0,
+          "latency_s": 1.1142
+        },
+        {
+          "user_id": "quan",
+          "sample_idx": 0,
+          "expected_text": "Một hai ba bốn năm sáu bảy tám chín mười.",
+          "hypothesis": "Chạy li ai hôm nay, thở tít thế nào.",
+          "wer": 1.0,
+          "latency_s": 1.286
+        },
+        {
+          "user_id": "quan",
+          "sample_idx": 1,
+          "expected_text": "Trợ lý ơi, hôm nay thời tiết thế nào?",
+          "hypothesis": "Pháp 1 bạn nhật cười yêu thích đi.",
+          "wer": 1.0,
+          "latency_s": 1.2513
+        },
+        {
+          "user_id": "quan",
+          "sample_idx": 2,
+          "expected_text": "Phát một bản nhạc tôi yêu thích đi.",
+          "hypothesis": "Cho tôi xem lịch làm việc hôm nay.",
+          "wer": 1.0,
+          "latency_s": 1.3686
+        },
+        {
+          "user_id": "quan",
+          "sample_idx": 3,
+          "expected_text": "Cho tôi xem lịch làm việc hôm nay.",
+          "hypothesis": "Nặp cho tôi ghi chú của tôi.",
+          "wer": 0.875,
+          "latency_s": 1.298
+        },
+        {
+          "user_id": "quan",
+          "sample_idx": 4,
+          "expected_text": "Đọc cho tôi ghi chú cuối tuần.",
+          "hypothesis": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10",
+          "wer": 1.4286,
+          "latency_s": 1.4016
+        },
+        {
+          "user_id": "Test00",
+          "sample_idx": 0,
+          "expected_text": "Một hai ba bốn năm sáu bảy tám chín mười.",
+          "hypothesis": "Trời lý ơi, hôm nay, trời tiệt thế nào.",
+          "wer": 1.0,
+          "latency_s": 1.2031
+        },
+        {
+          "user_id": "Test00",
+          "sample_idx": 1,
+          "expected_text": "Trợ lý ơi, hôm nay thời tiết thế nào?",
+          "hypothesis": "Tốt 1 vài nhạc tôi yêu thích đi.",
+          "wer": 1.0,
+          "latency_s": 1.2696
+        },
+        {
+          "user_id": "Test00",
+          "sample_idx": 2,
+          "expected_text": "Phát một bản nhạc tôi yêu thích đi.",
+          "hypothesis": "Ấn chào, đô xem lịch đám biệt hôm nay.",
+          "wer": 1.125,
+          "latency_s": 1.3633
+        },
+        {
+          "user_id": "Test00",
+          "sample_idx": 3,
+          "expected_text": "Cho tôi xem lịch làm việc hôm nay.",
+          "hypothesis": "",
+          "wer": 1.0,
+          "latency_s": 1.452
+        },
+        {
+          "user_id": "Test00",
+          "sample_idx": 4,
+          "expected_text": "Đọc cho tôi ghi chú cuối tuần.",
+          "hypothesis": "",
+          "wer": 1.0,
+          "latency_s": 1.2574
+        }
+      ]
+    }
+  },
+  "speaker": {
+    "ecapa": {
+      "n_users": 5,
+      "n_audio": 15,
+      "sid_acc": 1.0,
+      "sv_threshold": 0.45,
+      "tpr": 1.0,
+      "fpr": 0.0,
+      "n_pos": 15,
+      "n_neg": 60,
+      "samples": [
+        {
+          "true_user_id": "lan",
+          "sample_idx": 1,
+          "wav_path": "data\\enroll_audio\\lan\\sample_1.wav",
+          "top_user_id": "lan",
+          "top_score": 0.789565,
+          "target_score": 0.789565,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "lan",
+          "sample_idx": 2,
+          "wav_path": "data\\enroll_audio\\lan\\sample_2.wav",
+          "top_user_id": "lan",
+          "top_score": 0.862705,
+          "target_score": 0.862705,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "lan",
+          "sample_idx": 3,
+          "wav_path": "data\\enroll_audio\\lan\\sample_3.wav",
+          "top_user_id": "lan",
+          "top_score": 0.836401,
+          "target_score": 0.836401,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "lan",
+          "sample_idx": 4,
+          "wav_path": "data\\enroll_audio\\lan\\sample_4.wav",
+          "top_user_id": "lan",
+          "top_score": 0.853616,
+          "target_score": 0.853616,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "lan",
+          "sample_idx": 5,
+          "wav_path": "data\\enroll_audio\\lan\\sample_5.wav",
+          "top_user_id": "lan",
+          "top_score": 0.897367,
+          "target_score": 0.897367,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "quan",
+          "sample_idx": 0,
+          "wav_path": "data\\enroll_audio\\quan\\sample_0.wav",
+          "top_user_id": "quan",
+          "top_score": 0.792094,
+          "target_score": 0.792094,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "quan",
+          "sample_idx": 1,
+          "wav_path": "data\\enroll_audio\\quan\\sample_1.wav",
+          "top_user_id": "quan",
+          "top_score": 0.823603,
+          "target_score": 0.823603,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "quan",
+          "sample_idx": 2,
+          "wav_path": "data\\enroll_audio\\quan\\sample_2.wav",
+          "top_user_id": "quan",
+          "top_score": 0.861123,
+          "target_score": 0.861123,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "quan",
+          "sample_idx": 3,
+          "wav_path": "data\\enroll_audio\\quan\\sample_3.wav",
+          "top_user_id": "quan",
+          "top_score": 0.744788,
+          "target_score": 0.744788,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "quan",
+          "sample_idx": 4,
+          "wav_path": "data\\enroll_audio\\quan\\sample_4.wav",
+          "top_user_id": "quan",
+          "top_score": 0.721313,
+          "target_score": 0.721313,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "Test00",
+          "sample_idx": 0,
+          "wav_path": "data\\enroll_audio\\Test00\\sample_0.wav",
+          "top_user_id": "Test00",
+          "top_score": 0.70801,
+          "target_score": 0.70801,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "Test00",
+          "sample_idx": 1,
+          "wav_path": "data\\enroll_audio\\Test00\\sample_1.wav",
+          "top_user_id": "Test00",
+          "top_score": 0.9035,
+          "target_score": 0.9035,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "Test00",
+          "sample_idx": 2,
+          "wav_path": "data\\enroll_audio\\Test00\\sample_2.wav",
+          "top_user_id": "Test00",
+          "top_score": 0.710808,
+          "target_score": 0.710808,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "Test00",
+          "sample_idx": 3,
+          "wav_path": "data\\enroll_audio\\Test00\\sample_3.wav",
+          "top_user_id": "Test00",
+          "top_score": 0.775173,
+          "target_score": 0.775173,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        },
+        {
+          "true_user_id": "Test00",
+          "sample_idx": 4,
+          "wav_path": "data\\enroll_audio\\Test00\\sample_4.wav",
+          "top_user_id": "Test00",
+          "top_score": 0.882558,
+          "target_score": 0.882558,
+          "sid_correct": true,
+          "sv_threshold": 0.45,
+          "sv_target_passed": true
+        }
+      ]
+    }
+  }
+}

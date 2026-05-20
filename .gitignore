@@ -26,6 +26,7 @@ checkpoints/
 *.bin
 
 # Data người dùng
+data/
 data/users.db
 data/enroll_audio/
 data/user_files/
