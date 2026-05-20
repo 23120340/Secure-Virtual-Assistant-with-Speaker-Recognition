@@ -20,10 +20,10 @@ venv/
 env/
 
 # ML checkpoints & models (to lớn, dùng Drive/HF Hub)
-# checkpoints/
-# *.pt
-# *.ckpt
-# *.bin
+checkpoints/
+*.pt
+*.ckpt
+*.bin
 
 # Data người dùng
 data/
