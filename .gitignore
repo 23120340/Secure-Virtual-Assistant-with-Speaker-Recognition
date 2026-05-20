@@ -24,6 +24,7 @@ checkpoints/
 *.pt
 *.ckpt
 *.bin
+*.json
 
 # Data người dùng
 data/
