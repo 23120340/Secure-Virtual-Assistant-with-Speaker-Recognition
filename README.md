@@ -26,7 +26,8 @@ Trợ lý ảo tiếng Việt có phân quyền bằng giọng nói, kết hợp
   - `wavlm`: dùng `microsoft/wavlm-base-plus-sv`.
 - **Web app Flask**: enrollment bằng trình duyệt, push-to-talk assistant, text mode, file manager, music player, admin panel, Google OAuth/Gmail send.
 - **Security/polish đã có**: password PBKDF2 + self-service change, OAuth PKCE + nonce + diagnostic callback, Fernet token encryption, optional WAV encryption at-rest, rate limit, audit log JSONL, request ID, health/readiness endpoints, cascade delete, consent banner, data export, challenge-response opt-in, admin masking + Revoke & Re-enroll, JSON error handler cho `/api/*`, strict CSP (drop `'unsafe-inline'` cho script-src).
-- **Account management**: user tự đổi password, re-enroll giọng nói, hoặc bổ sung mẫu giọng. Admin xem masked info, yêu cầu reroll/revoke voice, và có flow reset password có xác minh: admin chỉ cấp mã reset một lần, không đặt mật khẩu trực tiếp.
+- **Account management**: user tự đổi password, re-enroll giọng nói, hoặc bổ sung mẫu giọng. Admin xem masked info, yêu cầu reroll/revoke voice, và có flow reset password có xác minh: admin chỉ cấp mã reset/PIN một lần trên UI, không đặt mật khẩu trực tiếp.
+- **Admin security alerts**: các lần sai mật khẩu ở unlock/files/text-mode, đăng ký lại giọng, và các lần Speaker Verification fail sẽ tạo cảnh báo `security_alerts` để admin thấy trên dashboard, rồi chọn `Reroll`, `Revoke`, hoặc đánh dấu đã xem.
 - **Robustness**: offline TTS fallback (pyttsx3) khi gTTS fail; retry + circuit breaker cho Gmail / OAuth; multi-language TTS qua `preferences.language`.
 - **Productivity intents**: bidirectional voice intents (`add_note`, `add_schedule`, `add_contact`, `set_reminder`, `list_reminders`) — voice-first task entry.
 - **Optional integrations đã có khung**: TensorBoard/Wandb metric logging cho training và Google Calendar read-only cho `show_schedule`. Mặc định đều tắt; bật khi có dependency/API key miễn phí phù hợp.
@@ -197,6 +198,7 @@ Các trang chính:
 | `/assistant` | Push-to-talk assistant + text mode |
 | `/music` | Music player |
 | `/files` | File manager sau xác thực |
+| `/admin` | Dashboard quản trị: masked user info, reset PIN, reroll/revoke, cảnh báo bảo mật |
 | `/healthz` | Liveness |
 | `/readyz` | Readiness |
 | `/api/health` | Health/info legacy |
@@ -234,7 +236,9 @@ Lưu ý cho báo cáo:
 
 - Password user/admin: PBKDF2-HMAC-SHA256, salt ngẫu nhiên.
 - **Password change / reset**: user tự đổi qua `POST /api/users/<id>/change-password` (body `{old_password, new_password, new_password_confirm}`). Nếu quên mật khẩu, user nhận mã qua Gmail đã link; nếu Gmail thiếu/hết hạn/lỗi, user gửi request cho admin. Admin phải xác minh danh tính, ghi `verification_method` + `admin_note`, rồi dùng `POST /api/admin/password-reset-requests/<id>/approve` để cấp mã reset một lần cho user tự đặt mật khẩu mới qua `POST /api/users/<id>/forgot-password/confirm`. Admin KHÔNG được set/reset password trực tiếp và không xem password/hash.
-- **Admin masking + Revoke**: `POST /api/admin/users/<id>/info-masked` trả về email/name đã masked (`ngu***@gmail.com`, `Nguyễn V***`) + `voice_status` + `revoke_pending`, KHÔNG có password/prefs. `POST /api/admin/users/<id>/revoke-voice` xoá embedding + set cờ `revoke_pending=True`; user phải `POST /api/users/<id>/reenroll-voice` với password + mẫu giọng mới để mở khóa lại IMPORTANT.
+- **Admin masking + Revoke/Reroll**: `POST /api/admin/users/<id>/info-masked` trả về email/name đã masked (`ngu***@gmail.com`, `Nguyễn V***`) + `voice_status` + `revoke_pending`, KHÔNG có password/prefs. `POST /api/admin/users/<id>/request-reenroll` gắn cờ `revoke_pending=True` để khóa tác vụ IMPORTANT cho đến khi user đăng ký lại giọng. `POST /api/admin/users/<id>/revoke-voice` xoá embedding + set cờ `revoke_pending=True`; user phải `POST /api/users/<id>/reenroll-voice` với password + ít nhất 2 mẫu giọng mới để mở khóa lại IMPORTANT.
+- **Security alerts cho admin**: SQLite có bảng `security_alerts`. Backend tự ghi cảnh báo `password_fail` khi user sai mật khẩu ở các luồng nhạy cảm và `voice_spoof_suspected` khi SV fail. `/api/admin/verify` trả `security_alerts` pending cho dashboard; admin có thể gắn Reroll, Revoke, hoặc resolve cảnh báo.
+- **User profile privacy**: `GET /api/users/<id>` chỉ trả public metadata + `revoke_pending`. Preferences đầy đủ chỉ được trả sau `POST /api/users/<id>/unlock` hoặc session đã xác thực chính user đó. Modal user trên trang chính hydrate form sau unlock để hiện lại email, gu nhạc, balance, notes, schedule và contacts đã lưu.
 - **Voice management**: user tự `reenroll-voice` (REPLACE centroid) hoặc `add-voice-samples` (incremental average vào centroid hiện tại) — cả 2 password-gated.
 - OAuth token: Fernet encryption; ưu tiên `TOKEN_ENCRYPTION_KEY`, fallback HKDF từ `FLASK_SECRET`.
 - OAuth flow: server-side nonce + PKCE, callback escape HTML. Callback error message giờ phân biệt `no_session_nonce` (cookie không tới) vs `state_mismatch` (CSRF/multiple tab) — kèm hint để user fix.

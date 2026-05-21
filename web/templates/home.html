@@ -11,7 +11,6 @@
       <a href="#assistant" class="spy-link" data-section="assistant">Trợ lý</a>
       <a href="#users"     class="spy-link" data-section="users">Tài khoản</a>
       <a href="#enroll"    class="spy-link" data-section="enroll">Đăng ký</a>
-      <a href="#admin"     class="spy-link" data-section="admin">Quản trị</a>
     </div>
   </div>
 </nav>
@@ -635,16 +634,15 @@
                       style="display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .9rem;font-size:.82rem;font-weight:600;background:rgba(124,58,237,.1);color:var(--c-violet);border:1px solid rgba(124,58,237,.2);border-radius:.75rem;cursor:pointer">
                 Thu mẫu (~5s)
               </button>
+              <input id="modal-voice-file-input" type="file" accept="audio/*" multiple style="display:none">
               <button id="modal-voice-clear-btn" type="button"
                       style="display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .9rem;font-size:.82rem;font-weight:600;background:rgba(148,163,184,.12);color:var(--txt-1);border:none;border-radius:.75rem;cursor:pointer">
                 Xóa mẫu
               </button>
             </div>
-            <button id="modal-voice-reenroll-btn" class="btn-primary" disabled
-                    style="opacity:.6">Đăng ký lại</button>
+            <button id="modal-voice-reenroll-btn" class="btn-primary">Đăng ký lại</button>
             <button id="modal-voice-add-btn"
-                    style="padding:.55rem 1rem;font-size:.85rem;font-weight:600;background:rgba(16,185,129,.1);color:#047857;border:1px solid rgba(16,185,129,.2);border-radius:.75rem;cursor:pointer;opacity:.6"
-                    disabled>Bổ sung mẫu</button>
+                    style="padding:.55rem 1rem;font-size:.85rem;font-weight:600;background:rgba(16,185,129,.1);color:#047857;border:1px solid rgba(16,185,129,.2);border-radius:.75rem;cursor:pointer">Bổ sung mẫu</button>
           </div>
           <div id="modal-voice-msg" style="margin-top:.5rem;font-size:.82rem;display:none"></div>
         </div>
@@ -747,87 +745,6 @@
   </div><!-- end card -->
 </div><!-- end user-modal -->
 
-{# ─────────────────────────────────────────────────────────
-   SECTION 4 — ADMIN
-   ───────────────────────────────────────────────────────── #}
-<section id="admin" class="va-section">
-  <div class="s-container">
-
-    <div class="fade-up" style="margin-bottom:2rem">
-      <h2 class="s-title">Quản trị <em>hệ thống</em></h2>
-      <p class="s-subtitle">Truy cập bằng mật khẩu quản trị để xem danh sách người dùng.</p>
-    </div>
-
-    <!-- Lock screen -->
-    <div id="admin-lock" class="fade-up" style="max-width:440px">
-      <div class="enroll-card" style="padding:1.75rem">
-        <div style="display:flex;align-items:center;gap:.85rem;margin-bottom:1.25rem">
-          <div style="width:2.5rem;height:2.5rem;border-radius:50%;background:var(--grad-btn);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          </div>
-          <div>
-            <p style="font-weight:700;font-size:.95rem;margin:0">Xác thực quản trị viên</p>
-            <p style="font-size:.78rem;color:var(--txt-2);margin:.1rem 0 0">Chỉ quản trị viên mới có thể truy cập</p>
-          </div>
-        </div>
-        <div style="display:flex;gap:.65rem">
-          <div style="position:relative;flex:1">
-            <input id="admin-pw" type="password" placeholder="Mật khẩu quản trị..."
-                   class="glass-input" style="padding-right:2.5rem"/>
-            <button type="button" id="admin-pw-eye"
-                    style="position:absolute;right:.65rem;top:50%;transform:translateY(-50%);color:var(--txt-2);background:none;border:none;cursor:pointer;display:flex;align-items:center">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
-          </div>
-          <button id="admin-unlock-btn" class="btn-primary">Mở khóa</button>
-        </div>
-        <div id="admin-lock-error" style="margin-top:.5rem;font-size:.82rem;color:#ef4444;display:none"></div>
-      </div>
-    </div>
-
-    <!-- Dashboard (hiện sau khi xác thực) -->
-    <div id="admin-dashboard" class="hidden" style="margin-top:1.5rem">
-
-      <!-- Stats bar -->
-      <div class="fade-up" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:.75rem">
-        <div style="display:flex;align-items:center;gap:.65rem">
-          <div style="background:var(--grad-btn);border-radius:.75rem;padding:.55rem 1.1rem;color:white;font-size:.85rem;font-weight:600">
-            Tổng: <span id="admin-count" style="font-size:1.1rem;font-weight:800">0</span> người dùng
-          </div>
-        </div>
-        <button id="admin-logout-btn"
-                style="font-size:.78rem;color:var(--txt-2);background:none;border:1px solid rgba(0,0,0,.1);border-radius:var(--r-btn);padding:.35rem .9rem;cursor:pointer">
-          Đăng xuất
-        </button>
-      </div>
-
-      <div id="admin-reset-requests" class="hidden enroll-card fade-up" style="margin-bottom:1rem;padding:1rem">
-        <h3 style="font-size:.92rem;font-weight:700;margin-bottom:.6rem">Yêu cầu cấp lại mật khẩu</h3>
-        <div id="admin-reset-list" style="display:flex;flex-direction:column;gap:.45rem"></div>
-      </div>
-
-      <!-- User table -->
-      <div class="enroll-card fade-up" style="padding:0;overflow:hidden">
-        <table style="width:100%;border-collapse:collapse;font-size:.85rem">
-          <thead>
-            <tr style="background:rgba(124,58,237,.06);border-bottom:1px solid rgba(0,0,0,.07)">
-              <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">#</th>
-              <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">User ID</th>
-              <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">Tên</th>
-              <th style="padding:.7rem 1.1rem;text-align:left;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">Ngày đăng ký</th>
-              <th style="padding:.7rem 1.1rem;text-align:right;font-weight:600;color:var(--txt-2);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">Thao tác</th>
-            </tr>
-          </thead>
-          <tbody id="admin-user-tbody"></tbody>
-        </table>
-        <div id="admin-empty" class="hidden" style="padding:3rem;text-align:center;color:var(--txt-2);font-size:.9rem">
-          Chưa có người dùng nào trong hệ thống.
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
 
 <!-- Toast -->
 <div id="toast" class="hidden"
@@ -1113,6 +1030,9 @@ async function sendAudio(blob) {
     addMsg("user", data.transcript);
     addMeta(data);
     addMsg("bot", data.response);
+    if (data.request_id && data.intent && !data.blocked) {
+      addFeedbackWidget(data.request_id, data.intent);
+    }
     if (data.tts_url) { $tts.src = data.tts_url; $tts.play().catch(()=>{}); }
     rememberAssistantUser(data);
 
@@ -1149,6 +1069,86 @@ function addMeta(r) {
 // ════════════════════════════════════════════════════════════
 // SIDE PANEL MANAGEMENT
 // ════════════════════════════════════════════════════════════
+function addFeedbackWidget(requestId, intent) {
+  const container = document.createElement("div");
+  container.className = "flex justify-start mb-2";
+
+  const widget = document.createElement("div");
+  widget.style.cssText = "background:rgba(255,255,255,.92);border:1px solid rgba(0,0,0,.08);border-radius:.85rem;padding:.7rem .85rem;box-shadow:var(--shadow-s);max-width:320px;font-size:.78rem";
+
+  const title = document.createElement("div");
+  title.textContent = "Đánh giá phản hồi";
+  title.style.cssText = "font-weight:700;margin-bottom:.45rem;color:var(--txt)";
+  widget.appendChild(title);
+
+  const stars = document.createElement("div");
+  stars.style.cssText = "display:flex;gap:.25rem;margin-bottom:.45rem";
+  let rating = 0;
+
+  const noteWrap = document.createElement("div");
+  noteWrap.style.display = "block";
+  const note = document.createElement("textarea");
+  note.placeholder = "Nhận xét thêm (tuỳ chọn)...";
+  note.maxLength = 500;
+  note.rows = 2;
+  note.style.cssText = "width:100%;resize:none;border:1px solid rgba(0,0,0,.1);border-radius:.55rem;padding:.45rem .55rem;font:inherit;font-size:.76rem;margin-bottom:.5rem";
+  noteWrap.appendChild(note);
+
+  function paintStars() {
+    stars.querySelectorAll("button").forEach((btn, idx) => {
+      btn.innerHTML = starSvg(idx < rating);
+      btn.style.opacity = idx < rating ? "1" : ".42";
+    });
+  }
+
+  for (let i = 1; i <= 5; i++) {
+    const star = document.createElement("button");
+    star.type = "button";
+    star.style.cssText = "background:none;border:0;padding:0;width:20px;height:20px;cursor:pointer;color:#16a34a";
+    star.onclick = () => {
+      rating = i;
+      paintStars();
+      note.focus();
+    };
+    stars.appendChild(star);
+  }
+  widget.appendChild(stars);
+  widget.appendChild(noteWrap);
+
+  const submit = document.createElement("button");
+  submit.type = "button";
+  submit.textContent = "Gửi phản hồi";
+  submit.style.cssText = "background:var(--grad-btn);color:#fff;border:0;border-radius:var(--r-btn);padding:.35rem .8rem;font-weight:600;font-size:.75rem;cursor:pointer";
+  submit.onclick = async () => {
+    if (!rating) return;
+    submit.disabled = true;
+    submit.textContent = "Đang gửi...";
+    try {
+      const r = await fetch("/api/feedback", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({request_id: requestId, intent, rating, comment: note.value.trim()}),
+      });
+      if (!r.ok) throw new Error("feedback failed");
+      widget.innerHTML = '<div style="color:#059669;font-weight:700;text-align:center;padding:.35rem">Cảm ơn phản hồi của bạn!</div>';
+      setTimeout(() => container.remove(), 1800);
+    } catch {
+      submit.disabled = false;
+      submit.textContent = "Lỗi, thử lại";
+    }
+  };
+  widget.appendChild(submit);
+
+  container.appendChild(widget);
+  $chat.appendChild(container);
+  paintStars();
+  $chat.scrollTop = $chat.scrollHeight;
+}
+
+function starSvg(filled) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="${filled ? '#16a34a' : 'none'}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+}
+
 const $panel        = document.getElementById("side-panel");
 const $contentMusic = document.getElementById("content-music");
 const $contentFiles = document.getElementById("content-files");
@@ -2062,6 +2062,7 @@ let _modalUid        = null;
 let _modalPw         = "";
 let _modalFilesReady = false;
 let _modalContacts   = [];
+let _modalPrefsBase  = {};
 
 function renderModalContacts() {
   const $list = document.getElementById("modal-contacts-list");
@@ -2138,11 +2139,12 @@ function closeModal() {
   document.getElementById("user-modal").classList.add("hidden");
   if (_modalOAuthTimer) { clearInterval(_modalOAuthTimer); _modalOAuthTimer = null; }
   _modalUid = null; _modalPw = ""; _modalFilesReady = false;
-  _modalMode = false; _modalContacts = [];
+  _modalMode = false; _modalContacts = []; _modalPrefsBase = {};
 }
 
 function populateModal(u) {
   const prefs = u.preferences || {};
+  _modalPrefsBase = {...prefs};
   if (!document.getElementById("modal-name").value)
     document.getElementById("modal-name").value = u.name || "";
   document.getElementById("modal-pref-email").value   = prefs.email           || "";
@@ -2202,8 +2204,7 @@ document.getElementById("modal-unlock-btn").onclick = async () => {
   _modalPw = pw;
   $err.style.display = "none";
   document.getElementById("modal-lock").classList.add("hidden");
-  if (d.user && !document.getElementById("modal-name").value)
-    document.getElementById("modal-name").value = d.user.name || "";
+  if (d.user) populateModal(d.user);
   document.getElementById("modal-editor").classList.remove("hidden");
 };
 document.getElementById("modal-pw").addEventListener("keydown", e => {
@@ -2315,13 +2316,19 @@ document.getElementById("modal-save-btn").onclick = async () => {
   const schedRaw = document.getElementById("modal-pref-schedule").value.trim();
   const newPw   = document.getElementById("modal-new-pw").value.trim();
 
-  const preferences = {};
-  if (email)   preferences.email           = email;
-  if (genre)   preferences.favorite_genre  = genre;
-  if (artist)  preferences.favorite_artist = artist;
-  if (balance) preferences.balance         = Number(balance);
-  if (notesRaw) preferences.notes    = notesRaw.split("\n").map(s=>s.trim()).filter(Boolean);
+  const preferences = {..._modalPrefsBase};
+  if (email) preferences.email = email;
+  else delete preferences.email;
+  if (genre) preferences.favorite_genre = genre;
+  else delete preferences.favorite_genre;
+  if (artist) preferences.favorite_artist = artist;
+  else delete preferences.favorite_artist;
+  if (balance) preferences.balance = Number(balance);
+  else delete preferences.balance;
+  if (notesRaw) preferences.notes = notesRaw.split("\n").map(s=>s.trim()).filter(Boolean);
+  else delete preferences.notes;
   if (schedRaw) preferences.schedule = schedRaw.split("\n").map(s=>s.trim()).filter(Boolean);
+  else delete preferences.schedule;
   preferences.contacts = _modalContacts;
 
   $msg.textContent = "Đang lưu..."; $msg.style.cssText = "font-size:.82rem;color:var(--txt-2);display:block";
@@ -2359,6 +2366,7 @@ document.getElementById("modal-save-btn").onclick = async () => {
 
   $msg.textContent = newPw ? "✓ Đã lưu + đổi mật khẩu" : "✓ Đã lưu";
   $msg.style.color = "#22c55e";
+  _modalPrefsBase = {...preferences};
 
   // Update card in DOM
   const card = document.querySelector(`.user-card[data-uid="${_modalUid}"]`);
@@ -2435,20 +2443,24 @@ function _renderVoiceSamples() {
       };
     });
   }
-  const hasEnough = _modalVoiceSamples.length >= 2;
   const $reBtn  = document.getElementById("modal-voice-reenroll-btn");
   const $addBtn = document.getElementById("modal-voice-add-btn");
-  $reBtn.disabled = !hasEnough;
-  $reBtn.style.opacity = hasEnough ? "1" : ".6";
-  $addBtn.disabled = !_modalVoiceSamples.length;
-  $addBtn.style.opacity = _modalVoiceSamples.length ? "1" : ".6";
+  if ($reBtn) $reBtn.style.opacity = _modalVoiceSamples.length >= 2 ? "1" : ".78";
+  if ($addBtn) $addBtn.style.opacity = _modalVoiceSamples.length ? "1" : ".78";
 }
 
 async function _modalVoiceStartRecord() {
   if (_modalVoiceMR && _modalVoiceMR.state === "recording") return;
   const $btn = document.getElementById("modal-voice-rec-btn");
   const $msg = document.getElementById("modal-voice-msg");
+  const $file = document.getElementById("modal-voice-file-input");
   try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $msg.textContent = "Trình duyệt không cho thu mic ở trang này. Hãy chọn file audio mẫu.";
+      $msg.style.cssText = "margin-top:.5rem;font-size:.82rem;color:#92400e;display:block";
+      if ($file) $file.click();
+      return;
+    }
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false,
               sampleRate:16000, channelCount:1}
@@ -2466,11 +2478,13 @@ async function _modalVoiceStartRecord() {
       $btn.textContent = "Thu mẫu (~5s)";
       $btn.style.background = "rgba(124,58,237,.1)";
       $btn.style.color = "var(--c-violet)";
+      $btn.style.borderColor = "rgba(124,58,237,.2)";
     };
     _modalVoiceMR.start();
     $btn.textContent = "Đang thu...";
     $btn.style.background = "rgba(239,68,68,.15)";
     $btn.style.color = "#b91c1c";
+    $btn.style.borderColor = "rgba(239,68,68,.2)";
     // Auto-stop sau 5s.
     if (_modalVoiceTimer) clearTimeout(_modalVoiceTimer);
     _modalVoiceTimer = setTimeout(() => {
@@ -2478,12 +2492,19 @@ async function _modalVoiceStartRecord() {
     }, 5000);
     $msg.style.display = "none";
   } catch (e) {
-    $msg.textContent = "Lỗi mic: " + e.message;
-    $msg.style.cssText = "margin-top:.5rem;font-size:.82rem;color:#ef4444;display:block";
+    $msg.textContent = "Không thu được mic: " + e.message + ". Bạn có thể chọn file audio mẫu thay thế.";
+    $msg.style.cssText = "margin-top:.5rem;font-size:.82rem;color:#92400e;display:block";
+    if ($file) $file.click();
   }
 }
 
 document.getElementById("modal-voice-rec-btn").onclick = _modalVoiceStartRecord;
+document.getElementById("modal-voice-file-input").onchange = e => {
+  const files = Array.from(e.target.files || []);
+  files.forEach(file => _modalVoiceSamples.push({blob: file, durationSec: 5}));
+  e.target.value = "";
+  _renderVoiceSamples();
+};
 document.getElementById("modal-voice-clear-btn").onclick = () => {
   _modalVoiceSamples = [];
   _renderVoiceSamples();
@@ -2495,7 +2516,11 @@ async function _submitVoiceFlow(endpoint, label) {
     $msg.textContent = t;
     $msg.style.cssText = `margin-top:.5rem;font-size:.82rem;color:${ok ? "#22c55e" : "#ef4444"};display:block`;
   }
-  if (!_modalVoiceSamples.length) return show("Cần ít nhất 1 mẫu", false);
+  const isReenroll = endpoint === "/reenroll-voice";
+  if (isReenroll && _modalVoiceSamples.length < 2)
+    return show("Đăng ký lại cần ít nhất 2 mẫu giọng. Bấm Thu mẫu hoặc chọn file audio mẫu.", false);
+  if (!_modalVoiceSamples.length)
+    return show("Bổ sung mẫu cần ít nhất 1 mẫu giọng. Bấm Thu mẫu hoặc chọn file audio mẫu.", false);
   if (!_modalPw)
     return show("Cần mở khóa modal bằng mật khẩu trước", false);
 
@@ -2768,6 +2793,9 @@ document.getElementById("modal-music-upload-btn").onclick = async () => {
       addMsg("user", "[Văn bản] " + data.transcript);
       addMeta(data);
       addMsg("bot", data.response);
+      if (data.request_id && data.intent && !data.blocked) {
+        addFeedbackWidget(data.request_id, data.intent);
+      }
       if (data.tts_url) { $tts.src = data.tts_url; $tts.play().catch(() => {}); }
 
       // IMPORTANT intent and user selected but no/wrong password → show password field

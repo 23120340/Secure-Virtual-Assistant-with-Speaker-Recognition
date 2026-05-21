@@ -56,7 +56,8 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 │   ├── key.pem                 # TLS private key (không commit lên git)
 │   ├── templates/
 │   │   ├── base.html
-│   │   ├── home.html           # list users
+│   │   ├── home.html           # list users + user modal/preference editor
+│   │   ├── admin.html          # admin dashboard: reset PIN, reroll/revoke, alerts
 │   │   ├── enroll.html         # đăng ký + record N mẫu
 │   │   ├── user_detail.html    # xem/sửa preferences, xóa user
 │   │   └── assistant.html      # chat push-to-talk
@@ -157,8 +158,11 @@ python -m web.app --ssl --port 8443
 Flow:
 1. `/enroll` — đăng ký user mới: nhập user_id/name, record 5 mẫu giọng, optional preferences (gu nhạc, balance, lịch...)
 2. `/` — xem danh sách users đã đăng ký
-3. `/users/<id>` — sửa preferences, xóa user
-4. `/assistant` — chat push-to-talk (giữ nút hoặc giữ phím Space để nói, thả ra để gửi)
+3. `/` — bấm user card, nhập password để mở modal và sửa preferences/files/music/voice samples
+4. `/admin` — quản trị: xem masked info, cấp mã PIN reset, gắn cờ reroll, revoke, xem cảnh báo bảo mật
+5. `/assistant` — chat push-to-talk (giữ nút hoặc giữ phím Space để nói, thả ra để gửi)
+
+Lưu ý privacy: `GET /api/users/<id>` chỉ trả metadata public và `revoke_pending`; preferences đầy đủ chỉ hiện sau khi user unlock bằng mật khẩu (`POST /api/users/<id>/unlock`). Modal trên trang `/` hydrate lại toàn bộ form sau unlock để hiện email, gu nhạc, balance, notes, schedule và contacts đã lưu.
 
 ### CLI mode
 
@@ -249,6 +253,14 @@ User nhập tên + record 5 mẫu
 | POST | `/api/enroll` | multipart: user_id, name, preferences (json), sample_0…N | `{ok, user_id, n_samples, centroid_norm}` |
 | GET | `/users/<id>` | — | HTML user detail |
 | POST | `/api/users/<id>/update` | json: `{preferences: {…}}` | `{ok}` |
+| POST | `/api/users/<id>/unlock` | json: `{password}` | `{ok, user}` với preferences đầy đủ |
+| POST | `/api/users/<id>/reenroll-voice` | multipart: password + `sample_0…N` | replace centroid, clear `revoke_pending` |
+| POST | `/api/users/<id>/add-voice-samples` | multipart: password + `sample_0…N` | bổ sung mẫu vào centroid |
+| POST | `/api/admin/verify` | json: `{password}` | users, reset requests, security alerts |
+| POST | `/api/admin/password-reset-requests/<id>/approve` | json: admin_password, verification_method, admin_note | mã PIN reset một lần |
+| POST | `/api/admin/users/<id>/request-reenroll` | json: `{admin_password, reason}` | gắn cờ reroll/revoke_pending |
+| POST | `/api/admin/users/<id>/delete` | json: `{admin_password}` | revoke/xóa hẳn user |
+| POST | `/api/admin/security-alerts/<id>/resolve` | json: `{admin_password, status}` | đóng cảnh báo bảo mật |
 | POST | `/api/users/<id>/delete` | — | `{ok}` |
 | GET | `/assistant` | — | HTML chat |
 | POST | `/api/assistant/turn` | multipart: audio | TurnResult JSON |
@@ -284,6 +296,10 @@ Phương pháp formal: chạy `training/evaluate_sv.py` hoặc đọc `docs/resu
 **SID luôn ra "guest"** → check threshold + đảm bảo audio enroll dài >= 2s sau VAD.
 
 **Browser block autoplay TTS** → user click vào trang trước khi gửi turn đầu tiên (browser cần user gesture).
+
+**Preferences không hiện trong modal user** → phải nhập đúng mật khẩu để unlock. Trước unlock, API cố tình không trả preferences để tránh leak PII. Sau unlock, nếu vẫn trống, kiểm tra response `/api/users/<id>/unlock` trong DevTools có `user.preferences` không.
+
+**Admin không thấy cảnh báo bảo mật** → cảnh báo chỉ sinh sau sự kiện fail mới (sai mật khẩu hoặc SV fail) và cần restart app sau migration để SQLite tạo bảng `security_alerts`.
 
 ## Checklist nộp bài
 

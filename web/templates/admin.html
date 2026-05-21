@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản trị hệ thống | Secure VA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Montserrat:wght@400;500;600;700;800&family=Monument+Extended:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.cdnfonts.com/css/monument-extended" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Admin-specific overrides */
+    body { background: var(--grad-bg); padding: 0; }
+
+    .admin-navbar {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(255,255,255,.55);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,.35);
+      box-shadow: 0 2px 20px rgba(0,0,0,.05);
+    }
+    .admin-navbar.scrolled {
+      background: rgba(255,255,255,.88);
+      box-shadow: 0 2px 24px rgba(0,0,0,.08);
+    }
+    .admin-nav-inner {
+      max-width: 1100px; margin: 0 auto;
+      padding: 0 1.5rem; height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .admin-nav-logo {
+      font-family: var(--font-head);
+      font-size: .92rem; font-weight: 800; letter-spacing: .04em;
+      background: var(--grad-btn);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .admin-nav-logo svg {
+      stroke: currentColor;
+      stroke-width: 2;
+    }
+    .admin-nav-actions { display: flex; align-items: center; gap: 1rem; }
+    .admin-logout-link {
+      font-size: .8rem; font-weight: 500;
+      color: var(--txt-2); text-decoration: none;
+      padding: .4rem .9rem;
+      border: 1px solid rgba(0,0,0,.1);
+      border-radius: var(--r-btn);
+      cursor: pointer; transition: all .15s;
+    }
+    .admin-logout-link:hover {
+      background: rgba(124,58,237,.08);
+      color: var(--c-violet);
+      border-color: rgba(124,58,237,.25);
+    }
+
+    .admin-container {
+      max-width: 1100px; margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    /* Login screen */
+    .admin-login-wrap {
+      display: flex; justify-content: center;
+      padding: 3rem 1.5rem;
+      min-height: calc(100vh - 60px);
+      align-items: center;
+    }
+    .admin-login-card {
+      background: var(--glass);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-b);
+      border-radius: var(--r-card);
+      box-shadow: var(--shadow-m);
+      padding: 2rem;
+      max-width: 400px;
+      width: 100%;
+      animation: fade-in .4s ease;
+    }
+    .admin-login-card h2 {
+      font-size: 1.4rem; font-weight: 700;
+      color: var(--txt); margin: 0 0 .5rem;
+    }
+    .admin-login-card p {
+      color: var(--txt-2); font-size: .9rem; margin: 0 0 1.5rem;
+    }
+    .admin-login-group {
+      display: flex; gap: .65rem; margin-bottom: 1rem;
+    }
+    .admin-login-group input {
+      flex: 1;
+      background: rgba(255,255,255,.7);
+      border: 1px solid rgba(0,0,0,.1);
+      border-radius: .75rem;
+      padding: .55rem .85rem;
+      font-size: .85rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .admin-login-group input:focus {
+      border-color: rgba(196,77,255,.4);
+      box-shadow: 0 0 0 3px rgba(196,77,255,.1);
+    }
+    .admin-login-btn {
+      background: var(--grad-btn);
+      color: white;
+      border: none;
+      border-radius: .75rem;
+      padding: .55rem 1.2rem;
+      font-size: .85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s;
+    }
+    .admin-login-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(196,77,255,.35);
+    }
+    .admin-login-error {
+      color: #ef4444; font-size: .8rem;
+      margin-top: .5rem; display: none;
+    }
+
+    /* Dashboard */
+    .admin-dashboard {
+      display: none;
+      animation: fade-in .4s ease;
+    }
+    .admin-dashboard.show { display: block; }
+
+    .admin-page-title {
+      margin-bottom: 2rem;
+    }
+    .admin-page-title h1 {
+      font-family: var(--font-section);
+      font-size: clamp(1.5rem, 3vw, 2.2rem);
+      font-weight: 400; letter-spacing: .03em; line-height: 1.2;
+      color: var(--txt); margin: 0;
+    }
+    .admin-page-title p {
+      color: var(--txt-2); font-size: .9rem; margin: .5rem 0 0;
+    }
+
+    /* Stats bar */
+    .admin-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .admin-stat-card {
+      background: var(--glass);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-b);
+      border-radius: var(--r-card);
+      padding: 1.25rem;
+      box-shadow: var(--shadow-s);
+      animation: fade-in .4s ease;
+    }
+    .admin-stat-label {
+      color: var(--txt-2); font-size: .8rem; font-weight: 500;
+      text-transform: uppercase; letter-spacing: .04em;
+      margin-bottom: .5rem;
+    }
+    .admin-stat-value {
+      font-size: 1.8rem; font-weight: 800;
+      background: var(--grad-btn);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* Card sections */
+    .admin-card {
+      background: var(--glass);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-b);
+      border-radius: var(--r-card);
+      padding: 1.5rem;
+      box-shadow: var(--shadow-s);
+      margin-bottom: 1.5rem;
+      animation: fade-in .4s ease;
+    }
+    .admin-card h3 {
+      font-size: .95rem; font-weight: 700;
+      color: var(--txt); margin: 0 0 1rem;
+    }
+
+    /* User table */
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .85rem;
+    }
+    .admin-table thead tr {
+      background: rgba(124,58,237,.06);
+      border-bottom: 1px solid rgba(0,0,0,.07);
+    }
+    .admin-table th {
+      padding: .7rem 1.1rem;
+      text-align: left;
+      font-weight: 600;
+      color: var(--txt-2);
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .admin-table td {
+      padding: .85rem 1.1rem;
+      border-bottom: 1px solid rgba(0,0,0,.04);
+      color: var(--txt);
+    }
+    .admin-table tbody tr:hover {
+      background: rgba(124,58,237,.03);
+    }
+
+    /* Action buttons in table */
+    .admin-actions {
+      display: flex; gap: .5rem;
+    }
+    .admin-action-btn {
+      background: none;
+      border: 1px solid rgba(124,58,237,.3);
+      border-radius: .5rem;
+      padding: .35rem .65rem;
+      font-size: .75rem;
+      font-weight: 500;
+      color: var(--c-violet);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .admin-action-btn:hover {
+      background: rgba(124,58,237,.1);
+      border-color: var(--c-violet);
+    }
+    .admin-action-btn.danger {
+      color: #ef4444;
+      border-color: rgba(239,68,68,.3);
+    }
+    .admin-action-btn.danger:hover {
+      background: rgba(239,68,68,.1);
+      border-color: #ef4444;
+    }
+
+    /* Reset requests list */
+    .admin-reset-item {
+      background: rgba(255,255,255,.5);
+      border: 1px solid rgba(0,0,0,.05);
+      border-radius: .75rem;
+      padding: .85rem;
+      margin-bottom: .5rem;
+      font-size: .82rem;
+      display: flex; justify-content: space-between; align-items: center;
+      gap: .75rem;
+    }
+    .admin-reset-info { flex: 1; }
+    .admin-reset-info-user { font-weight: 600; color: var(--txt); margin-bottom: .2rem; }
+    .admin-reset-info-date { color: var(--txt-2); font-size: .75rem; }
+    .admin-reset-actions {
+      display: flex; gap: .5rem;
+    }
+    .admin-reset-btn {
+      background: none;
+      border: 1px solid rgba(0,0,0,.1);
+      border-radius: .5rem;
+      padding: .3rem .6rem;
+      font-size: .75rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .admin-reset-btn.approve {
+      color: #22c55e;
+      border-color: rgba(34,197,94,.3);
+    }
+    .admin-reset-btn.approve:hover {
+      background: rgba(34,197,94,.1);
+      border-color: #22c55e;
+    }
+    .admin-reset-btn.reject {
+      color: #ef4444;
+      border-color: rgba(239,68,68,.3);
+    }
+    .admin-reset-btn.reject:hover {
+      background: rgba(239,68,68,.1);
+      border-color: #ef4444;
+    }
+
+    /* Modal */
+    .admin-modal {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,.4);
+      z-index: 200;
+      align-items: center; justify-content: center;
+      animation: fade-in .2s ease;
+    }
+    .admin-modal.show { display: flex; }
+    .admin-modal-content {
+      background: white;
+      border-radius: var(--r-card);
+      padding: 2rem;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: var(--shadow-l);
+      animation: slide-up .3s ease;
+    }
+    .admin-modal-header {
+      font-size: 1.1rem; font-weight: 700;
+      color: var(--txt); margin: 0 0 1rem;
+    }
+    .admin-modal-body {
+      color: var(--txt); font-size: .9rem;
+      line-height: 1.6; margin-bottom: 1.5rem;
+    }
+    .admin-modal-body .info-row {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 1rem;
+      margin-bottom: .75rem;
+      padding-bottom: .75rem;
+      border-bottom: 1px solid rgba(0,0,0,.05);
+    }
+    .admin-modal-body .info-label {
+      color: var(--txt-2); font-weight: 600; font-size: .85rem;
+    }
+    .admin-modal-body .info-value {
+      color: var(--txt); font-weight: 500;
+      word-break: break-all;
+    }
+    .admin-modal-actions {
+      display: flex; gap: .75rem; justify-content: flex-end;
+    }
+    .admin-modal-btn {
+      background: var(--glass);
+      border: 1px solid rgba(0,0,0,.1);
+      border-radius: .6rem;
+      padding: .5rem 1rem;
+      font-size: .85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .admin-modal-btn:hover {
+      background: rgba(255,255,255,.8);
+      border-color: rgba(0,0,0,.2);
+    }
+    .admin-modal-btn.primary {
+      background: var(--grad-btn);
+      color: white;
+      border: none;
+    }
+    .admin-modal-btn.primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(196,77,255,.25);
+    }
+    .admin-modal-btn.danger {
+      color: #ef4444;
+      border-color: rgba(239,68,68,.3);
+    }
+    .admin-modal-btn.primary.danger {
+      color: white;
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      border: none;
+    }
+    .admin-modal-btn.danger:hover {
+      background: rgba(239,68,68,.1);
+      border-color: #ef4444;
+    }
+    .admin-modal-btn.primary.danger:hover {
+      color: white;
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+    }
+
+    /* Animations */
+    @keyframes fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slide-up {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .admin-container { padding: 1rem 1.5rem; }
+      .admin-table { font-size: .78rem; }
+      .admin-table th, .admin-table td { padding: .5rem .75rem; }
+      .admin-actions { flex-wrap: wrap; }
+      .admin-modal-content { width: 95%; }
+    }
+  </style>
+</head>
+<body>
+
+{# ═══════════════════════════════════════════════════════════
+   NAVBAR
+   ═══════════════════════════════════════════════════════════ #}
+<nav class="admin-navbar" id="adminNavbar">
+  <div class="admin-nav-inner">
+    <div class="admin-nav-logo">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle">
+        <rect x="9" y="2" width="6" height="12" rx="3"/>
+        <path d="M5 10a7 7 0 0 0 14 0"/>
+        <line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="8" y1="22" x2="16" y2="22"/>
+      </svg>
+      Secure VA Admin
+    </div>
+    <div class="admin-nav-actions" id="adminNavActions" style="display:none">
+      <span style="font-size:.8rem;color:var(--txt-2)" id="adminUserLabel"></span>
+      <button class="admin-logout-link" id="adminLogoutBtn">Đăng xuất</button>
+    </div>
+  </div>
+</nav>
+
+{# ═══════════════════════════════════════════════════════════
+   LOGIN SCREEN
+   ═══════════════════════════════════════════════════════════ #}
+<div class="admin-login-wrap" id="loginScreen">
+  <div class="admin-login-card">
+    <h2>Xác thực quản trị viên</h2>
+    <p>Nhập mật khẩu quản trị để tiếp tục</p>
+    <div class="admin-login-group">
+      <input id="adminPwInput" type="password" placeholder="Mật khẩu quản trị..." autocomplete="off"/>
+      <button class="admin-login-btn" id="adminLoginBtn">Mở khóa</button>
+    </div>
+    <div class="admin-login-error" id="loginError"></div>
+  </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════
+   DASHBOARD
+   ═══════════════════════════════════════════════════════════ #}
+<div class="admin-dashboard" id="dashboard">
+  <div class="admin-container">
+
+    {# Page title #}
+    <div class="admin-page-title">
+      <h1>Bảng điều khiển quản trị</h1>
+      <p>Quản lý người dùng, yêu cầu cấp lại mật khẩu và cấu hình hệ thống</p>
+    </div>
+
+    {# Stats #}
+    <div class="admin-stats">
+      <div class="admin-stat-card">
+        <div class="admin-stat-label">Tổng người dùng</div>
+        <div class="admin-stat-value" id="statTotalUsers">0</div>
+      </div>
+      <div class="admin-stat-card">
+        <div class="admin-stat-label">Có giọng nói</div>
+        <div class="admin-stat-value" id="statVoiceUsers">0</div>
+      </div>
+      <div class="admin-stat-card">
+        <div class="admin-stat-label">Yêu cầu reset</div>
+        <div class="admin-stat-value" id="statResetRequests">0</div>
+      </div>
+    </div>
+
+    {# Reset requests section #}
+    <div class="admin-card" id="resetRequestsCard" style="display:none">
+      <h3>Yêu cầu cấp lại mật khẩu</h3>
+      <div id="resetRequestsList"></div>
+    </div>
+
+    <div class="admin-card" id="securityAlertsCard" style="display:none">
+      <h3>Cảnh báo bảo mật</h3>
+      <div id="securityAlertsList"></div>
+    </div>
+
+    {# User management table #}
+    <div class="admin-card">
+      <h3>Quản lý người dùng</h3>
+      <div style="overflow-x:auto">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>User ID</th>
+              <th>Tên</th>
+              <th>Ngày đăng ký</th>
+              <th>Giọng nói</th>
+              <th style="text-align:right">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody">
+            <tr>
+              <td colspan="6" style="text-align:center;padding:2rem;color:var(--txt-2)">Đang tải...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════
+   MODALS
+   ═══════════════════════════════════════════════════════════ #}
+
+{# User info modal #}
+<div class="admin-modal" id="userInfoModal">
+  <div class="admin-modal-content">
+    <h2 class="admin-modal-header">Thông tin người dùng</h2>
+    <div class="admin-modal-body">
+      <div class="info-row">
+        <span class="info-label">User ID:</span>
+        <span class="info-value" id="modalUserId">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Tên:</span>
+        <span class="info-value" id="modalUserName">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Email:</span>
+        <span class="info-value" id="modalUserEmail">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Ngày đăng ký:</span>
+        <span class="info-value" id="modalUserCreated">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Giọng nói:</span>
+        <span class="info-value" id="modalUserVoice">Chưa</span>
+      </div>
+    </div>
+    <div class="admin-modal-actions">
+      <button class="admin-modal-btn" onclick="document.getElementById('userInfoModal').classList.remove('show')">Đóng</button>
+    </div>
+  </div>
+</div>
+
+{# Delete confirmation modal #}
+<div class="admin-modal" id="deleteConfirmModal">
+  <div class="admin-modal-content">
+    <h2 class="admin-modal-header">Xác nhận xóa</h2>
+    <div class="admin-modal-body">
+      <p>Bạn có chắc chắn muốn xóa người dùng <strong id="deleteUserName">—</strong> khỏi hệ thống?</p>
+      <p style="color:var(--txt-2);font-size:.85rem">Hành động này không thể hoàn tác.</p>
+    </div>
+    <div class="admin-modal-actions">
+      <button class="admin-modal-btn" onclick="document.getElementById('deleteConfirmModal').classList.remove('show')">Hủy</button>
+      <button class="admin-modal-btn primary danger" id="deleteConfirmBtn">Xóa</button>
+    </div>
+  </div>
+</div>
+
+{# Toast notification #}
+<div id="adminToast" style="
+  position:fixed;bottom:2rem;right:1.5rem;
+  padding:.75rem 1.5rem;
+  background:white;
+  border-radius:.75rem;
+  box-shadow:var(--shadow-m);
+  z-index:300;
+  display:none;
+  animation:slide-up .3s ease;
+  max-width:400px;
+  font-size:.9rem;
+"></div>
+
+{# ═══════════════════════════════════════════════════════════
+   JAVASCRIPT
+   ═══════════════════════════════════════════════════════════ #}
+<script nonce="{{ csp_nonce }}">
+'use strict';
+
+const CONFIG = {
+  loginScreen: document.getElementById('loginScreen'),
+  dashboard: document.getElementById('dashboard'),
+  adminNavbar: document.getElementById('adminNavbar'),
+  adminNavActions: document.getElementById('adminNavActions'),
+  adminLogoutBtn: document.getElementById('adminLogoutBtn'),
+  adminPwInput: document.getElementById('adminPwInput'),
+  adminLoginBtn: document.getElementById('adminLoginBtn'),
+  loginError: document.getElementById('loginError'),
+  userTableBody: document.getElementById('userTableBody'),
+  statTotalUsers: document.getElementById('statTotalUsers'),
+  statVoiceUsers: document.getElementById('statVoiceUsers'),
+  statResetRequests: document.getElementById('statResetRequests'),
+  resetRequestsCard: document.getElementById('resetRequestsCard'),
+  resetRequestsList: document.getElementById('resetRequestsList'),
+  securityAlertsCard: document.getElementById('securityAlertsCard'),
+  securityAlertsList: document.getElementById('securityAlertsList'),
+  toast: document.getElementById('adminToast'),
+};
+
+let currentUserList = [];
+let deleteTargetUserId = null;
+let currentAdminPassword = '';
+
+// ════════════════════════════════════════════════════════════
+// INITIALIZATION
+// ════════════════════════════════════════════════════════════
+function init() {
+  CONFIG.adminLoginBtn.addEventListener('click', handleLogin);
+  CONFIG.adminPwInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleLogin();
+  });
+  CONFIG.adminLogoutBtn.addEventListener('click', handleLogout);
+  document.getElementById('deleteConfirmBtn').addEventListener('click', confirmDelete);
+
+  // Navbar scroll effect
+  window.addEventListener('scroll', () => {
+    CONFIG.adminNavbar.classList.toggle('scrolled', window.scrollY > 0);
+  });
+
+  // Dashboard is loaded after admin authentication.
+}
+
+// ════════════════════════════════════════════════════════════
+// AUTH
+// ════════════════════════════════════════════════════════════
+function handleLogin() {
+  const password = CONFIG.adminPwInput.value.trim();
+  if (!password) {
+    showError('Vui lòng nhập mật khẩu');
+    return;
+  }
+
+  CONFIG.adminLoginBtn.disabled = true;
+  CONFIG.adminLoginBtn.textContent = 'Đang xác thực...';
+
+  fetch('/admin/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    },
+    body: JSON.stringify({ password })
+  })
+    .then(r => {
+      if (r.ok) {
+        currentAdminPassword = password;
+        showDashboard();
+        loadDashboard();
+      } else {
+        return r.json().then(d => {
+          throw new Error(d.error || 'Mật khẩu không đúng');
+        });
+      }
+    })
+    .catch(err => {
+      showError(err.message || 'Lỗi xác thực');
+      CONFIG.adminLoginBtn.disabled = false;
+      CONFIG.adminLoginBtn.textContent = 'Mở khóa';
+    });
+}
+
+function handleLogout() {
+  fetch('/admin/logout', {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+    .then(() => {
+      CONFIG.loginScreen.style.display = 'flex';
+      CONFIG.dashboard.classList.remove('show');
+      CONFIG.adminNavActions.style.display = 'none';
+      CONFIG.adminPwInput.value = '';
+      currentAdminPassword = '';
+      CONFIG.loginError.style.display = 'none';
+      showToast('Đã đăng xuất');
+    });
+}
+
+function showDashboard() {
+  CONFIG.loginScreen.style.display = 'none';
+  CONFIG.dashboard.classList.add('show');
+  CONFIG.adminNavActions.style.display = 'flex';
+}
+
+function showError(msg) {
+  CONFIG.loginError.textContent = msg;
+  CONFIG.loginError.style.display = 'block';
+}
+
+// ════════════════════════════════════════════════════════════
+// LOAD DATA
+// ════════════════════════════════════════════════════════════
+function loadDashboard() {
+  const adminPassword = currentAdminPassword || CONFIG.adminPwInput.value || '';
+  Promise.all([
+    fetch('/api/admin/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ password: adminPassword })
+    }).then(async r => {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Không tải được danh sách người dùng');
+      return data;
+    }),
+    fetch('/api/admin/password-reset-requests', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ admin_password: adminPassword })
+    }).then(async r => {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Không tải được yêu cầu reset');
+      return data;
+    })
+  ])
+    .then(([usersData, resetData]) => {
+      currentUserList = usersData.users || [];
+      renderUsers(currentUserList);
+      renderStats(currentUserList, resetData.requests || []);
+      renderResetRequests(resetData.requests || []);
+      renderSecurityAlerts(usersData.security_alerts || []);
+    })
+    .catch(err => {
+      console.error('Failed to load dashboard:', err);
+      showToast(err.message || 'Không tải được dashboard', 'error');
+    });
+}
+
+// ════════════════════════════════════════════════════════════
+// RENDER
+// ════════════════════════════════════════════════════════════
+function renderStats(users, resetRequests) {
+  CONFIG.statTotalUsers.textContent = users.length;
+  CONFIG.statVoiceUsers.textContent = users.filter(u => u.has_voice).length;
+  CONFIG.statResetRequests.textContent = resetRequests.filter(r => r.status === 'pending').length;
+}
+
+function renderUsers(users) {
+  if (!users || users.length === 0) {
+    CONFIG.userTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--txt-2)">Không có người dùng nào</td></tr>';
+    return;
+  }
+
+  CONFIG.userTableBody.innerHTML = users.map((u, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><code style="font-size:.75rem;color:var(--txt-2)">${esc(u.user_id)}</code></td>
+      <td>
+        <span>${esc(u.name || '—')}</span>
+        ${u.revoke_pending ? '<span style="margin-left:.45rem;background:rgba(239,68,68,.1);color:#b91c1c;border:1px solid rgba(239,68,68,.25);padding:2px 7px;border-radius:999px;font-size:.68rem;font-weight:700">REROLL</span>' : ''}
+      </td>
+      <td style="font-size:.8rem;color:var(--txt-2)">${formatDate(u.created_at)}</td>
+      <td>
+        ${u.has_voice ? '✓' : '—'}
+        ${u.revoke_pending ? '<span style="display:inline-block;margin-left:.35rem;color:#b91c1c;font-size:.72rem;font-weight:700">Đã gắn cờ</span>' : ''}
+      </td>
+      <td style="text-align:right">
+        <div class="admin-actions">
+          <button class="admin-action-btn" onclick='showUserInfo(${JSON.stringify(u.user_id)}, ${JSON.stringify(u.name || u.user_id)})'>Thông tin</button>
+          <button class="admin-action-btn" onclick='requestReenroll(${JSON.stringify(u.user_id)}, ${JSON.stringify(u.name || u.user_id)})'>Reroll</button>
+          <button class="admin-action-btn danger" onclick='showDeleteConfirm(${JSON.stringify(u.user_id)}, ${JSON.stringify(u.name || u.user_id)})'>Revoke</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderResetRequests(requests) {
+  const pending = requests.filter(r => r.status === 'pending');
+  if (pending.length === 0) {
+    CONFIG.resetRequestsCard.style.display = 'none';
+    return;
+  }
+
+  CONFIG.resetRequestsCard.style.display = 'block';
+  CONFIG.resetRequestsList.innerHTML = pending.map(r => `
+    <div class="admin-reset-item">
+      <div class="admin-reset-info">
+        <div class="admin-reset-info-user">${esc(r.user_id)}</div>
+        <div class="admin-reset-info-date">${formatDate(r.requested_at)}</div>
+      </div>
+      <div class="admin-reset-actions">
+        <button class="admin-reset-btn approve" onclick="approveReset(${Number(r.id)})">Chấp nhận</button>
+        <button class="admin-reset-btn reject" onclick="rejectReset(${Number(r.id)})">Từ chối</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderSecurityAlerts(alerts) {
+  if (!alerts || alerts.length === 0) {
+    CONFIG.securityAlertsCard.style.display = 'none';
+    CONFIG.securityAlertsList.innerHTML = '';
+    return;
+  }
+  CONFIG.securityAlertsCard.style.display = 'block';
+  CONFIG.securityAlertsList.innerHTML = alerts.map(a => {
+    const isHigh = a.severity === 'high';
+    const label = a.alert_type === 'voice_spoof_suspected'
+      ? 'Nghi ngờ mạo danh giọng'
+      : 'Sai mật khẩu nhiều lần';
+    return `
+      <div class="admin-reset-item" style="border-color:${isHigh ? 'rgba(239,68,68,.25)' : 'rgba(245,158,11,.25)'};background:${isHigh ? 'rgba(239,68,68,.06)' : 'rgba(245,158,11,.06)'}">
+        <div class="admin-reset-info">
+          <div class="admin-reset-info-user">${esc(label)} · ${esc(a.name || a.user_id)}</div>
+          <div class="admin-reset-info-date">${formatDateTime(a.created_at)} · ${esc(a.message || '')}</div>
+        </div>
+        <div class="admin-reset-actions">
+          <button class="admin-reset-btn approve" onclick='requestReenroll(${JSON.stringify(a.user_id)}, ${JSON.stringify(a.name || a.user_id)})'>Reroll</button>
+          <button class="admin-reset-btn reject" onclick='showDeleteConfirm(${JSON.stringify(a.user_id)}, ${JSON.stringify(a.name || a.user_id)})'>Revoke</button>
+          <button class="admin-reset-btn" onclick="resolveSecurityAlert(${Number(a.id)})">Đã xem</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+// MODALS
+// ════════════════════════════════════════════════════════════
+async function showUserInfo(userId, userName = '') {
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/info-masked`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    },
+    body: JSON.stringify({ admin_password: currentAdminPassword })
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    showToast(d.error || 'Không lấy được thông tin người dùng', 'error');
+    return;
+  }
+
+  document.getElementById('modalUserId').textContent = d.user_id || userId;
+  document.getElementById('modalUserName').textContent = d.name_masked || userName || '—';
+  document.getElementById('modalUserEmail').textContent = d.email_masked || '—';
+  document.getElementById('modalUserCreated').textContent = formatDate(d.created_at);
+  document.getElementById('modalUserVoice').textContent =
+    `${d.voice_status || 'Unknown'}${d.revoke_pending ? ' · Chờ reroll' : ''}`;
+
+  document.getElementById('userInfoModal').classList.add('show');
+}
+
+function showDeleteConfirm(userId, userName) {
+  deleteTargetUserId = userId;
+  document.getElementById('deleteUserName').textContent = esc(userName);
+  document.getElementById('deleteConfirmModal').classList.add('show');
+}
+
+function confirmDelete() {
+  if (!deleteTargetUserId) return;
+
+  const userId = deleteTargetUserId;
+  document.getElementById('deleteConfirmModal').classList.remove('show');
+
+  fetch(`/api/admin/users/${encodeURIComponent(userId)}/delete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    },
+    body: JSON.stringify({
+      admin_password: currentAdminPassword
+    })
+  })
+    .then(r => {
+      if (r.ok) {
+        showToast('Đã xóa người dùng');
+        currentUserList = currentUserList.filter(u => u.user_id !== userId);
+        renderUsers(currentUserList);
+      } else {
+        showToast('Lỗi khi xóa người dùng', 'error');
+      }
+    })
+    .catch(() => showToast('Lỗi khi xóa người dùng', 'error'));
+}
+
+// ════════════════════════════════════════════════════════════
+// ACTIONS
+// ════════════════════════════════════════════════════════════
+async function requestReenroll(userId, userName = '') {
+  const reason = window.prompt(
+    `Lý do yêu cầu "${userName || userId}" reroll/đăng ký lại giọng nói?`,
+    'Yêu cầu xác thực lại'
+  );
+  if (reason === null) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/request-reenroll`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    },
+    body: JSON.stringify({
+      admin_password: currentAdminPassword,
+      reason
+    })
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    showToast(d.error || 'Gửi yêu cầu reroll thất bại', 'error');
+    return;
+  }
+  showToast(`Đã gắn cờ reroll cho ${userName || userId}`);
+  loadDashboard();
+}
+
+function showAdminDialog(title, bodyHtml, buttons) {
+  let dlg = document.getElementById('adminActionDialog');
+  if (!dlg) {
+    dlg = document.createElement('div');
+    dlg.id = 'adminActionDialog';
+    dlg.className = 'admin-modal show';
+    document.body.appendChild(dlg);
+  }
+
+  const buttonHtml = (buttons || []).map((b, i) => {
+    const cls = b.style === 'danger'
+      ? 'admin-modal-btn danger'
+      : (b.style === 'primary' ? 'admin-modal-btn primary' : 'admin-modal-btn');
+    return `<button class="${cls}" data-dialog-btn="${i}">${esc(b.label)}</button>`;
+  }).join('');
+
+  dlg.innerHTML = `
+    <div class="admin-modal-content">
+      <h2 class="admin-modal-header">${esc(title)}</h2>
+      <div class="admin-modal-body">${bodyHtml}</div>
+      <div class="admin-modal-actions">${buttonHtml}</div>
+    </div>`;
+
+  (buttons || []).forEach((b, i) => {
+    const btn = dlg.querySelector(`[data-dialog-btn="${i}"]`);
+    btn.onclick = () => {
+      if (b.onClick) b.onClick();
+      else closeAdminDialog();
+    };
+  });
+}
+
+function closeAdminDialog() {
+  const dlg = document.getElementById('adminActionDialog');
+  if (dlg) dlg.remove();
+}
+
+function approveReset(requestId) {
+  const html = `
+    <label style="display:block;font-weight:600;margin-bottom:.25rem">Phương thức xác minh</label>
+    <select id="resetVerifyMethod" style="width:100%;padding:.55rem .65rem;border:1px solid rgba(15,23,42,.14);border-radius:8px;margin-bottom:.75rem">
+      <option value="known_channel">Kênh đã biết trước</option>
+      <option value="gmail_reconsent">Gmail / re-consent</option>
+      <option value="in_person">Gặp trực tiếp / giấy tờ</option>
+      <option value="voice_check">Kiểm tra giọng nói</option>
+      <option value="other">Khác</option>
+    </select>
+    <label style="display:block;font-weight:600;margin-bottom:.25rem">Ghi chú xác minh</label>
+    <textarea id="resetAdminNote" rows="3" placeholder="VD: Đã xác minh qua kênh lớp chính thức lúc 14:20"
+      style="width:100%;resize:vertical;padding:.55rem .65rem;border:1px solid rgba(15,23,42,.14);border-radius:8px"></textarea>
+    <div style="margin-top:.65rem;padding:.55rem .65rem;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:8px;color:#92400e;font-size:.78rem">
+      Mã PIN reset chỉ hiện một lần trên UI này.
+    </div>`;
+
+  showAdminDialog('Duyệt yêu cầu reset', html, [
+    { label: 'Hủy' },
+    { label: 'Cấp mã PIN', style: 'primary', onClick: async () => {
+      const method = document.getElementById('resetVerifyMethod').value;
+      const note = document.getElementById('resetAdminNote').value.trim();
+      if (note.length < 8) {
+        showToast('Cần ghi chú xác minh tối thiểu 8 ký tự', 'error');
+        return;
+      }
+      const r = await fetch(`/api/admin/password-reset-requests/${requestId}/approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+          admin_password: currentAdminPassword,
+          verification_method: method,
+          admin_note: note
+        })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(d.error || 'Không cấp được mã PIN', 'error');
+        return;
+      }
+      showAdminDialog('Mã PIN reset một lần', `
+        <div style="font-size:.86rem;line-height:1.55">
+          <div style="margin-bottom:.65rem">${esc(d.message || 'Chuyển mã này cho user qua kênh đã xác minh.')}</div>
+          <div style="font-size:2rem;font-weight:800;letter-spacing:.18em;text-align:center;padding:.8rem;border:1px dashed rgba(124,58,237,.35);border-radius:8px;color:var(--c-violet);background:rgba(124,58,237,.06)">${esc(d.code)}</div>
+          <div style="margin-top:.65rem;color:var(--txt-2);font-size:.78rem">Hết hạn sau ${Math.round((d.expires_in_sec || 900) / 60)} phút.</div>
+        </div>`, [
+        { label: 'Đã hiểu', style: 'primary', onClick: () => { closeAdminDialog(); loadDashboard(); } }
+      ]);
+    }}
+  ]);
+}
+
+function rejectReset(requestId) {
+  const adminNote = window.prompt('Lý do từ chối yêu cầu reset:', 'Không xác minh được danh tính');
+  if (adminNote === null) return;
+  fetch(`/api/admin/password-reset-requests/${requestId}/resolve`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    },
+    body: JSON.stringify({
+      admin_password: currentAdminPassword,
+      status: 'rejected',
+      verification_method: 'other',
+      admin_note: adminNote
+    })
+  })
+    .then(r => {
+      if (r.ok) {
+        showToast('Đã từ chối yêu cầu');
+        loadDashboard();
+      } else {
+        showToast('Lỗi khi từ chối yêu cầu', 'error');
+      }
+    })
+    .catch(() => showToast('Lỗi khi từ chối yêu cầu', 'error'));
+}
+
+// ════════════════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════════════════
+async function resolveSecurityAlert(alertId) {
+  const r = await fetch(`/api/admin/security-alerts/${alertId}/resolve`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    },
+    body: JSON.stringify({
+      admin_password: currentAdminPassword,
+      status: 'resolved',
+      admin_note: 'Admin reviewed'
+    })
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    showToast(d.error || 'Không cập nhật được cảnh báo', 'error');
+    return;
+  }
+  showToast('Đã xử lý cảnh báo');
+  loadDashboard();
+}
+
+function formatDate(isoStr) {
+  if (!isoStr) return '—';
+  try {
+    const value = typeof isoStr === 'number' ? isoStr * 1000 : isoStr;
+    return new Date(value).toLocaleDateString('vi-VN');
+  } catch {
+    return isoStr;
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) return '—';
+  try {
+    const ts = typeof value === 'number' ? value * 1000 : value;
+    return new Date(ts).toLocaleString('vi-VN');
+  } catch {
+    return value;
+  }
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function showToast(msg, type = 'success') {
+  CONFIG.toast.textContent = msg;
+  CONFIG.toast.style.display = 'block';
+  if (type === 'error') {
+    CONFIG.toast.style.color = '#ef4444';
+  } else {
+    CONFIG.toast.style.color = 'var(--txt)';
+  }
+  setTimeout(() => {
+    CONFIG.toast.style.display = 'none';
+  }, 3000);
+}
+
+// Init on load
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>

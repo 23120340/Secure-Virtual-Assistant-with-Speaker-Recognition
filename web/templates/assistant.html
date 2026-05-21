@@ -392,6 +392,9 @@ async function sendAudio(blob) {
     addMsg("user", data.transcript);
     addMeta(data);
     addMsg("bot", data.response);
+    if (data.request_id && data.intent && !data.blocked) {
+      addFeedbackWidget(data.request_id, data.intent);
+    }
 
     if (data.tts_url) {
       $tts.src = data.tts_url;
@@ -1129,6 +1132,9 @@ function showToast(msg, isErr=false) {
       addMsg("user", "[Văn bản] " + data.transcript);
       addMeta(data);
       addMsg("bot", data.response);
+      if (data.request_id && data.intent && !data.blocked) {
+        addFeedbackWidget(data.request_id, data.intent);
+      }
       if (data.tts_url) { $tts.src = data.tts_url; _playTts(); }
 
       rememberAssistantUser(data);
@@ -1152,6 +1158,120 @@ function showToast(msg, isErr=false) {
     }
   }
 })();
+
+// ════════════════════════════════════════════════════════════
+// FEEDBACK WIDGET
+// ════════════════════════════════════════════════════════════
+function addFeedbackWidget(requestId, intent) {
+  const container = document.createElement("div");
+  container.className = "flex justify-start mb-2";
+
+  const widget = document.createElement("div");
+  widget.className = "text-xs rounded-lg p-3 space-y-2"
+    + " bg-white border border-slate-200 shadow-sm max-w-xs";
+  widget.style.cssText = "background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.08)";
+
+  // Stars container
+  const starsDiv = document.createElement("div");
+  starsDiv.className = "flex gap-1.5";
+  let rating = 0;
+
+  for (let i = 1; i <= 5; i++) {
+    const star = document.createElement("button");
+    star.className = "cursor-pointer transition-opacity hover:opacity-75 flex-shrink-0"
+      + " p-0 border-0 background-none";
+    star.innerHTML = starSvg(false);
+    star.style.cssText = "background:none;border:none;padding:0;cursor:pointer;width:18px;height:18px";
+    star.onclick = (e) => {
+      e.preventDefault();
+      rating = i;
+      // Update all stars
+      starsDiv.querySelectorAll("button").forEach((btn, idx) => {
+        btn.innerHTML = starSvg(idx < rating);
+        btn.style.opacity = idx < rating ? "1" : "0.4";
+      });
+      textarea.focus();
+    };
+    star.style.opacity = "0.4";
+    starsDiv.appendChild(star);
+  }
+
+  widget.appendChild(starsDiv);
+
+  // Textarea for optional comment.
+  const textareaDiv = document.createElement("div");
+  textareaDiv.style.display = "block";
+  const textarea = document.createElement("textarea");
+  textarea.placeholder = "Nhận xét (tuỳ chọn)...";
+  textarea.maxLength = "500";
+  textarea.className = "w-full text-xs p-1.5 border rounded resize-none"
+    + " focus:outline-none focus:ring-1 focus:ring-emerald-400 font-sans";
+  textarea.style.cssText = "border:1px solid rgba(0,0,0,.1);border-radius:.4rem;padding:.4rem;font-size:.75rem;font-family:inherit;line-height:1.4";
+  textarea.rows = 2;
+  textareaDiv.appendChild(textarea);
+  widget.appendChild(textareaDiv);
+
+  // Submit button
+  const submitDiv = document.createElement("div");
+  submitDiv.className = "flex gap-1.5";
+
+  const submitBtn = document.createElement("button");
+  submitBtn.textContent = "Gửi phản hồi";
+  submitBtn.className = "text-xs px-2.5 py-1 rounded font-medium cursor-pointer transition-all"
+    + " bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95";
+  submitBtn.style.cssText = "background:linear-gradient(135deg,#16a34a,#059669);color:white;border:none;border-radius:.35rem;padding:.3rem .75rem;font-size:.75rem;font-weight:500;cursor:pointer;transition:all .15s";
+  submitBtn.onclick = async (e) => {
+    e.preventDefault();
+    if (rating === 0) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Đang gửi...";
+
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          request_id: requestId,
+          intent: intent,
+          rating: rating,
+          comment: textarea.value.trim(),
+        }),
+      });
+
+      if (res.ok) {
+        // Show confirmation
+        widget.innerHTML = '<div style="padding:.5rem;text-center;color:#059669;font-weight:500">✓ Cảm ơn phản hồi của bạn!</div>';
+        setTimeout(() => {
+          container.style.opacity = "0";
+          container.style.transition = "opacity .3s ease";
+          setTimeout(() => container.remove(), 300);
+        }, 2000);
+      } else {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Lỗi — thử lại";
+      }
+    } catch (e) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Lỗi — thử lại";
+    }
+  };
+
+  submitDiv.appendChild(submitBtn);
+  widget.appendChild(submitDiv);
+
+  container.appendChild(widget);
+  $chat.appendChild(container);
+  $chat.scrollTop = $chat.scrollHeight;
+}
+
+// Monochrome star SVG — filled if active
+function starSvg(filled) {
+  const d = filled
+    ? "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+    : "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2zm0 15l3.66 1.97-.7-4.07 2.98-2.9-4.1-.6L12 7.9l-1.84 3.4-4.1.6 2.98 2.9-.7 4.07L12 17z";
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="${filled?'#16a34a':'none'}" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="color:#16a34a"><path d="${d}"/></svg>`;
+}
 
 // ════════════════════════════════════════════════════════════
 // MODE TOGGLE  (voice ↔ text)

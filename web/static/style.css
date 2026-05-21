@@ -518,6 +518,10 @@ select.glass-input { cursor: pointer; }
   text-transform: uppercase; color: var(--c-violet);
   margin: 0 0 .65rem;
 }
+#modal-voice-reenroll-btn {
+  background: linear-gradient(135deg,#c026d3,#7c3aed) !important;
+  box-shadow: 0 8px 22px rgba(124,58,237,.3) !important;
+}
 .modal-danger-zone {
   border: 1.5px solid #fca5a5;
   border-radius: .85rem;

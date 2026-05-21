@@ -419,6 +419,21 @@ def _log_assistant_turn(payload: dict, *, source: str, auth_method: str):
                      request_id=getattr(g, "request_id", ""))
 
 
+def _security_alert(db, user_id: str | None, alert_type: str, severity: str,
+                    message: str, **evidence):
+    if not user_id:
+        return
+    try:
+        db.add_security_alert(user_id, alert_type, severity, message, {
+            **evidence,
+            "ip": _rl_client_ip(),
+            "ua": request.headers.get("User-Agent", "")[:180],
+            "request_id": getattr(g, "request_id", ""),
+        })
+    except Exception:
+        _log.exception("Failed to add security alert")
+
+
 def max_size(mb: float):
     """Decorator giới hạn size request cho từng route. Audio turn ≈ 100KB, không
     cần cho phép 50MB như global. Chống DoS upload rác lên /api/assistant/turn.
@@ -983,6 +998,9 @@ def register_routes(app):
         if not db.check_password(user_id, password):
             _audit("auth.password_check", user_id=user_id, scope="reenroll-voice",
                    outcome="fail", ip=ip, ua=ua)
+            _security_alert(db, user_id, "password_fail", "medium",
+                            "Sai mật khẩu khi đăng ký lại giọng nói.",
+                            scope="reenroll_voice")
             return jsonify({"error": "Sai mật khẩu"}), 403
 
         audios, err = _decode_voice_samples_from_request(request)
@@ -1441,6 +1459,14 @@ def register_routes(app):
         transcript, nlu_result = parse_with_correction(transcript, nlu)
         result = router.handle_turn(audio, transcript, nlu_result,
                                     extra_context={"db": db})
+        if result.blocked and result.sv_required and result.sv_passed is False:
+            _security_alert(db, result.identified_user_id,
+                            "voice_spoof_suspected", "high",
+                            f"Nghi ngờ mạo danh giọng nói khi dùng intent {result.intent}.",
+                            scope="assistant_voice",
+                            intent=result.intent,
+                            sid_score=float(result.sid_score or 0),
+                            sv_score=float(result.sv_score or 0))
 
         # Challenge-response: lưu state vào session để turn thứ 2 dispatch handler.
         if result.action_type == "challenge_required" and result.action_data:
@@ -1487,6 +1513,7 @@ def register_routes(app):
         payload = asdict(result)
         payload["tts_url"] = f"/api/tts?text={_quote(result.response)}"
         payload["flow_active"] = False
+        payload["request_id"] = getattr(g, "request_id", "")
 
         # action_type + action_data cho frontend mở panel tương ứng
         _uid = result.identified_user_id
@@ -1657,6 +1684,9 @@ def register_routes(app):
                 response = (f"Tác vụ này cần xác thực. "
                             f"Vui lòng nhập mật khẩu của {name} rồi gửi lại yêu cầu.")
             elif not db.check_password(uid, password):
+                _security_alert(db, uid, "password_fail", "medium",
+                                f"Sai mật khẩu khi dùng intent {intent}.",
+                                scope="assistant_text", intent=intent)
                 blocked  = True
                 response = "Sai mật khẩu. Vui lòng kiểm tra và thử lại."
             else:
@@ -1725,6 +1755,7 @@ def register_routes(app):
             "blocked":              blocked,
             "flow_active":          False,
             "tts_url":              f"/api/tts?text={_quote(response)}",
+            "request_id":           getattr(g, "request_id", ""),
         }
         if action_type:
             payload["action_type"] = action_type
@@ -2038,6 +2069,10 @@ def register_routes(app):
                                      "Đăng ký trước hoặc nói rõ hơn."}), 403
         sv_passed, sv_score = spk_mgr.verify(aud, uid)
         if not sv_passed:
+            _security_alert(app.config["db"], uid, "voice_spoof_suspected", "high",
+                            f"Xác thực giọng nói thất bại khi mở Files (SV={sv_score:.2f}).",
+                            scope="files_voice", sid_score=float(sid_score),
+                            sv_score=float(sv_score))
             return jsonify({"ok": False,
                             "error": f"Xác thực thất bại (score={sv_score:.2f}). "
                                      "Giọng không khớp với dữ liệu đã đăng ký."}), 403
@@ -2061,6 +2096,8 @@ def register_routes(app):
         if not db.check_password(user_id, password):
             _audit("auth.password_check", user_id=user_id, scope="files",
                    outcome="fail", ip=ip, ua=ua)
+            _security_alert(db, user_id, "password_fail", "medium",
+                            "Sai mật khẩu khi mở Files.", scope="files")
             return jsonify({"error": "Sai mật khẩu"}), 403
         _set_file_session(user_id, user.get("name", user_id), "password")
         _audit("auth.password_check", user_id=user_id, scope="files",
@@ -2084,6 +2121,8 @@ def register_routes(app):
         if not db.check_password(user_id, password):
             _audit("auth.password_check", user_id=user_id, scope="unlock",
                    outcome="fail", ip=ip, ua=ua)
+            _security_alert(db, user_id, "password_fail", "medium",
+                            "Sai mật khẩu khi mở khóa hồ sơ user.", scope="unlock")
             return jsonify({"error": "Sai mật khẩu"}), 403
         _set_file_session(user_id, user["name"], "password")
         _audit("auth.password_check", user_id=user_id, scope="unlock",
@@ -2188,15 +2227,27 @@ def register_routes(app):
         db = app.config["db"]
         users = db.list_users()
         reset_requests = db.list_password_reset_requests(status="pending")
+        security_alerts = db.list_security_alerts(status="pending")
+        spk_mgr = app.config["spk_mgr"]
+        try:
+            voice_cache = db.load_all_embeddings(
+                expected_dim=spk_mgr.encoder.embedding_dim,
+                backend_id=spk_mgr.encoder.backend_id,
+            )
+        except Exception:
+            voice_cache = {}
         return jsonify({
             "ok": True,
             "count": len(users),
             "reset_requests": reset_requests,
+            "security_alerts": security_alerts,
             "users": [
                 {
                     "user_id":    u["user_id"],
                     "name":       u["name"],
                     "created_at": u["created_at"][:10],
+                    "has_voice":  u["user_id"] in voice_cache,
+                    "revoke_pending": bool((db.get_user(u["user_id"]) or {}).get("revoke_pending")),
                 }
                 for u in users
             ],
@@ -2217,6 +2268,20 @@ def register_routes(app):
             "ok": True,
             "requests": app.config["db"].list_password_reset_requests(status="pending"),
         })
+
+    @app.route("/api/admin/security-alerts/<int:alert_id>/resolve", methods=["POST"])
+    @max_size(0.02)
+    @rate_limit(max_attempts=20, window_sec=60, scope="admin-security-alert-resolve")
+    def api_admin_security_alert_resolve(alert_id):
+        data = _json_body()
+        if not _check_admin_pass(data.get("admin_password", "")):
+            return jsonify({"error": "Sai mật khẩu quản trị"}), 403
+        status = str(data.get("status", "resolved")).strip() or "resolved"
+        if status not in ("resolved", "dismissed"):
+            return jsonify({"error": "Status không hợp lệ"}), 400
+        note = str(data.get("admin_note", "")).strip()
+        app.config["db"].resolve_security_alert(alert_id, status, note)
+        return jsonify({"ok": True})
 
     @app.route("/api/admin/password-reset-requests/<int:request_id>/resolve",
                methods=["POST"])
@@ -2595,6 +2660,55 @@ def register_routes(app):
         _audit("admin.delete_user", user_id=user_id, actor="admin",
                outcome="success", dirs_removed=dirs_removed, ip=ip, ua=ua)
         return jsonify({"ok": True, "user_id": user_id})
+
+    # ==========================================================================
+    # Admin page authentication
+    # ==========================================================================
+    @app.route("/admin/login", methods=["POST"])
+    def admin_login():
+        """Verify admin password, set session, redirect to /admin."""
+        data = request.get_json(force=True) or {}
+        password = (data.get("password") or "").strip()
+        if not password or not hmac.compare_digest(password, config.ADMIN_PASS):
+            return jsonify({"error": "Mật khẩu admin sai"}), 401
+        session["admin_authed"] = True
+        return jsonify({"ok": True})
+
+    @app.route("/admin/logout", methods=["POST"])
+    def admin_logout():
+        """Clear admin session."""
+        session.pop("admin_authed", None)
+        return jsonify({"ok": True})
+
+    @app.route("/admin")
+    def admin_page():
+        """Render admin dashboard (requires admin session)."""
+        # Always render admin.html — JavaScript handles login/dashboard logic
+        return render_template("admin.html", csp_nonce=g.get("csp_nonce", ""))
+
+    # ==========================================================================
+    # Model feedback
+    # ==========================================================================
+    @app.route("/api/feedback", methods=["POST"])
+    @rate_limit(max_attempts=10, window_sec=60, scope="feedback")
+    def api_feedback():
+        """Ghi feedback: rating (1-5) + comment tuỳ chọn cho 1 turn."""
+        data = request.get_json(force=True) or {}
+        req_id = (data.get("request_id") or "").strip()[:64]
+        try:
+            rating = int(data.get("rating", 0))
+        except (ValueError, TypeError):
+            rating = 0
+        comment = (data.get("comment") or "").strip()[:500]
+        intent = (data.get("intent") or "").strip()[:64]
+
+        if not req_id or rating not in range(1, 6):
+            return jsonify({"error": "Thiếu hoặc sai request_id/rating"}), 400
+
+        db = app.config["db"]
+        user_id_hash = ""  # anonymous ok
+        db.add_feedback(req_id, user_id_hash, intent, rating, comment)
+        return jsonify({"ok": True})
 
     # ==========================================================================
     # Google OAuth 2.0 — Gmail API authentication

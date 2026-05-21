@@ -297,6 +297,41 @@ class UserDB:
             c.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_requests "
                       "ON password_reset_requests(status, requested_at)")
 
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS model_feedback (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id  TEXT NOT NULL,
+                    user_id_hash TEXT NOT NULL DEFAULT '',
+                    intent      TEXT NOT NULL DEFAULT '',
+                    rating      INTEGER NOT NULL,
+                    comment     TEXT NOT NULL DEFAULT '',
+                    created_at  TEXT NOT NULL
+                )
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_feedback_request_id "
+                      "ON model_feedback(request_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_feedback_intent "
+                      "ON model_feedback(intent)")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS security_alerts (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id     TEXT NOT NULL,
+                    alert_type  TEXT NOT NULL,
+                    severity    TEXT NOT NULL DEFAULT 'medium',
+                    message     TEXT NOT NULL DEFAULT '',
+                    evidence    TEXT NOT NULL DEFAULT '{}',
+                    status      TEXT NOT NULL DEFAULT 'pending',
+                    created_at  REAL NOT NULL,
+                    resolved_at REAL,
+                    admin_note  TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY(user_id) REFERENCES users(user_id)
+                )
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_security_alerts_status "
+                      "ON security_alerts(status, created_at)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_security_alerts_user "
+                      "ON security_alerts(user_id, status)")
+
     # ----------------------------------------------------------------
     # User CRUD
     # ----------------------------------------------------------------
@@ -413,7 +448,84 @@ class UserDB:
             c.execute("DELETE FROM embeddings WHERE user_id=?", (user_id,))
             c.execute("DELETE FROM password_reset_codes WHERE user_id=?", (user_id,))
             c.execute("DELETE FROM password_reset_requests WHERE user_id=?", (user_id,))
+            c.execute("DELETE FROM security_alerts WHERE user_id=?", (user_id,))
             c.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+
+    # ----------------------------------------------------------------
+    # Security alerts
+    # ----------------------------------------------------------------
+    def add_security_alert(self, user_id: str, alert_type: str, severity: str,
+                           message: str, evidence: dict = None,
+                           dedupe_window_sec: int = 300) -> int | None:
+        now = __import__("time").time()
+        evidence_json = json.dumps(evidence or {}, ensure_ascii=False)
+        with self._conn() as c:
+            row = c.execute(
+                """SELECT id FROM security_alerts
+                   WHERE user_id=? AND alert_type=? AND status='pending'
+                     AND created_at >= ?
+                   ORDER BY created_at DESC LIMIT 1""",
+                (user_id, alert_type, now - dedupe_window_sec),
+            ).fetchone()
+            if row:
+                c.execute(
+                    """UPDATE security_alerts
+                       SET severity=?, message=?, evidence=?, created_at=?
+                       WHERE id=?""",
+                    (severity, message[:500], evidence_json, now, int(row[0])),
+                )
+                return int(row[0])
+            cur = c.execute(
+                """INSERT INTO security_alerts
+                   (user_id, alert_type, severity, message, evidence, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, 'pending', ?)""",
+                (user_id, alert_type[:80], severity[:20], message[:500],
+                 evidence_json, now),
+            )
+            return int(cur.lastrowid)
+
+    def list_security_alerts(self, status: str = "pending", limit: int = 50) -> list[dict]:
+        with self._conn() as c:
+            rows = c.execute(
+                """SELECT a.id, a.user_id, COALESCE(u.name, a.user_id),
+                          a.alert_type, a.severity, a.message, a.evidence,
+                          a.status, a.created_at
+                   FROM security_alerts a
+                   LEFT JOIN users u ON u.user_id=a.user_id
+                   WHERE a.status=?
+                   ORDER BY a.created_at DESC
+                   LIMIT ?""",
+                (status, limit),
+            ).fetchall()
+        out = []
+        for r in rows:
+            try:
+                evidence = json.loads(r[6] or "{}")
+            except json.JSONDecodeError:
+                evidence = {}
+            out.append({
+                "id": int(r[0]),
+                "user_id": r[1],
+                "name": r[2],
+                "alert_type": r[3],
+                "severity": r[4],
+                "message": r[5],
+                "evidence": evidence,
+                "status": r[7],
+                "created_at": float(r[8]),
+            })
+        return out
+
+    def resolve_security_alert(self, alert_id: int, status: str = "resolved",
+                               admin_note: str = ""):
+        now = __import__("time").time()
+        with self._conn() as c:
+            c.execute(
+                """UPDATE security_alerts
+                   SET status=?, resolved_at=?, admin_note=?
+                   WHERE id=?""",
+                (status[:30], now, admin_note[:500], alert_id),
+            )
 
     def check_password(self, user_id: str, password: str) -> bool:
         """Verify password for user_id.
@@ -745,6 +857,45 @@ class UserDB:
                 (backend_id,)
             ).fetchall()
         return [r[0] for r in rows]
+
+    # ----------------------------------------------------------------
+    # Model Feedback
+    # ----------------------------------------------------------------
+    def add_feedback(self, request_id: str, user_id_hash: str, intent: str,
+                     rating: int, comment: str = "") -> int:
+        """Lưu feedback: rating (1-5) + comment tuỳ chọn cho 1 turn.
+
+        Returns row id.
+        """
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
+        with self._conn() as c:
+            cursor = c.execute(
+                """INSERT INTO model_feedback
+                   (request_id, user_id_hash, intent, rating, comment, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (request_id, user_id_hash or "", intent or "", rating, comment or "", ts)
+            )
+            return cursor.lastrowid
+
+    def get_feedback_summary(self, intent: str = None) -> dict:
+        """Get average rating + count feedback per intent (hoặc toàn bộ nếu intent=None).
+
+        Returns: {intent: {avg_rating: float, count: int}, ...}
+        """
+        with self._conn() as c:
+            if intent:
+                rows = c.execute(
+                    """SELECT intent, AVG(rating) as avg_rating, COUNT(*) as count
+                       FROM model_feedback WHERE intent = ? GROUP BY intent""",
+                    (intent,)
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    """SELECT intent, AVG(rating) as avg_rating, COUNT(*) as count
+                       FROM model_feedback GROUP BY intent"""
+                ).fetchall()
+        return {r[0]: {"avg_rating": round(r[1], 2), "count": r[2]} for r in rows}
 
 
 # ==========================================================================
