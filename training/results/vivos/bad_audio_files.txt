@@ -1,0 +1,1 @@
+VIVOSSPK44/train_VIVOSSPK44_157.wav	Failed to create AudioDecoder for /kaggle/working/vivos_speaker_root/VIVOSSPK44/train_VIVOSSPK44_157.wav: Could not open input file: /kaggle/working/vivos_speaker_root/VIVOSSPK44/train_VIVOSSPK44_157.wav Invalid data found when processing input

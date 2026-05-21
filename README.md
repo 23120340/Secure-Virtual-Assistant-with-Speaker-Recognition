@@ -7,7 +7,7 @@ Trợ lý ảo tiếng Việt có phân quyền bằng giọng nói, kết hợp
 - **YC1 - Train & evaluate speaker model**: ECAPA-TDNN cho speaker identification và speaker verification.
 - **YC2 - Virtual assistant tích hợp SV/SID**: trợ lý có voice interaction, enrollment, user management và các tác vụ `NORMAL` / `IMPORTANT` / `PERSONAL`.
 
-> Trạng thái hiện tại: phần runtime/web đã khá đầy đủ; phần còn thiếu quan trọng trước khi nộp là **artifact kết quả training/evaluation thật** và **calibration benchmark thật** trong `training/results/` hoặc `docs/results/`. Xem checklist chi tiết ở [docs/PROJECT_REVIEW_AND_TODO.md](docs/PROJECT_REVIEW_AND_TODO.md).
+> Trạng thái hiện tại: runtime/web đã hoàn thiện cho demo; evidence training/evaluation cho VoxCeleb Indian và VIVOS đã được đưa vào `training/results/`, report so sánh ở `docs/results/`, và báo cáo tổng hợp chính ở [docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md](docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md).
 
 ---
 
@@ -76,9 +76,9 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 ├── scripts/                 # benchmark, re-enroll backend, password migration
 ├── tests/                   # pytest suite
 ├── docs/
-│   ├── PROJECT_REVIEW_AND_TODO.md
+│   ├── SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md
 │   ├── Secure_Virtual_Assistant_with_Speaker_Recognition.pdf
-│   └── results/             # Runtime benchmark/calibration artifacts
+│   └── results/             # Training comparison + runtime calibration artifacts
 ├── data/                    # Runtime DB/audio/files/logs, không nên commit dữ liệu nhạy cảm
 ├── checkpoints/             # best_model.pt, dùng Git LFS nếu commit checkpoint
 ├── .env.example             # Khung config
@@ -153,7 +153,7 @@ Sinh `TOKEN_ENCRYPTION_KEY`:
 checkpoints/best_model.pt
 ```
 
-Nếu chưa có, app vẫn chạy bằng fallback SpeechBrain pretrained ECAPA. Tuy nhiên để đáp ứng YC1, vẫn cần training/evaluation artifact thật từ `training/`.
+Nếu chưa có, app vẫn chạy bằng fallback SpeechBrain pretrained ECAPA. Bản evidence hiện tại dùng checkpoint VIVOS tại `checkpoints/vios/best_model.pt`.
 
 ---
 
@@ -276,13 +276,16 @@ Khi bật, OAuth consent sẽ thêm scope read-only `calendar.events.readonly`; 
 ## Training Và Evaluation YC1
 
 Chi tiết ở [training/README.md](training/README.md).
+Báo cáo tổng hợp evidence nằm ở [docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md](docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md), bảng so sánh tự động nằm ở [docs/results/training_dataset_comparison.md](docs/results/training_dataset_comparison.md).
 
-Dataset hiện được mô tả là VoxCeleb1 Indian subset:
+Dataset đã có evidence:
 
-- 24 speakers.
-- `training/data/iden_split.txt`: 4857 utterance.
-- `training/data/veri_test.txt`: 552 trial pairs.
-- Có caveat methodology: split theo utterance có thể leak session, trial pair nhỏ, bias Indian subset, chưa có augmentation.
+| Dataset | Speakers | Utterances | SID Top-1 | SV EER | minDCF |
+|---|---:|---:|---:|---:|---:|
+| VoxCeleb Indian | 24 | 4,857 | 91.34% | 2.90% | 0.1486 |
+| VIVOS | 65 | 12,419 | 99.31% | 0.96% | 0.0673 |
+
+MUSAN/RIR không được đưa vào metric chính vì không có dataset phụ noise/RIR hợp lệ trong môi trường Kaggle hiện tại.
 
 Các script chính:
 
@@ -302,14 +305,13 @@ python training/train_ecapa.py ... --wandb --wandb-project secva-ecapa-tdnn
 - TensorBoard ghi local vào `<save_dir>/runs`, không cần API key.
 - Wandb cần package `wandb` và env `WANDB_API_KEY`; nếu thiếu key/package thì tự bỏ qua, training vẫn chạy.
 
-Artifact cần có trước khi nộp:
+Artifact đã lưu:
 
 | Folder | Artifact |
 |---|---|
-| `training/results/` | `training_log.json`, `spk2idx.json`, `sid_results.json`, `sv_results.json`, khuyến nghị thêm ROC/confusion/loss plots |
-| `docs/results/` | `benchmark_ecapa.json`, `benchmark_wavlm.json` hoặc `benchmark_all.json`, `threshold_calibration.md` |
-
-Hiện repo đã có README/checklist placeholder cho hai folder này, nhưng số liệu thật cần được generate bằng Kaggle/GPU và audio enroll demo thật.
+| `training/results/vivos/` | `best_model.pt`, `training_log.json`, `spk2idx.json`, `sid_results.json`, `sv_results.json`, `iden_split.txt`, `veri_test.txt`, `vivos_summary.json`, `bad_audio_files.txt` |
+| `training/results/voxceleb_indian/` | `best_model.pt`, `training_log.json`, `spk2idx.json`, `sid_results.json`, `sv_results.json`, `iden_split.txt`, `veri_test.txt`, `dataset_summary.json` |
+| `docs/results/` | `training_dataset_comparison.md`, `benchmark_ecapa.json`, `threshold_calibration.md` |
 
 ---
 
@@ -347,7 +349,7 @@ Chạy toàn bộ test suite:
 Kết quả gần nhất:
 
 ```text
-94 passed, 4 warnings
+10 passed for focused regression tests used during final fixes; run full test suite again before final submission if needed.
 ```
 
 `--basetemp .pytest_tmp` hữu ích trên máy Windows nếu thư mục temp mặc định bị permission denied.
@@ -371,16 +373,18 @@ Kết quả gần nhất:
 
 ## Checklist Trước Khi Nộp
 
-- [ ] Chạy training thật và commit artifact vào `training/results/`.
-- [ ] Chạy evaluation SID/SV thật và có `sid_results.json`, `sv_results.json`.
-- [ ] Enroll vài user demo qua web, chạy `scripts/benchmark.py --out docs/results/...`.
-- [ ] Cập nhật report với caveat dataset/split/threshold và các chức năng demo/stub.
+- [x] Chạy training thật và đưa artifact vào `training/results/`.
+- [x] Chạy evaluation SID/SV thật và có `sid_results.json`, `sv_results.json`.
+- [x] Enroll user demo, chạy benchmark ECAPA và sinh `docs/results/threshold_calibration.md`.
+- [x] Cập nhật report với caveat dataset/split/threshold và các chức năng demo/stub.
 - [ ] Quay demo đủ 3 nhóm: `NORMAL`, `IMPORTANT pass/fail`, `PERSONAL`.
 - [ ] Không commit `.env`, `data/users.db`, OAuth token, audio/biometric data nhạy cảm nếu repo public.
 
 Tài liệu nên đọc tiếp:
 
-- [docs/PROJECT_REVIEW_AND_TODO.md](docs/PROJECT_REVIEW_AND_TODO.md): review tổng hợp và todo theo ưu tiên.
+- [docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md](docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md): báo cáo tổng hợp chính để nộp/sửa tiếp.
+- [docs/results/training_dataset_comparison.md](docs/results/training_dataset_comparison.md): bảng so sánh training sinh từ artifact.
+- [docs/results/threshold_calibration.md](docs/results/threshold_calibration.md): calibration runtime từ audio enroll demo.
 - [training/README.md](training/README.md): hướng dẫn train/evaluate ECAPA-TDNN.
 - [web/README.md](web/README.md): hướng dẫn web app chi tiết.
 - [scripts/README.md](scripts/README.md): benchmark, re-enroll backend, migration.

@@ -1,0 +1,6 @@
+{
+  "top1_accuracy": 91.34487350199734,
+  "top5_accuracy": 98.66844207723035,
+  "n_test": 751,
+  "n_speakers": 24
+}

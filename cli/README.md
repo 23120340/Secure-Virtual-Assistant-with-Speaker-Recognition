@@ -22,8 +22,8 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 │   ├── run_assistant.py   # REPL chạy assistant
 │   └── test_pipeline.py   # smoke test với file wav (không cần mic)
 ├── data/                  # (tự tạo) DB sqlite, audio enrollment, log
-├── checkpoints/           # best_model.pt (copy từ Tuần 1 / Kaggle)
-├── part1/                 # Tuần 1 — ECAPA-TDNN training (xem part1/README.md)
+├── checkpoints/           # best_model.pt / vios/best_model.pt từ training evidence
+├── training/              # ECAPA-TDNN training/evaluation
 ├── requirements.txt
 └── .env.example
 ```

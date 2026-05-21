@@ -1,0 +1,17 @@
+{
+  "dataset": "VIVOS",
+  "seed": 42,
+  "data_root": "/kaggle/working/vivos_speaker_root",
+  "n_speakers": 65,
+  "n_utterances": 12419,
+  "split_counts": {
+    "train": 8686,
+    "val": 1850,
+    "test": 1883
+  },
+  "n_trials": 4160,
+  "n_positive_trials": 2080,
+  "n_negative_trials": 2080,
+  "n_bad_audio_files": 1,
+  "bad_audio_out": "/kaggle/working/results/vivos/bad_audio_files.txt"
+}

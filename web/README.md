@@ -269,7 +269,7 @@ Sau khi enroll vài users:
 3. **Impostor** (khác người): score ≈ 0.10–0.40.
 4. Đặt `SV_THRESHOLD` ở giữa 2 cụm.
 
-Phương pháp formal: chạy `part1/evaluate_sv.py` (Phần 1) → lấy threshold tại EER → dùng trong production.
+Phương pháp formal: chạy `training/evaluate_sv.py` hoặc đọc `docs/results/threshold_calibration.md` → lấy threshold tại EER → cân nhắc dùng trong production.
 
 ## Bug & Workaround
 
@@ -287,7 +287,7 @@ Phương pháp formal: chạy `part1/evaluate_sv.py` (Phần 1) → lấy thresh
 
 ## Checklist nộp bài
 
-- [ ] **Phần 1** — Mã nguồn `train_ecapa.py`, `evaluate_sid.py`, `evaluate_sv.py` + checkpoint + log + kết quả EER/Top-1.
+- [x] **YC1** — Mã nguồn `training/train_ecapa.py`, `evaluate_sid.py`, `evaluate_sv.py` + checkpoint + log + kết quả EER/Top-1 trong `training/results/`.
 - [ ] **Phần 2 + 3** — toàn bộ thư mục: `core/`, `cli/`, `web/`, requirements, README.
 - [ ] **Database** — `data/users.db` mẫu (đã enroll vài users) + audio mẫu trong `data/enroll_audio/`.
 - [ ] **Demo video** — quay 3 use case (NORMAL / IMPORTANT pass / IMPORTANT fail / PERSONAL phân biệt 2 user).

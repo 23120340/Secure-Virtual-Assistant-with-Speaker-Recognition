@@ -1,0 +1,15 @@
+{
+  "dataset": "VoxCeleb Indian subset",
+  "seed": 42,
+  "data_root": "/kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian",
+  "n_speakers": 24,
+  "n_utterances": 4857,
+  "split_counts": {
+    "train": 3389,
+    "val": 717,
+    "test": 751
+  },
+  "n_trials": 552,
+  "n_positive_trials": 276,
+  "n_negative_trials": 276
+}

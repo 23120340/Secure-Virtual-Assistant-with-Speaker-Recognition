@@ -69,3 +69,30 @@ python scripts/migrate_password_hashes.py
 ```
 
 Hash SHA-256 không thể decode → password cũ không giữ được; admin báo user đổi lại sau lần đăng nhập đầu.
+
+## `prepare_vivos_splits.py`
+
+Chuẩn hóa VIVOS từ `train/waves/<speaker>` + `test/waves/<speaker>` về dạng
+`<speaker>/<wav>.wav`, rồi tạo split SID và trial SV cho `training/train_ecapa.py`:
+
+```bash
+python scripts/prepare_vivos_splits.py \
+  --vivos-root /kaggle/input/vivos-corpus/vivos \
+  --out-root /kaggle/working/vivos_speaker_root \
+  --split-out /kaggle/working/iden_split_vivos.txt \
+  --trial-out /kaggle/working/veri_test_vivos.txt \
+  --summary-out /kaggle/working/results/vivos/vivos_summary.json
+```
+
+## `build_training_comparison_report.py`
+
+Đọc artifact training/evaluation của VoxCeleb Indian và VIVOS, sinh bảng Markdown:
+
+```bash
+python scripts/build_training_comparison_report.py \
+  --voxceleb-dir training/results/voxceleb_indian \
+  --vivos-dir training/results/vivos \
+  --out docs/results/training_dataset_comparison.md
+```
+
+Artifact hiện đã có trong `training/results/`; chạy lại script này khi muốn refresh bảng sau một lần train/evaluate mới.

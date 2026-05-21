@@ -1,18 +1,26 @@
-# Phần 1 – ECAPA-TDNN Speaker Recognition
+# ECAPA-TDNN Speaker Recognition
 
-Train ECAPA-TDNN trên VoxCeleb1 cho **cả** Speaker Identification (SID) và Speaker Verification (SV). Cùng một mô hình, hai cách đánh giá.
+Train ECAPA-TDNN cho **Speaker Identification (SID)** và **Speaker Verification (SV)**. Cùng một mô hình được train bằng speaker classification, sau đó dùng embedding cosine similarity để verify.
+
+Evidence cuối cùng của đồ án nằm ở:
+
+- `training/results/voxceleb_indian/`
+- `training/results/vivos/`
+- `docs/results/training_dataset_comparison.md`
+- `docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md`
 
 ## Vị trí trong repo
 
 ```
 Secure-Virtual-Assistant-with-Speaker-Recognition/
-├── part1/                  ← thư mục này
+├── training/               ← thư mục này
 │   ├── README.md
 │   ├── train_ecapa.py
 │   ├── evaluate_sid.py
 │   ├── evaluate_sv.py
 │   ├── requirements.txt
-│   └── data/               # iden_split.txt, veri_test.txt (bản local)
+│   ├── data/               # split mẫu
+│   └── results/            # evidence VoxCeleb Indian + VIVOS
 ├── checkpoints/            # đặt best_model.pt vào đây sau khi train
 └── ...
 ```
@@ -25,24 +33,20 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 - **Random crop 3s khi train**, full utterance khi extract embedding để verify.
 - Sau khi train xong, dùng **cosine similarity** giữa hai embedding để verify.
 
-## Dataset: VoxCeleb1 (Indian subset)
+## Dataset Thực Nghiệm
 
-| Thông số | Giá trị |
-|---|---|
-| Dataset Kaggle | `gaurav41/voxceleb1-audio-wav-files-for-india-celebrity` |
-| Số speaker | 24 (Indian celebrities, ID range `id10002` → `id11209`) |
-| Sampling rate | 16kHz |
-| Audio root | `/kaggle/input/datasets/gaurav41/voxceleb1-audio-wav-files-for-india-celebrity/vox1_indian/content/vox_indian` |
-| Split file đã commit | `training/data/iden_split.txt` (4857 utterance), `training/data/veri_test.txt` (552 trial pair) |
-
-**Lưu ý**: Dataset này không có sẵn `iden_split.txt` và `veri_test.txt` — cần tạo thủ công (xem bước 2 bên dưới). File đã commit trong `training/data/` là output của script bước 2 với seed=42, dùng để reproduce kết quả.
+| Dataset | Speakers | Utterances | Train / Val / Test | Trial pairs |
+|---|---:|---:|---:|---:|
+| VoxCeleb Indian subset | 24 | 4,857 | 3,389 / 717 / 751 | 552 |
+| VIVOS | 65 | 12,419 | 8,686 / 1,850 / 1,883 | 4,160 |
 
 ### Caveat methodology (cần ghi rõ trong báo cáo)
 
 1. **Random shuffle utterance** — Split 70/15/15 chia theo utterance, KHÔNG group theo `video_id` (YouTube session). Hậu quả: utterance cùng một session có thể leak qua train/val/test → metric có thể đẹp hơn closed-set thật. Đề chuẩn của VoxCeleb1 là `iden_split.txt` per-utt với cùng speaker xuất hiện ở cả 3 split, và `veri_test.txt` (VoxCeleb1-O) là trial pair từ 40 speaker held-out. Phiên bản đang dùng KHÔNG phải VoxCeleb1-O chính thức.
 2. **Trial pair số lượng nhỏ** — Cap positive ở `min(i+4, len(files))` mỗi speaker, sample 1 impostor mỗi cặp speaker → ~24×23/2 = 276 cặp âm. EER trên trial set nhỏ này ít nghĩa thống kê.
 3. **Indian subset bias** — Train trên 24 Indian celebrity → có bias domain (accent, gender ratio, microphone). Khi deploy cho user Việt là OOD scenario — báo cáo cần discuss khoảng cách này.
-4. **Augmentation cần retrain** — Đã có khung MUSAN noise / RIR reverb / SpecAugment / speed perturb, nhưng metric mới chỉ có ý nghĩa sau khi retrain trên Kaggle GPU và commit artifact EER/minDCF.
+4. **VIVOS read speech** — VIVOS gần domain tiếng Việt hơn nhưng là đọc câu, môi trường sạch hơn thực tế.
+5. **Augmentation** — Đã có khung MUSAN noise / RIR reverb / SpecAugment / speed perturb, nhưng MUSAN/RIR không có dataset phụ nên không đưa vào metric chính.
 
 ## Training augmentation (Task 2 - P2)
 
@@ -74,17 +78,19 @@ Nếu chưa có MUSAN/RIR path, flag `--augment --specaugment --speed-rates 0.9 
 vẫn chạy được: script sẽ bỏ qua noise/reverb khi không tìm thấy file audio. Đây là
 pipeline retrain từ đầu trên GPU, không làm thay đổi runtime của assistant.
 
-## Setup trên Kaggle
+## Chạy Lại Training Trên Kaggle
 
 ### 1. Chuẩn bị notebook
 
 - Tạo notebook mới, bật **GPU T4 x1** (Settings → Accelerator).
 - Add dataset `gaurav41/voxceleb1-audio-wav-files-for-india-celebrity`.
-- Upload 4 file từ thư mục `part1/` lên notebook (dùng nút **Upload** trên Kaggle):
+- Upload/copy các file từ thư mục `training/` và `scripts/` lên notebook:
   - `train_ecapa.py`
   - `evaluate_sid.py`
   - `evaluate_sv.py`
   - `requirements.txt`
+  - `scripts/prepare_voxceleb_splits.py`
+  - `scripts/prepare_vivos_splits.py`
 
 ```bash
 !pip install -q speechbrain
@@ -220,16 +226,14 @@ print("Tải file checkpoints_export.zip từ tab Output của Kaggle")
 
 Giải nén và đặt `best_model.pt` + `spk2idx.json` vào thư mục `checkpoints/` ở root repo để Phần 2 sử dụng.
 
-## Kết quả tham khảo
+## Kết Quả Evidence Hiện Tại
 
-| Metric | Indian subset (~24 speakers, 15 epochs) | Full VoxCeleb1 (1251 speakers, 15 epochs) |
-|---|---|---|
-| SID Top-1 | ~95–99% | ~85–90% |
-| SID Top-5 | ~99–100% | ~95–98% |
-| SV EER | ~1–3% | ~3–5% |
-| SV minDCF (p=0.01) | ~0.10–0.25 | ~0.30–0.45 |
+| Dataset | Best Val Acc | SID Top-1 | SID Top-5 | SV EER | minDCF | Threshold @ EER |
+|---|---:|---:|---:|---:|---:|---:|
+| VoxCeleb Indian | 93.44% | 91.34% | 98.67% | 2.90% | 0.1486 | 0.3884 |
+| VIVOS | 99.19% | 99.31% | 100.00% | 0.96% | 0.0673 | 0.4062 |
 
-Số liệu cao hơn full VoxCeleb1 vì dataset nhỏ hơn (~24 speakers).
+VIVOS được chọn làm checkpoint chính cho demo tiếng Việt vì có SID/SV tốt hơn trong evidence nội bộ.
 
 ## Tip để báo cáo "đẹp" hơn
 
