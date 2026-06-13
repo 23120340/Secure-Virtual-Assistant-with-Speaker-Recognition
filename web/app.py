@@ -261,6 +261,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core import audio_io, config
 from core.asr import get_asr, correct_transcript
+from core.asr_corrections import apply_corrections
 from core.audit import audit as _audit
 from core.turn_logging import log_turn as _log_turn
 from core import email_flow as _ef
@@ -1448,6 +1449,41 @@ def register_routes(app):
 
         transcript = correct_transcript(transcript)
 
+        # ── Challenge-response (server-side, robust) ───────────────────────
+        # Nếu session đang có challenge CHỜ (turn 1 IMPORTANT đã pass SV) thì
+        # turn giọng nói này CHÍNH LÀ câu đọc lại → hoàn tất challenge ngay,
+        # KHÔNG xử lý như lệnh mới. Hoạt động kể cả khi frontend không gọi
+        # /api/assistant/challenge-response (vd cache JS cũ) — đây là lý do
+        # trước đây câu đọc lại bị rơi vào NLU → general_question.
+        ch_store = session.get("challenges", {})
+        if ch_store:
+            now = time.time()
+            pending = [(tok, st) for tok, st in ch_store.items()
+                       if not st.get("used") and st.get("expires_at", 0) > now]
+            # Dọn token hết hạn / đã dùng.
+            ch_store = {tok: st for tok, st in ch_store.items()
+                        if not st.get("used") and st.get("expires_at", 0) > now}
+            if pending:
+                tok, state = pending[-1]   # challenge mới nhất
+                result = router.complete_challenge(
+                    audio, transcript, state, extra_context={"db": db})
+                ch_store.pop(tok, None)
+                session["challenges"] = ch_store
+                payload = asdict(result)
+                payload["tts_url"] = f"/api/tts?text={_quote(result.response)}"
+                payload["flow_active"] = False
+                if not result.blocked:
+                    _uid = result.identified_user_id
+                    _u = db.get_user(_uid) if _uid else None
+                    _attach_action_data(
+                        payload, result.intent, result.blocked, _uid,
+                        result.identified_user_name, result.entities,
+                        (_u["preferences"] if _u else {}), auth_method="voice")
+                _log_assistant_turn(payload, source="web_voice_challenge_response",
+                                    auth_method="voice")
+                return jsonify(payload)
+            session["challenges"] = ch_store
+
         # Email flow continuation (dùng chung với text route — xem
         # _continue_email_flow_if_active).
         flow_payload, handled = _continue_email_flow_if_active(transcript, db, nlu)
@@ -1629,13 +1665,17 @@ def register_routes(app):
         nlu = app.config["nlu"]
 
         # Email flow continuation (dùng chung với voice route — xem
-        # _continue_email_flow_if_active).
+        # _continue_email_flow_if_active). Dùng text THÔ vì subject/body là nội
+        # dung tự do, KHÔNG áp ASR-correction để tránh nắn nhầm.
         flow_payload, handled = _continue_email_flow_if_active(text, db, nlu)
         if handled:
             _log_assistant_turn(flow_payload, source="web_text_email_flow",
                                 auth_method="password")
             return jsonify(flow_payload)
 
+        # Áp ASR-correction cho text mode (voice mode đã làm trong transcribe()).
+        # Sửa lỗi gõ/nhận dạng câu lệnh, vd "đặt nịch" -> "đặt lịch".
+        text = apply_corrections(text)
         text, nlu_result = parse_with_correction(text, nlu)
         intent   = nlu_result["intent"]
         entities = nlu_result["entities"]

@@ -61,7 +61,7 @@ Threshold runtime đang dùng (xem `core/config.py`):
 - SpeechBrain pretrained fallback (khác phân phối score): `0.25 / 0.20`.
 - WavLM-SV alternative backend: `0.93 / 0.90`.
 
-Thresholds CHƯA được calibrate trên dataset enroll thật — chỉ là default. Khuyến nghị chạy `python scripts/benchmark.py --out docs/results/benchmark.json` sau khi enroll user thật rồi điều chỉnh.
+Thresholds CHƯA được calibrate trên dataset enroll thật — chỉ là default. Khuyến nghị chạy `python scripts/benchmark.py --out training/results/benchmark.json` sau khi enroll user thật rồi điều chỉnh.
 
 ## Quantitative analyses
 

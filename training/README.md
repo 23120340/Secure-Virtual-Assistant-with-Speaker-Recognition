@@ -6,8 +6,8 @@ Evidence cuối cùng của đồ án nằm ở:
 
 - `training/results/voxceleb_indian/`
 - `training/results/vivos/`
-- `docs/results/training_dataset_comparison.md`
-- `docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md`
+- `report/main.pdf`
+- `report/main.tex`
 
 ## Vị trí trong repo
 

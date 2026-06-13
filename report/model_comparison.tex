@@ -1,0 +1,421 @@
+% !TEX program = xelatex
+% So sánh các model trong pipeline Secure Virtual Assistant
+% Compile: xelatex model_comparison.tex  (chạy 2 lần để có mục lục)
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{fontspec}
+\setmainfont{Latin Modern Roman}
+\setmonofont{Latin Modern Mono}
+
+\usepackage{geometry}
+\geometry{margin=2.3cm}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage[most]{tcolorbox}
+\usepackage{listings}
+\usepackage{hyperref}
+
+\definecolor{accent}{HTML}{1D4ED8}
+\definecolor{okrow}{HTML}{DCFCE7}
+\definecolor{hdr}{HTML}{1E3A8A}
+
+\newtcolorbox{luuybox}[1][Lưu ý]{enhanced,breakable,colback=orange!5,
+  colframe=orange!65!black,coltitle=white,fonttitle=\bfseries\small,title={#1},
+  boxrule=0.6pt,left=4pt,right=4pt,top=3pt,bottom=3pt,arc=2pt}
+\newtcolorbox{diembox}[1][Điểm chính]{enhanced,breakable,colback=green!4,
+  colframe=green!45!black,coltitle=white,fonttitle=\bfseries\small,title={#1},
+  boxrule=0.6pt,left=4pt,right=4pt,top=3pt,bottom=3pt,arc=2pt}
+\lstdefinestyle{py}{language=Python,basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{blue!60!black},commentstyle=\color{green!45!black}\itshape,
+  stringstyle=\color{orange!70!black},breaklines=true,frame=single,
+  columns=fullflexible,backgroundcolor=\color{gray!6},keepspaces=true,
+  showstringspaces=false,numbers=none,xleftmargin=4pt}
+\lstset{style=py}
+\hypersetup{colorlinks=true, linkcolor=accent, urlcolor=accent,
+  pdftitle={So sanh cac model - Secure Virtual Assistant}}
+\setlist[itemize]{leftmargin=1.2cm,topsep=2pt,itemsep=1pt}
+\setlist[enumerate]{leftmargin=1.2cm,topsep=2pt,itemsep=1pt}
+\renewcommand{\arraystretch}{1.3}
+\captionsetup{font=small,labelfont=bf}
+
+\newcommand{\role}[1]{\par\smallskip\noindent\textbf{\textcolor{hdr}{Nhiệm vụ:}} #1\par\smallskip}
+
+\title{\textbf{So sánh các Mô hình trong Hệ thống}\\[3pt]
+\large Secure Virtual Assistant with Speaker Recognition\\
+\large \textit{Mỗi model làm nhiệm vụ gì --- và khi nào nên chọn}}
+\author{Đồ án: Secure-VA}
+\date{Tháng 6, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent Trợ lý ảo gồm một \textbf{pipeline xử lý giọng nói} với bốn khối, mỗi
+khối có thể hoán đổi mô hình qua file \texttt{.env} mà không sửa code. Tài liệu
+này so sánh các lựa chọn ở từng khối: \textbf{(1) ASR} (giọng nói $\to$ văn bản),
+\textbf{(2) Speaker Encoder} (giọng nói $\to$ embedding để nhận diện/xác minh),
+\textbf{(3) NLU} (văn bản $\to$ ý định), \textbf{(4) TTS} (văn bản $\to$ giọng
+nói). Với mỗi mô hình: nêu \emph{nhiệm vụ}, \emph{ưu/nhược điểm}, và \emph{khi nào
+nên chọn}.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Toàn cảnh pipeline}
+% ============================================================
+
+\begin{center}
+\fbox{\parbox{0.95\linewidth}{\centering
+Microphone $\to$ \textbf{[1] ASR} $\to$ văn bản $\to$ \textbf{[3] NLU} $\to$ ý định\\
+$\quad\downarrow$ (song song) \\
+audio $\to$ \textbf{[2] Speaker Encoder} $\to$ embedding $\to$ cổng xác thực SID/SV\\
+$\quad\downarrow$\\
+Handler thực thi $\to$ \textbf{[4] TTS} $\to$ phản hồi bằng giọng nói
+}}
+\end{center}
+
+\begin{table}[H]
+\centering
+\caption{Cấu hình \textbf{đang dùng} của đồ án (đọc từ \texttt{.env}).}
+\begin{tabular}{lll}
+\toprule
+\textbf{Khối} & \textbf{Model đang bật} & \textbf{Biến \texttt{.env}} \\
+\midrule
+ASR             & PhoWhisper-base & \texttt{ASR\_BACKEND=phowhisper} \\
+Speaker Encoder & ECAPA-TDNN (checkpoint VIVOS) & \texttt{SPEAKER\_BACKEND=ecapa} \\
+NLU             & Gemini 2.5-flash (fallback rule-based) & \texttt{GEMINI\_MODEL=gemini-2.5-flash} \\
+TTS             & gTTS (fallback pyttsx3) & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Khối 1 --- ASR: Nhận dạng tiếng nói}
+% ============================================================
+\role{Chuyển audio giọng nói thành văn bản (speech-to-text) để NLU hiểu lệnh.
+Cài đặt trong \texttt{core/asr.py}, chọn backend qua \texttt{ASR\_BACKEND}.}
+
+\begin{table}[H]
+\centering
+\caption{So sánh hai backend ASR.}
+\small
+\begin{tabular}{p{0.16\linewidth}p{0.39\linewidth}p{0.37\linewidth}}
+\toprule
+& \textbf{faster-whisper} & \textbf{PhoWhisper} (đang dùng) \\
+\midrule
+Bản chất & Whisper (OpenAI) đa ngôn ngữ, nén CTranslate2 int8 & Whisper fine-tune
+\textbf{844 giờ tiếng Việt} (VinAI) \\
+Độ chính xác (tiếng Việt) & Khá; dễ "English-hoá" câu ngắn & \textbf{Cao hơn rõ}
+ở cùng kích thước model \\
+Tốc độ & \textbf{Nhanh} trên CPU (int8) & Chậm hơn (transformers eager mode) \\
+Đa ngôn ngữ & Có (nhiều thứ tiếng) & Chủ yếu tiếng Việt \\
+Kích thước & tiny / base / small / medium / large-v3 & base / small / medium / large \\
+Phụ thuộc & \texttt{faster-whisper} & \texttt{transformers} (+ GPU nếu lớn) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Khi nào chọn cái nào?}
+\begin{itemize}
+  \item \textbf{Chọn PhoWhisper} khi: ứng dụng \emph{chỉ phục vụ tiếng Việt} và
+  ưu tiên độ chính xác --- đúng trường hợp đồ án này. Dùng \texttt{base} trên CPU,
+  \texttt{small/medium} nếu có GPU.
+  \item \textbf{Chọn faster-whisper} khi: cần \emph{tốc độ trên CPU yếu}, cần
+  \emph{đa ngôn ngữ}, hoặc làm demo nhanh. Trên CPU nên đặt \texttt{WHISPER\_MODEL
+  =base}; có GPU thì \texttt{medium/large-v3} + \texttt{WHISPER\_COMPUTE=float16}.
+\end{itemize}
+
+\noindent\textit{Lưu ý chung}: cả hai đều được tăng cường bằng \emph{initial
+prompt bias} (ưu tiên từ-khoá-lệnh) và \emph{bộ lọc hallucination} (loại câu
+"outro YouTube" khi audio quá ngắn/im lặng).
+
+% ============================================================
+\section{Khối 2 --- Speaker Encoder: Sinh trắc giọng nói}
+% ============================================================
+\role{Biến đoạn giọng nói thành một \emph{vector embedding} đặc trưng cho người
+nói. So embedding bằng \textbf{cosine similarity} để: nhận diện người nói
+(\textbf{SID}) và xác minh danh tính (\textbf{SV}). Cài đặt trong
+\texttt{core/speaker\_encoder.py}, chọn qua \texttt{SPEAKER\_BACKEND}.}
+
+Đây là \emph{lõi bảo mật} của hệ thống --- quyết định ai được chạy tác vụ nhạy cảm.
+
+\begin{table}[H]
+\centering
+\caption{So sánh ba lựa chọn speaker encoder.}
+\small
+\begin{tabular}{p{0.15\linewidth}p{0.27\linewidth}p{0.24\linewidth}p{0.24\linewidth}}
+\toprule
+& \textbf{ECAPA tự train (VIVOS)} \newline \textit{đang dùng}
+& \textbf{ECAPA pretrained} \newline (SpeechBrain)
+& \textbf{WavLM-SV} \newline (Microsoft) \\
+\midrule
+Kiến trúc & ECAPA-TDNN, embedding 192-d & ECAPA-TDNN, 192-d & WavLM + X-vector head, 512-d \\
+Huấn luyện trên & VIVOS (65 người, tiếng Việt) & VoxCeleb2 (general) & VoxCeleb1 verification \\
+Hiệu năng & SV \textbf{EER 0.96\%} (đo nội bộ) & Tổng quát, chưa tối ưu tiếng Việt
+& EER thấp trên VoxCeleb1-O; bắt impostor giọng giống tốt \\
+Ngưỡng SV / SID & 0.45 / 0.35 & 0.25 / 0.20 & 0.93 / 0.90 \\
+Phụ thuộc & SpeechBrain + checkpoint & SpeechBrain (tải tự động) & \texttt{transformers} (nặng hơn) \\
+Kích hoạt & Khi có file checkpoint hợp lệ & \textbf{Tự fallback}
+khi thiếu checkpoint & \texttt{wavlm} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Vì sao ngưỡng khác nhau?} Mỗi model có \emph{phân phối điểm cosine}
+khác nhau, nên ngưỡng chấp nhận phải hiệu chỉnh riêng cho từng backend (vd WavLM
+điểm tập trung rất cao $\to$ ngưỡng 0.93). \textbf{Không} dùng chung một ngưỡng.
+
+\paragraph{Khi nào chọn cái nào?}
+\begin{itemize}
+  \item \textbf{ECAPA tự train (VIVOS)} --- \emph{mặc định cho đồ án}: khớp miền
+  tiếng Việt, EER thấp nhất trong các bằng chứng nội bộ. Chọn khi đã có checkpoint
+  và phục vụ người dùng Việt.
+  \item \textbf{ECAPA pretrained}: chọn khi \emph{chưa kịp train} hoặc cần baseline
+  chạy ngay --- hệ thống tự dùng khi không tìm thấy checkpoint, không cần cấu hình.
+  \item \textbf{WavLM-SV}: chọn khi cần \emph{độ phân biệt impostor cao} (chống
+  giọng giống nhau) và chấp nhận model nặng hơn, tốt nhất có GPU. Phù hợp khi nâng
+  cấp bảo mật hoặc so sánh học thuật.
+\end{itemize}
+
+\noindent\textit{Lưu ý chung}: mọi backend dùng chung các kỹ thuật ổn định hoá
+--- \emph{multi-window averaging}, \emph{AS-Norm-lite} (chuẩn hoá điểm theo
+cohort), và \emph{lọc chất lượng centroid} khi đăng ký giọng.
+
+\subsection{RawNet3 và vì sao đồ án chỉ tích hợp 3 lựa chọn}
+
+\textbf{RawNet3} (Jung et al., 2022) là một mô hình speaker verification SOTA
+khác. Điểm khác biệt cốt lõi so với ECAPA: nó nhận \emph{trực tiếp raw waveform},
+\textbf{không} dùng mel-filterbank thủ công --- thay vào đó học một front-end lọc
+tham số (kiểu sinc), rồi qua backbone Res2Net + attentive statistics pooling.
+
+\begin{table}[H]
+\centering\small
+\caption{RawNet3 so với hướng tiếp cận của đồ án.}
+\begin{tabular}{p{0.20\linewidth}p{0.36\linewidth}p{0.36\linewidth}}
+\toprule
+& \textbf{RawNet3} & \textbf{ECAPA-TDNN} (đồ án dùng) \\
+\midrule
+Đầu vào & Raw waveform (front-end học được) & Mel-filterbank 80-d + log + CMN \\
+Backbone & Res2Net + attentive stat pooling & SE-Res2Block + attentive stat pooling \\
+Tham số & $\sim$16M & $\sim$6.2M \\
+Hiệu năng & EER $\approx$0.9\% trên VoxCeleb1-O (công bố gốc) & EER 0.96\% trên VIVOS (đo nội bộ) \\
+Hệ sinh thái & \texttt{clovaai/voxceleb\_trainer}, asv-subtools & SpeechBrain (pretrained + train sẵn) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{luuybox}[Vì sao KHÔNG dùng RawNet3 trong đồ án]
+RawNet3 \emph{không yếu} --- ngược lại, nó rất mạnh. Lý do không chọn là về
+\textbf{phạm vi và chi phí tích hợp}, không phải chất lượng:
+\begin{enumerate}
+  \item \textbf{Kiến trúc chuẩn của YC1 là ECAPA-TDNN}: toàn bộ pipeline huấn
+  luyện (\texttt{FbankExtractor}, \texttt{train\_ecapa.py}, các checkpoint VIVOS/
+  VoxCeleb) được xây quanh mel + ECAPA. Đổi sang RawNet3 là làm lại YC1 từ đầu.
+  \item \textbf{Khác hệ sinh thái}: ECAPA và WavLM có sẵn API gọn trong
+  SpeechBrain/\texttt{transformers}; RawNet3 nằm ở repo \texttt{voxceleb\_trainer},
+  phải tự viết encoder class mới + thêm dependency + tải/convert weight.
+  \item \textbf{Phải hiệu chỉnh lại ngưỡng}: phân phối điểm cosine khác $\to$ phải
+  calibrate \texttt{SV\_THRESHOLD}/\texttt{SID\_MIN\_THRESHOLD} riêng từ đầu.
+  \item \textbf{Lợi ích biên nhỏ so với chi phí}: ECAPA-VIVOS đã đạt EER 0.96\%
+  trên miền tiếng Việt --- đủ tốt cho demo. RawNet3 chủ yếu hơn ở benchmark
+  VoxCeleb quy mô lớn; để phát huy trên tiếng Việt vẫn cần train lại.
+  \item \textbf{3 lựa chọn hiện tại đã phủ đủ tình huống}: own checkpoint (tốt
+  nhất, đúng miền), pretrained (fallback chạy ngay), WavLM (đối chứng/độ phân biệt
+  cao). RawNet3 sẽ là \emph{lựa chọn thứ 4} hợp lý khi cần đẩy SOTA.
+\end{enumerate}
+\textbf{Quan trọng}: kiến trúc backend đã \emph{mở rộng được} --- thêm RawNet3 chỉ
+cần viết một encoder class mới (xem Mục~\ref{sec:doimodel}).
+\end{luuybox}
+
+% ============================================================
+\section{Khối 3 --- NLU: Hiểu ý định}
+% ============================================================
+\role{Từ văn bản, xác định \emph{ý định} (intent) và \emph{tham số} (entity), vd
+"gửi email cho Nam" $\to$ intent \texttt{send\_email}, entity \texttt{recipient=Nam}.
+Ngoài ra trả lời câu hỏi tổng quát (\texttt{general\_question}). Cài đặt trong
+\texttt{core/nlu.py}, chọn theo việc có \texttt{GEMINI\_API\_KEY} hay không.}
+
+\begin{table}[H]
+\centering
+\caption{So sánh hai cơ chế NLU.}
+\small
+\begin{tabular}{p{0.16\linewidth}p{0.40\linewidth}p{0.36\linewidth}}
+\toprule
+& \textbf{Gemini} (function-calling) \textit{đang dùng} & \textbf{Rule-based} (fallback) \\
+\midrule
+Cách hoạt động & LLM hiểu câu tự nhiên, tự map sang hàm/intent + entity & Khớp
+từ khoá / mẫu (pattern) cố định \\
+Độ linh hoạt & \textbf{Cao} --- hiểu cách diễn đạt đa dạng, có ngữ cảnh & Thấp ---
+chỉ nhận câu đúng mẫu \\
+Trả lời tự do & Có (\texttt{general\_question} qua Gemini) & Không \\
+Chi phí & Cần API key + mạng + có quota & \textbf{Miễn phí, offline, tức thời} \\
+Tính ổn định & Phụ thuộc dịch vụ (có thể 429/quota) & \textbf{Deterministic} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Khi nào chọn cái nào?}
+\begin{itemize}
+  \item \textbf{Gemini} --- mặc định: khi cần hiểu lệnh nói tự nhiên, đa dạng và
+  trả lời câu hỏi mở. Đồ án dùng \texttt{gemini-2.5-flash}.
+  \item \textbf{Rule-based} --- tự động kích hoạt khi \emph{thiếu API key},
+  \emph{mất mạng} hoặc \emph{hết quota}: đảm bảo các lệnh cốt lõi vẫn chạy. Cũng
+  nên dùng khi cần chạy hoàn toàn offline/bảo mật dữ liệu.
+\end{itemize}
+
+\noindent\textit{Liên quan}: Gemini cũng được dùng để \emph{sửa lỗi transcript}
+ASR (bật qua \texttt{ASR\_CORRECT}); mặc định chỉ sửa khi NLU không hiểu để tiết
+kiệm quota.
+
+% ============================================================
+\section{Khối 4 --- TTS: Tổng hợp giọng nói}
+% ============================================================
+\role{Chuyển văn bản phản hồi thành audio để đọc cho người dùng (text-to-speech).
+Cài đặt trong \texttt{core/tts.py}.}
+
+\begin{table}[H]
+\centering
+\caption{So sánh hai engine TTS.}
+\small
+\begin{tabular}{p{0.16\linewidth}p{0.40\linewidth}p{0.36\linewidth}}
+\toprule
+& \textbf{gTTS} (đang dùng) & \textbf{pyttsx3} (fallback) \\
+\midrule
+Bản chất & Google TTS online & Engine hệ điều hành (SAPI5/NSSpeech/espeak) \\
+Chất lượng & \textbf{Tự nhiên}, nhiều ngôn ngữ (vi/en/ja/ko/zh/fr/de) & Giọng máy,
+kém tự nhiên hơn \\
+Mạng & Cần Internet & \textbf{Hoàn toàn offline} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Khi nào chọn cái nào?}
+\begin{itemize}
+  \item \textbf{gTTS} --- mặc định: chất lượng cao, đa ngôn ngữ theo
+  \texttt{preferences.language} của người dùng.
+  \item \textbf{pyttsx3} --- \emph{tự động} thay thế khi gTTS lỗi (mất mạng / rate
+  limit), giữ cho demo không gián đoạn.
+\end{itemize}
+
+% ============================================================
+\section{Tóm tắt: bảng quyết định nhanh}
+% ============================================================
+
+\begin{table}[H]
+\centering
+\caption{Chọn model theo tình huống.}
+\small
+\begin{tabular}{p{0.34\linewidth}p{0.58\linewidth}}
+\toprule
+\textbf{Tình huống} & \textbf{Lựa chọn khuyến nghị} \\
+\midrule
+Demo/đồ án tiếng Việt (mặc định) & PhoWhisper-base + ECAPA-VIVOS + Gemini + gTTS \\
+Máy CPU yếu, cần nhanh & faster-whisper (\texttt{base}) + ECAPA + rule-based + gTTS \\
+Chạy hoàn toàn offline / không mạng & faster-whisper + ECAPA + rule-based + pyttsx3 \\
+Chưa train được speaker model & ECAPA pretrained (tự fallback) \\
+Cần chống giả mạo giọng mạnh hơn & WavLM-SV (có GPU) \\
+Có GPU, tối đa độ chính xác tiếng Việt & PhoWhisper-medium + ECAPA-VIVOS + Gemini \\
+Đẩy SOTA EER (nghiên cứu) & RawNet3 --- \emph{chưa tích hợp}, cần thêm encoder class (Mục~\ref{sec:doimodel}) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Muốn đổi hoặc thêm model thì sửa ở đâu?}
+\label{sec:doimodel}
+% ============================================================
+Hệ thống thiết kế theo \emph{backend hoán đổi được}: mỗi khối đọc cấu hình từ
+\texttt{.env} qua \texttt{core/config.py}, rồi một hàm \emph{factory} chọn class
+phù hợp. Có hai mức thay đổi.
+
+\subsection{Mức 1 --- Đổi sang model ĐÃ hỗ trợ (chỉ sửa \texttt{.env})}
+Không cần đụng code, chỉ đổi biến môi trường rồi khởi động lại app:
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{p{0.20\linewidth}p{0.34\linewidth}p{0.38\linewidth}}
+\toprule
+\textbf{Khối} & \textbf{Biến trong \texttt{.env}} & \textbf{Giá trị hợp lệ} \\
+\midrule
+ASR & \texttt{ASR\_BACKEND} & \texttt{faster-whisper} / \texttt{phowhisper} \\
+& \texttt{WHISPER\_MODEL} & \texttt{tiny..large-v3} \\
+& \texttt{PHOWHISPER\_MODEL} & \texttt{vinai/PhoWhisper-base..large} \\
+Speaker & \texttt{SPEAKER\_BACKEND} & \texttt{ecapa} / \texttt{wavlm} \\
+& \texttt{SPEAKER\_CKPT} & đường dẫn checkpoint ECAPA \\
+& \texttt{SV\_THRESHOLD\_*}, \texttt{SID\_MIN\_THRESHOLD\_*} & ngưỡng từng backend \\
+NLU & \texttt{GEMINI\_MODEL} / \texttt{GEMINI\_API\_KEY} & model Gemini / bỏ trống = rule-based \\
+TTS & \texttt{TTS\_LANG} & vi/en/... (pyttsx3 tự fallback) \\
+\bottomrule
+\end{tabular}
+\caption{Các điểm đổi model không cần sửa code.}
+\end{table}
+
+\subsection{Mức 2 --- THÊM một model mới (vd RawNet3)}
+Cần sửa \textbf{3 nơi}. Lấy ví dụ thêm backend speaker \texttt{rawnet3}:
+
+\paragraph{(a) \texttt{core/config.py}} --- khai báo biến + ngưỡng:
+\begin{lstlisting}
+SPEAKER_BACKEND = os.getenv("SPEAKER_BACKEND", "ecapa").lower()
+RAWNET3_CKPT = os.getenv("RAWNET3_CKPT", "./checkpoints/rawnet3.pt")
+SV_THRESHOLD_RAWNET3  = float(os.getenv("SV_THRESHOLD_RAWNET3", "0.30"))
+SID_MIN_THRESHOLD_RAWNET3 = float(os.getenv("SID_MIN_THRESHOLD_RAWNET3", "0.25"))
+\end{lstlisting}
+
+\paragraph{(b) \texttt{core/speaker\_encoder.py}} --- viết encoder class mới (chỉ
+cần đúng ``hợp đồng'': có \texttt{encode()}, \texttt{embedding\_dim},
+\texttt{backend\_id}, \texttt{sv\_threshold}, \texttt{sid\_min\_threshold}):
+\begin{lstlisting}
+class RawNet3SpeakerEncoder(SpeakerEncoder):
+    embedding_dim = 256
+    backend_id = "rawnet3"
+    def __init__(self):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._lock = threading.Lock()
+        self.model = load_rawnet3(config.RAWNET3_CKPT).to(self.device).eval()
+        self.mode = "rawnet3"
+        self.sv_threshold = config.SV_THRESHOLD_RAWNET3       # nguong rieng
+        self.sid_min_threshold = config.SID_MIN_THRESHOLD_RAWNET3
+    @torch.no_grad()
+    def encode(self, audio):                 # raw waveform -> embedding L2-norm
+        wav = torch.from_numpy(audio).float().unsqueeze(0).to(self.device)
+        emb = self.model(wav)                # RawNet3 nhan RAW WAVEFORM, khong mel
+        return F.normalize(emb, dim=-1).cpu().numpy()[0]
+\end{lstlisting}
+
+\paragraph{(c) factory \texttt{get\_encoder()}} --- thêm một nhánh:
+\begin{lstlisting}
+elif backend == "rawnet3":
+    _encoder_instance = RawNet3SpeakerEncoder()
+\end{lstlisting}
+
+\begin{diembox}[Vì sao thêm dễ như vậy?]
+Toàn bộ pipeline (router, SID/SV, enroll) chỉ gọi \texttt{encode(audio)} và đọc
+\texttt{embedding\_dim}/ngưỡng --- \emph{không} phụ thuộc class cụ thể. Nhờ
+\emph{factory pattern} + \emph{Protocol} (xem \texttt{get\_encoder()} và
+\texttt{get\_asr()}), thêm model mới không phải sửa router hay handler. Đây là điểm
+thiết kế nên nhấn mạnh khi vấn đáp.
+\end{diembox}
+
+\begin{luuybox}[Còn phải làm gì sau khi thêm code]
+(1) Cài/đưa dependency của RawNet3 vào \texttt{requirements.txt}; (2) đặt checkpoint
+đúng đường dẫn; (3) \textbf{re-enroll} toàn bộ user (embedding cũ thuộc không gian
+ECAPA, không so với RawNet3 được) qua \texttt{scripts/reenroll\_backend.py}; (4)
+\textbf{calibrate lại ngưỡng} bằng \texttt{scripts/benchmark.py} trên giọng thật.
+\end{luuybox}
+
+\vfill
+\noindent\rule{\linewidth}{0.4pt}\\
+\small Nguồn: \texttt{core/asr.py}, \texttt{core/speaker\_encoder.py},
+\texttt{core/nlu.py}, \texttt{core/tts.py}, \texttt{core/config.py} và \texttt{.env}.
+Chi tiết kết quả huấn luyện ECAPA xem báo cáo \texttt{training/report/training\_report.pdf}.
+
+\end{document}

@@ -372,14 +372,31 @@ window.addEventListener("keyup", e=>{
 // Send audio → process result
 // ════════════════════════════════════════════════════════════
 async function sendAudio(blob) {
+  // Nếu đang chờ challenge-response (turn 1 IMPORTANT đã pass SV, server yêu
+  // cầu đọc lại cụm từ) → gửi audio này tới endpoint hoàn tất challenge kèm
+  // token, KHÔNG gửi như một lệnh mới.
+  const challengeToken = _pendingChallenge;
+  _pendingChallenge = null;            // one-shot
+
   const fd = new FormData();
   fd.append("audio", blob, "rec.webm");
+  let url = "/api/assistant/turn";
+  if (challengeToken) {
+    fd.append("token", challengeToken);
+    url = "/api/assistant/challenge-response";
+  }
   try {
-    const r = await fetch("/api/assistant/turn", {method:"POST", body:fd});
+    const r = await fetch(url, {method:"POST", body:fd});
     const data = await r.json();
     // no_audio: server trả 200 + {no_audio:true} khi user click không giữ
     // hoặc audio rỗng → silently reset, không show error/msg.
     if (data && data.no_audio) {
+      // Đang giữa challenge mà không nghe rõ → giữ lại token để đọc lại.
+      if (challengeToken) {
+        _pendingChallenge = challengeToken;
+        $status.textContent = "🔐 Chưa nghe rõ — đọc lại cụm từ xác nhận…";
+        return;
+      }
       $status.textContent = "Sẵn sàng"; return;
     }
     if (!r.ok) {
@@ -477,6 +494,9 @@ document.getElementById("panel-close").onclick = hidePanel;
 
 // ════════════════════════════════════════════════════════════
 // SHARED ACTION HANDLER  (voice + text mode)
+// Token challenge-response đang chờ user đọc lại cụm từ (null = không chờ).
+let _pendingChallenge = null;
+
 // ════════════════════════════════════════════════════════════
 // Reminder polling: backend stores reminders, frontend is the active notifier.
 let _reminderUserId = null;
@@ -527,7 +547,12 @@ async function pollDueReminders() {
 }
 
 function handleTurnAction(data) {
-  if (data.action_type === "oauth_required") {
+  if (data.action_type === "challenge_required") {
+    // Turn 1 IMPORTANT đã pass SV; server yêu cầu đọc lại cụm từ chống replay.
+    // Lưu token → lần ghi âm KẾ TIẾP sẽ gửi tới /challenge-response.
+    _pendingChallenge = data.action_data && data.action_data.token || null;
+    $status.textContent = "🔐 Giữ Space và đọc lại cụm từ để xác nhận…";
+  } else if (data.action_type === "oauth_required") {
     showOAuthModal(data.action_data.auth_url, data.identified_user_id);
   } else if (data.action_type === "play_music") {
     const ad = data.action_data;

@@ -1,0 +1,543 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{graphicx}
+\usepackage{float}
+
+\geometry{margin=2.5cm}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black,
+  citecolor=blue!60!black
+}
+\setlist[itemize]{leftmargin=1.2cm}
+\setlist[enumerate]{leftmargin=1.2cm}
+\renewcommand{\arraystretch}{1.2}
+
+\lstdefinestyle{code}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  backgroundcolor=\color{gray!5}
+}
+\lstset{style=code}
+
+\title{\textbf{Secure Virtual Assistant with Speaker Recognition}\\
+\large Final Technical Report}
+\author{Project: Secure-VA}
+\date{May 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Tom tat do an}
+
+Do an xay dung mot tro ly ao bao mat co kha nang nhan lenh bang giong noi,
+nhan dien nguoi noi, xac minh nguoi noi truoc cac tac vu nhay cam, va ca nhan
+hoa phan hoi theo tung nguoi dung. He thong duoc chia thanh hai yeu cau chinh:
+
+\begin{itemize}
+  \item \textbf{YC1 - Speaker Recognition}: train va danh gia mo hinh ECAPA-TDNN
+  cho Speaker Identification (SID) va Speaker Verification (SV).
+  \item \textbf{YC2 - Secure Virtual Assistant}: tich hop SID/SV vao tro ly ao,
+  phan quyen tac vu theo ba muc NORMAL, PERSONAL va IMPORTANT.
+\end{itemize}
+
+Ban hien tai da co pipeline end-to-end: thu am tren trinh duyet, decode audio,
+VAD, ASR, speaker embedding, NLU, auth gate, intent handler va TTS. Evidence
+speaker recognition da duoc tao tren VoxCeleb Indian subset va VIVOS. Checkpoint
+VIVOS duoc chon lam checkpoint chinh cho demo tieng Viet vi cho ket qua tot hon
+trong thiet lap noi bo.
+
+\section{Pham vi nop bai}
+
+Dua tren tai lieu va artifact hien co, goi nop bai nen gom cac muc sau:
+
+\begin{longtable}{p{0.28\linewidth}p{0.64\linewidth}}
+\toprule
+\textbf{Thanh phan} & \textbf{Ly do can nop} \\
+\midrule
+\endhead
+\texttt{core/} & Logic dung chung: audio preprocessing, ASR, speaker encoder, database, NLU, router, handlers, audit, OAuth, Gmail, reminder. \\
+\texttt{web/} & Flask web app de demo enrollment, assistant, admin, file manager, music, user management. \\
+\texttt{cli/} & CLI enrollment, assistant va smoke test, huu ich neu demo web gap loi. \\
+\texttt{training/} & Code train/evaluate ECAPA-TDNN, model card, ket qua train/evaluate. \\
+\texttt{scripts/} & Cac script tao split VIVOS, benchmark, calibration, migration va export dataset NLU. \\
+\texttt{tests/} & Unit/integration tests chung minh cac fix bao mat va regression. \\
+\texttt{requirements.txt} va \texttt{requirements.lock.txt} & Moi truong chay ung dung. \\
+\texttt{.env.example} & Mau cau hinh, khong chua secret. \\
+\texttt{checkpoints/vios/} & Checkpoint VIVOS va \texttt{spk2idx.json} dung cho demo. Neu file lon qua, co the nop link Drive. \\
+\texttt{training/results/} & Artifact evidence: split, log train, SID/SV results, checkpoint, summary. \\
+\texttt{report/main.pdf} & Bao cao chinh de nop. File nay duoc tao tu \texttt{report/main.tex}. \\
+\bottomrule
+\end{longtable}
+
+Khong nen nop cac muc sau neu public hoac gui cho nguoi khac:
+
+\begin{itemize}
+  \item \texttt{.env}: co the chua API key, OAuth secret, Flask secret.
+  \item \texttt{venv/}: moi truong ao rat lon, co the cai lai bang requirements.
+  \item \texttt{.git/}: metadata git khong can thiet cho cham bai.
+  \item \texttt{data/users.db}, \texttt{data/enroll\_audio/}, \texttt{data/user\_files/}: chi nop neu giang vien yeu cau demo data mau va da chac chan khong co du lieu rieng tu.
+  \item \texttt{docs/}: khong bat buoc neu da nop bao cao PDF nay. Thu muc docs co the giu trong repo noi bo lam evidence phu.
+\end{itemize}
+
+\section{Kien truc he thong}
+
+\subsection{Tong quan pipeline}
+
+Mot luot lenh giong noi duoc xu ly theo chuoi:
+
+\begin{enumerate}
+  \item Browser thu audio bang MediaRecorder va gui len endpoint Flask.
+  \item Backend decode WebM/Opus thanh audio mono 16 kHz.
+  \item Silero VAD cat bot khoang lang, giu vung co speech.
+  \item ASR chuyen audio thanh transcript tieng Viet.
+  \item Speaker encoder tao embedding 192 chieu.
+  \item NLU phan loai intent va trich entity.
+  \item Router doc auth level cua intent va quyet dinh co can SID/SV hay khong.
+  \item Handler thuc thi tac vu neu pass policy.
+  \item TTS tao audio phan hoi va gui ve browser.
+\end{enumerate}
+
+\subsection{Cac module chinh}
+
+\begin{longtable}{p{0.25\linewidth}p{0.67\linewidth}}
+\toprule
+\textbf{Module} & \textbf{Vai tro} \\
+\midrule
+\endhead
+\texttt{core/audio\_io.py} & Decode audio, VAD, preprocess waveform. \\
+\texttt{core/asr.py} & Wrapper cho faster-whisper va PhoWhisper neu cau hinh. \\
+\texttt{core/speaker\_encoder.py} & ECAPA/WavLM encoder, load checkpoint tu train hoac fallback pretrained. \\
+\texttt{core/database.py} & SQLite user DB, speaker centroid, preferences, reset request, alert. \\
+\texttt{core/intents.py} & Dinh nghia intent va auth level. \\
+\texttt{core/nlu.py} & Gemini function calling va rule-based fallback. \\
+\texttt{core/router.py} & Auth gate: NORMAL, PERSONAL, IMPORTANT. \\
+\texttt{core/handlers.py} & Logic thuc thi tung intent. \\
+\texttt{core/oauth.py}, \texttt{core/gmail\_api.py} & Google OAuth va Gmail send. \\
+\texttt{web/app.py} & Flask routes, API, session, CSRF guard, admin dashboard. \\
+\texttt{training/train\_ecapa.py} & Train ECAPA-TDNN cho SID. \\
+\texttt{training/evaluate\_sid.py} & Evaluate Top-1/Top-5 SID. \\
+\texttt{training/evaluate\_sv.py} & Evaluate EER, threshold va minDCF cho SV. \\
+\bottomrule
+\end{longtable}
+
+\section{Mo hinh bao mat theo intent}
+
+He thong khong xu ly moi lenh nhu nhau. Moi intent co mot muc bao mat:
+
+\begin{longtable}{p{0.18\linewidth}p{0.22\linewidth}p{0.27\linewidth}p{0.23\linewidth}}
+\toprule
+\textbf{Muc} & \textbf{Y nghia} & \textbf{Vi du intent} & \textbf{Policy} \\
+\midrule
+\endhead
+NORMAL & Tac vu cong khai, it rui ro & \texttt{get\_time}, \texttt{tell\_joke}, \texttt{general\_question} & Khong can xac thuc giong. \\
+PERSONAL & Tac vu ca nhan hoa & \texttt{greet}, \texttt{play\_music}, \texttt{show\_schedule} & Dung SID de biet nguoi noi la ai. \\
+IMPORTANT & Tac vu nhay cam hoac thay doi du lieu & \texttt{send\_email}, \texttt{read\_notes}, \texttt{delete\_data}, \texttt{open\_files} & Can SV pass truoc khi handler chay. \\
+\bottomrule
+\end{longtable}
+
+Thiet ke nay giam rui ro: nguoi la co the hoi gio, nhung khong the doc ghi chu,
+gui email hay mo file neu khong xac minh dung giong.
+
+\section{Speaker Recognition}
+
+\subsection{ECAPA-TDNN}
+
+Mo hinh speaker chinh la ECAPA-TDNN. Cau hinh:
+
+\begin{itemize}
+  \item Feature: 80-dim log Mel filterbank.
+  \item Normalization: cepstral mean normalization theo truc thoi gian.
+  \item Embedding dimension: 192.
+  \item Loss: Additive Angular Margin Softmax.
+  \item Margin: 0.2.
+  \item Scale: 30.
+  \item Crop train: 3 giay.
+  \item Verification score: cosine similarity giua hai embedding da L2-normalize.
+\end{itemize}
+
+Mo hinh duoc train theo bai toan speaker classification. Sau train, phan encoder
+duoc tai su dung cho speaker verification bang cosine similarity.
+
+\subsection{Dataset}
+
+Hai dataset da duoc dung de tao evidence:
+
+\begin{longtable}{p{0.26\linewidth}p{0.26\linewidth}r r p{0.2\linewidth} r}
+\toprule
+\textbf{Dataset} & \textbf{Domain} & \textbf{Speakers} & \textbf{Utterances} & \textbf{Train/Val/Test} & \textbf{Trials} \\
+\midrule
+\endhead
+VoxCeleb Indian subset & Celebrity speech, Indian/English accent & 24 & 4,857 & 3,389 / 717 / 751 & 552 \\
+VIVOS & Vietnamese read speech & 65 & 12,419 & 8,686 / 1,850 / 1,883 & 4,160 \\
+\bottomrule
+\end{longtable}
+
+VIVOS gan domain tieng Viet cua ung dung hon. VoxCeleb Indian duoc giu lam
+baseline doi chieu domain mismatch.
+
+\subsection{Training setup}
+
+\begin{longtable}{p{0.36\linewidth}p{0.5\linewidth}}
+\toprule
+\textbf{Tham so} & \textbf{Gia tri} \\
+\midrule
+\endhead
+Epochs & 15 \\
+Batch size & 64 \\
+Learning rate & 0.001 \\
+Optimizer & Adam, weight decay 2e-5 \\
+Scheduler & CosineAnnealingLR \\
+Sample rate & 16 kHz \\
+Crop duration & 3.0 seconds \\
+Device & CUDA tren Kaggle/GPU \\
+Seed & 42 \\
+\bottomrule
+\end{longtable}
+
+\subsection{Ket qua}
+
+\begin{longtable}{p{0.24\linewidth}r r r r r r}
+\toprule
+\textbf{Dataset} & \textbf{Best Val Acc} & \textbf{SID Top-1} & \textbf{SID Top-5} & \textbf{SV EER} & \textbf{minDCF} & \textbf{Thr@EER} \\
+\midrule
+\endhead
+VoxCeleb Indian & 93.44\% & 91.34\% & 98.67\% & 2.90\% & 0.1486 & 0.3884 \\
+VIVOS & 99.19\% & 99.31\% & 100.00\% & 0.96\% & 0.0673 & 0.4062 \\
+\bottomrule
+\end{longtable}
+
+VIVOS tot hon ro tren ca SID va SV. SID Top-1 tang tu 91.34\% len 99.31\%.
+SV EER giam tu 2.90\% xuong 0.96\%. Ket qua nay ung ho viec chon checkpoint
+VIVOS lam model chinh cho demo tieng Viet.
+
+\subsection{Caveat ve metric}
+
+Ket qua tren la metric noi bo tu split tu tao, khong phai benchmark chuan
+VoxCeleb1-O hay NIST SRE. VIVOS la read speech va co the sach hon moi truong
+that. Trial set duoc sinh tu tap test noi bo nen chi nen dung de chung minh
+pipeline, so sanh noi bo va chon checkpoint.
+
+\section{Augmentation va fine-tune noisy}
+
+Codebase da co khung augmentation:
+
+\begin{itemize}
+  \item MUSAN noise injection.
+  \item RIR reverb.
+  \item Speed perturbation 0.9x, 1.0x, 1.1x.
+  \item SpecAugment tren log-mel feature.
+\end{itemize}
+
+Trong ban nop nay, fine-tune noisy/reverb chua duoc dua vao metric chinh do
+gioi han thoi gian va GPU session. Dieu nay khong lam hong do an vi yeu cau cot
+loi da co:
+
+\begin{itemize}
+  \item Co mo hinh speaker recognition train/evaluate that.
+  \item Co checkpoint VIVOS phu hop tieng Viet.
+  \item Co SID/SV metrics va artifact.
+  \item Co ung dung assistant tich hop speaker gate.
+\end{itemize}
+
+Fine-tune noisy nen duoc trinh bay la huong mo rong:
+
+\begin{quote}
+He thong hien dung checkpoint ECAPA-TDNN train tren VIVOS. Pipeline fine-tune
+voi MUSAN/RIR va du lieu nhieu/re da duoc chuan bi trong code, nhung chua dua
+vao bang metric chinh do gioi han thoi gian/GPU. Day la buoc tiep theo de tang
+robustness trong moi truong that.
+\end{quote}
+
+\section{Runtime calibration}
+
+Ngoai metric training, he thong co benchmark runtime tren audio enroll demo.
+Ket qua calibration ECAPA:
+
+\begin{longtable}{p{0.18\linewidth}r r r r r r}
+\toprule
+\textbf{Backend} & \textbf{Users} & \textbf{Audio} & \textbf{SID Acc} & \textbf{SV Thr} & \textbf{TPR} & \textbf{FPR} \\
+\midrule
+\endhead
+ECAPA & 5 & 15 & 1.000 & 0.450 & 1.000 & 0.000 \\
+\bottomrule
+\end{longtable}
+
+Calibration nay chi mang tinh demo vi co 5 user, 15 audio, same-session. Same-session
+co the lam score qua dep so voi thuc te cross-device/cross-session. Threshold
+0.45 duoc giu de demo an toan, nhung neu false reject cao trong demo co the can
+ha threshold va thu lai voi audio that.
+
+\section{Web application}
+
+\subsection{Chuc nang nguoi dung}
+
+\begin{itemize}
+  \item Tao user moi va enroll giong noi bang nhieu mau audio.
+  \item Xem va sua profile sau khi unlock bang password.
+  \item Re-enroll voice khi giong thay doi hoac admin yeu cau.
+  \item Them voice samples vao centroid hien tai.
+  \item Xuat du lieu user, xoa user va cascade delete data lien quan.
+  \item Tro ly push-to-talk, text mode va TTS.
+\end{itemize}
+
+\subsection{Chuc nang assistant}
+
+\begin{itemize}
+  \item NORMAL: hoi gio, hoi thoi tiet demo, ke chuyen cuoi, hoi dap tong quat.
+  \item IMPORTANT: doc ghi chu, gui email, xem so du demo, xoa du lieu, mo file, them ghi chu, them lich, them lien he, dat reminder.
+  \item PERSONAL: chao theo ten, phat nhac theo gu, xem lich ca nhan, liet ke reminder.
+\end{itemize}
+
+\subsection{Admin panel}
+
+Admin co the:
+
+\begin{itemize}
+  \item Xem thong tin user da masked.
+  \item Duyet yeu cau reset password bang ma/PIN mot lan.
+  \item Yeu cau user re-enroll voice.
+  \item Revoke voice embedding.
+  \item Xem va resolve security alerts.
+\end{itemize}
+
+\section{Cac co che bao mat}
+
+\begin{longtable}{p{0.28\linewidth}p{0.62\linewidth}}
+\toprule
+\textbf{Co che} & \textbf{Mo ta} \\
+\midrule
+\endhead
+Password hashing & PBKDF2-HMAC-SHA256 voi salt ngau nhien. \\
+OAuth security & PKCE, nonce, callback validation, token encryption bang Fernet. \\
+Session cookie & HttpOnly, SameSite=Lax, Secure khi khong chay HTTP dev. \\
+CSRF guard & Request thay doi trang thai can header \texttt{X-Requested-With}. \\
+Rate limit & Ap dung cho password endpoints, enroll, assistant text, challenge. \\
+Audit log & Ghi JSONL cho cac su kien auth, speaker, admin va assistant. \\
+Strict CSP & Bo inline script khong an toan, dung nonce va self/CDN gioi han. \\
+Path traversal guard & Resolve path va kiem tra nam trong root hop le. \\
+Biometric data & Co tuy chon encrypt WAV at-rest bang Fernet. \\
+Security alerts & Ghi canh bao khi password fail hoac SV fail dang nghi ngo. \\
+\bottomrule
+\end{longtable}
+
+\section{Testing va reliability}
+
+Test suite bao phu cac nhom:
+
+\begin{itemize}
+  \item Path traversal.
+  \item Password hashing va password reset.
+  \item OAuth token encryption.
+  \item Security routes.
+  \item WAV encryption.
+  \item Reminder parsing va notification.
+  \item ASR correction.
+  \item Challenge-response.
+  \item Cascade delete.
+  \item Email flow guard.
+  \item Regression tests cho cac bug da sua.
+\end{itemize}
+
+Lenh chay test:
+
+\begin{lstlisting}
+python -m pytest tests/ -q --basetemp .pytest_tmp
+\end{lstlisting}
+
+Neu thoi gian truoc khi nop con han che, nen uu tien demo web va chay cac test
+focused lien quan bao mat thay vi train lai model.
+
+\section{Cac loi da xu ly}
+
+Mot so van de thuc te da duoc fix:
+
+\begin{itemize}
+  \item SpeechBrain/HuggingFace symlink issue tren Windows.
+  \item PhoWhisper warning/403 noise khi fetch model.
+  \item NLU nham \texttt{general\_question} thanh \texttt{get\_weather}.
+  \item Gemini quota/API key fail gay trai nghiem xau.
+  \item Reminder da set nhung khong hien thong bao.
+  \item Music player dong bi trigger next track.
+  \item VIVOS co WAV loi decode, da filter truoc khi tao split.
+  \item VoxCeleb split mismatch file Kaggle, da tao split tu file ton tai.
+  \item API exception tra HTML lam frontend loi JSON parse, da them JSON error handler.
+\end{itemize}
+
+\section{Huong dan chay demo}
+
+\subsection{Cai dat}
+
+\begin{lstlisting}
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+Copy-Item .env.example .env
+\end{lstlisting}
+
+Can cai FFmpeg de decode audio tu browser.
+
+\subsection{Chay web}
+
+HTTP local:
+
+\begin{lstlisting}
+$env:FLASK_DEV_HTTP="true"
+python -m web.app
+\end{lstlisting}
+
+Mo:
+
+\begin{lstlisting}
+http://localhost:5000
+\end{lstlisting}
+
+HTTPS:
+
+\begin{lstlisting}
+python web/gen_cert.py
+python -m web.app --ssl
+\end{lstlisting}
+
+\subsection{Demo flow de quay video}
+
+\begin{enumerate}
+  \item Mo \texttt{/enroll}, tao it nhat 2 user va record voice samples.
+  \item Mo \texttt{/assistant}.
+  \item NORMAL: hoi gio hoac ke chuyen cuoi, guest van duoc tra loi.
+  \item PERSONAL: noi ``phat nhac'' bang hai user khac nhau, he thong ca nhan hoa.
+  \item IMPORTANT pass: dung user da enroll noi ``doc ghi chu cua toi''.
+  \item IMPORTANT fail: dung user khac/guest thu doc ghi chu, he thong block.
+  \item Admin: mo \texttt{/admin}, xem masked user info va security alerts neu co.
+\end{enumerate}
+
+\section{Danh gia viec chua fine-tune noisy}
+
+Neu khong kip fine-tune noisy/re, anh huong chinh la robustness trong moi truong
+co nhieu va re chua duoc chung minh bang so lieu. Tuy nhien, do an van dat phan
+cot loi:
+
+\begin{itemize}
+  \item Da train/evaluate speaker model tren dataset that.
+  \item Da co checkpoint VIVOS tot cho tieng Viet.
+  \item Da tich hop SID/SV vao tro ly ao co phan quyen.
+  \item Da co bang metric SID, SV, EER, minDCF va threshold.
+  \item Da co caveat ro rang ve domain, split va calibration.
+\end{itemize}
+
+Khi bao ve, nen noi ngan gon:
+
+\begin{quote}
+Phan fine-tune noisy/reverb la huong mo rong da chuan bi pipeline, nhung chua
+dua vao ket qua chinh vi gioi han thoi gian train. Ket qua chinh hien tai tap
+trung vao checkpoint VIVOS va speaker-gated assistant.
+\end{quote}
+
+\section{Han che}
+
+\begin{itemize}
+  \item Split train/val/test la split noi bo, chua phai official protocol.
+  \item VIVOS la read speech, sach hon moi truong su dung that.
+  \item Runtime calibration co it user va same-session bias.
+  \item Chua co benchmark cross-device, cross-session va noise/reverb day du.
+  \item Gemini NLU/Q\&A phu thuoc API key/quota, du da co fallback.
+  \item Gmail/Calendar can OAuth setup dung tren Google Cloud Console.
+\end{itemize}
+
+\section{Ket luan}
+
+Do an da hoan thien pipeline tu speaker model den secure virtual assistant. Ket
+qua VIVOS dat SID Top-1 99.31\% va SV EER 0.96\%, tot hon VoxCeleb Indian trong
+thiet lap noi bo. Checkpoint VIVOS la lua chon hop ly cho demo tieng Viet.
+
+Ve mat ung dung, he thong da co enrollment, SID/SV gate, assistant voice/text,
+admin panel, Gmail OAuth, reminder, file manager va nhieu co che bao mat. Phan
+fine-tune noisy/reverb nen duoc trinh bay la future work, khong nen claim da co
+ket qua neu chua train xong.
+
+\appendix
+\section{Cau truc thu muc nen nop}
+
+\begin{lstlisting}
+Secure-Virtual-Assistant-with-Speaker-Recognition/
+  core/
+  web/
+  cli/
+  training/
+  scripts/
+  tests/
+  checkpoints/vios/
+  report/main.pdf
+  report/main.tex
+  README.md
+  requirements.txt
+  requirements.lock.txt
+  .env.example
+\end{lstlisting}
+
+\section{Lenh train/evaluate da dung}
+
+Train ECAPA:
+
+\begin{lstlisting}
+python training/train_ecapa.py \
+  --data_root <speaker-root> \
+  --split_file <iden_split.txt> \
+  --save_dir <save-dir> \
+  --epochs 15 \
+  --batch_size 64 \
+  --lr 1e-3
+\end{lstlisting}
+
+Evaluate SID:
+
+\begin{lstlisting}
+python training/evaluate_sid.py \
+  --ckpt <save-dir>/best_model.pt \
+  --spk2idx <save-dir>/spk2idx.json \
+  --data_root <speaker-root> \
+  --split_file <iden_split.txt>
+\end{lstlisting}
+
+Evaluate SV:
+
+\begin{lstlisting}
+python training/evaluate_sv.py \
+  --ckpt <save-dir>/best_model.pt \
+  --data_root <speaker-root> \
+  --trial_file <veri_test.txt>
+\end{lstlisting}
+
+\section{Artifact evidence}
+
+\begin{longtable}{p{0.34\linewidth}p{0.56\linewidth}}
+\toprule
+\textbf{Folder/File} & \textbf{Noi dung} \\
+\midrule
+\endhead
+\texttt{training/results/vivos/best\_model.pt} & Checkpoint VIVOS tot nhat. \\
+\texttt{training/results/vivos/sid\_results.json} & SID Top-1 99.31\%, Top-5 100.00\%. \\
+\texttt{training/results/vivos/sv\_results.json} & EER 0.96\%, minDCF 0.0673. \\
+\texttt{training/results/voxceleb\_indian/} & Evidence baseline VoxCeleb Indian. \\
+\texttt{checkpoints/vios/best\_model.pt} & Checkpoint dung cho runtime demo. \\
+\texttt{checkpoints/vios/spk2idx.json} & Mapping speaker class cho checkpoint. \\
+\bottomrule
+\end{longtable}
+
+\end{document}

@@ -1,0 +1,493 @@
+% !TEX program = xelatex
+% Kịch bản demo & kiểm thử toàn bộ chức năng - Secure Virtual Assistant
+% Compile: xelatex demo_script.tex  (chạy 2 lần để có mục lục + tham chiếu)
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{fontspec}
+\setmainfont{Latin Modern Roman}
+\setmonofont{Latin Modern Mono}
+
+\usepackage{geometry}
+\geometry{margin=2.3cm}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage[most]{tcolorbox}
+\usepackage{listings}
+\usepackage{hyperref}
+
+\definecolor{accent}{HTML}{1D4ED8}
+\definecolor{okrow}{HTML}{DCFCE7}
+\definecolor{hdr}{HTML}{1E3A8A}
+\definecolor{normalc}{HTML}{16A34A}
+\definecolor{importantc}{HTML}{DC2626}
+\definecolor{personalc}{HTML}{CA8A04}
+
+\newtcolorbox{luuybox}[1][Lưu ý]{enhanced,breakable,colback=orange!5,
+  colframe=orange!65!black,coltitle=white,fonttitle=\bfseries\small,title={#1},
+  boxrule=0.6pt,left=4pt,right=4pt,top=3pt,bottom=3pt,arc=2pt}
+\newtcolorbox{diembox}[1][Điểm chính]{enhanced,breakable,colback=green!4,
+  colframe=green!45!black,coltitle=white,fonttitle=\bfseries\small,title={#1},
+  boxrule=0.6pt,left=4pt,right=4pt,top=3pt,bottom=3pt,arc=2pt}
+\newtcolorbox{scriptbox}[1][Lời thoại demo]{enhanced,breakable,colback=blue!4,
+  colframe=accent,coltitle=white,fonttitle=\bfseries\small,title={#1},
+  boxrule=0.6pt,left=4pt,right=4pt,top=3pt,bottom=3pt,arc=2pt}
+
+\lstdefinestyle{py}{language=Python,basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{blue!60!black},commentstyle=\color{green!45!black}\itshape,
+  stringstyle=\color{orange!70!black},breaklines=true,frame=single,
+  columns=fullflexible,backgroundcolor=\color{gray!6},keepspaces=true,
+  showstringspaces=false,numbers=none,xleftmargin=4pt}
+\lstset{style=py}
+\hypersetup{colorlinks=true, linkcolor=accent, urlcolor=accent,
+  pdftitle={Kich ban demo - Secure Virtual Assistant}}
+\setlist[itemize]{leftmargin=1.2cm,topsep=2pt,itemsep=1pt}
+\setlist[enumerate]{leftmargin=1.2cm,topsep=2pt,itemsep=1pt}
+\renewcommand{\arraystretch}{1.3}
+\captionsetup{font=small,labelfont=bf}
+
+\newcommand{\role}[1]{\par\smallskip\noindent\textbf{\textcolor{hdr}{Mục tiêu:}} #1\par\smallskip}
+\newcommand{\say}[1]{\textit{``#1''}}
+\newcommand{\expect}[1]{\par\noindent\textbf{\textcolor{accent}{Kỳ vọng:}} #1\par}
+\newcommand{\nrm}{\textcolor{normalc}{\textbf{NORMAL}}}
+\newcommand{\imp}{\textcolor{importantc}{\textbf{IMPORTANT}}}
+\newcommand{\per}{\textcolor{personalc}{\textbf{PERSONAL}}}
+
+\title{\textbf{Kịch bản Demo \& Kiểm thử Toàn bộ Chức năng}\\[3pt]
+\large Secure Virtual Assistant with Speaker Recognition\\
+\large \textit{Hướng dẫn trình diễn từng tính năng --- thao tác, lời thoại và kết quả kỳ vọng}}
+\author{Đồ án: Secure-VA}
+\date{Tháng 6, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent Tài liệu này là \textbf{kịch bản demo chi tiết} để trình diễn và kiểm
+thử \textbf{toàn bộ chức năng} của hệ thống: 18 intents chia theo 3 mức quyền
+(\nrm{} / \imp{} / \per{}), cùng các tính năng hệ thống (enroll, challenge-response,
+text-mode, reset mật khẩu, OAuth Google, music, admin, export, log). Mỗi mục nêu
+rõ \emph{tiền điều kiện}, \emph{thao tác / lời thoại}, và \emph{kết quả kỳ vọng}.
+Cuối tài liệu có \textbf{bảng checklist} để tích khi nghiệm thu. Mã test dạng
+\texttt{T-xx} dùng tham chiếu chéo với biên bản kiểm thử.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Tổng quan \& mô hình phân quyền}
+% ============================================================
+\role{Hiểu logic phân quyền trước khi demo --- vì kết quả kỳ vọng của mỗi intent
+phụ thuộc người nói đã được \emph{định danh} (SID) hay \emph{xác minh} (SV) chưa.}
+
+Hệ thống gắn mỗi intent một \textbf{mức quyền} (\texttt{core/intents.py}). Cổng
+xác thực giọng nói quyết định lệnh có được thực thi hay không:
+
+\begin{table}[H]
+\centering
+\caption{Ba mức quyền và điều kiện thực thi.}
+\small
+\begin{tabular}{p{0.16\linewidth}p{0.40\linewidth}p{0.36\linewidth}}
+\toprule
+\textbf{Mức} & \textbf{Điều kiện} & \textbf{Khi không đạt} \\
+\midrule
+\nrm{} & Ai cũng chạy được, kể cả khách (không cần định danh). & --- (luôn chạy) \\
+\per{} & Cần \textbf{SID} --- hệ thống nhận ra \emph{ai} đang nói (điểm SID
+$\geq$ ngưỡng). & Trả lời chung cho ``khách'', không cá nhân hoá. \\
+\imp{} & Cần \textbf{SV} --- xác minh đúng chủ tài khoản (điểm SV $\geq$ ngưỡng);
+hoặc mật khẩu nếu bật \texttt{ALLOW\_PASSWORD\_FOR\_IMPORTANT}. & \textbf{Chặn}
+hành động, yêu cầu xác minh lại / nhập mật khẩu. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{18 intents theo nhóm (đối chiếu \texttt{docs/FEATURES.md}).}
+\small
+\begin{tabular}{p{0.16\linewidth}p{0.80\linewidth}}
+\toprule
+\textbf{Nhóm} & \textbf{Intents} \\
+\midrule
+\nrm{} (4) & \texttt{get\_time}, \texttt{get\_weather}, \texttt{tell\_joke}, \texttt{general\_question} \\
+\per{} (4) & \texttt{greet}, \texttt{play\_music}, \texttt{show\_schedule}, \texttt{list\_reminders} \\
+\imp{} (9) & \texttt{read\_notes}, \texttt{send\_email} (+\texttt{email\_flow}),
+\texttt{check\_balance}, \texttt{delete\_data}, \texttt{open\_files},
+\texttt{add\_note}, \texttt{add\_schedule}, \texttt{add\_contact}, \texttt{set\_reminder} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Chuẩn bị môi trường demo}
+% ============================================================
+\role{Đưa hệ thống về trạng thái sẵn sàng demo ổn định trước khi quay/trình diễn.}
+
+\subsection{Cấu hình \texttt{.env}}
+Bật các tính năng sẽ demo (xem README mục cấu hình):
+\begin{lstlisting}
+FLASK_SECRET=<chuoi-ngau-nhien>
+TOKEN_ENCRYPTION_KEY=<32-byte-base64>
+GEMINI_API_KEY=<key-con-quota>        # neu trong -> tu fallback rule-based NLU
+GEMINI_MODEL=gemini-2.5-flash
+GOOGLE_CLIENT_ID=...                   # de demo gui email + calendar
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=https://localhost:5000/auth/google/callback
+ADMIN_PASS=<mat-khau-admin>
+ASR_BACKEND=phowhisper                 # chinh xac tieng Viet cao hon
+SPEAKER_BACKEND=ecapa
+ALLOW_PASSWORD_FOR_IMPORTANT=true      # de demo text-mode chay duoc IMPORTANT
+CHALLENGE_RESPONSE_ENABLED=true        # de demo chong replay
+SPEAKER_INCREMENTAL_REENROLL=true      # de demo cap nhat centroid
+\end{lstlisting}
+
+\begin{luuybox}[Quota Gemini --- chuẩn bị trước khi quay]
+Free-tier Gemini chỉ \textbf{20 request/ngày}. Nếu hết quota, NLU \emph{tự rớt}
+sang rule-based (vẫn nhận diện các lệnh cốt lõi nhờ bộ ASR-correction). Để demo
+phần \texttt{general\_question} (hỏi đáp tự do qua LLM) cần key \emph{còn quota}.
+Nên test \texttt{general\_question} \textbf{đầu buổi} khi quota còn.
+\end{luuybox}
+
+\subsection{Khởi động ứng dụng}
+\begin{lstlisting}
+python web/gen_cert.py          # tao cert self-signed cho HTTPS
+python -m web.app --ssl         # mo https://localhost:5000 (mic on dinh hon)
+\end{lstlisting}
+\expect{Trang \texttt{/} hiện danh sách user. \texttt{/healthz} và \texttt{/readyz}
+trả \texttt{200}.}
+
+\subsection{Tài khoản demo}
+Chuẩn bị tối thiểu \textbf{2 user đã enroll giọng} (vd \texttt{quan}, \texttt{lan})
+để demo phân biệt người nói (SID) và chống mạo danh (SV impostor). Mỗi user đặt
+sẵn \texttt{preferences}: \texttt{favorite\_genre}, vài \texttt{note}, vài mục
+\texttt{schedule}, và mật khẩu.
+
+% ============================================================
+\section{Phần A --- Enroll \& quản lý giọng nói}
+% ============================================================
+\role{Trình diễn vòng đời sinh trắc giọng: đăng ký, tái đăng ký, thu hồi.}
+
+\begin{table}[H]
+\centering\small
+\caption{Các ca kiểm thử enroll.}
+\begin{tabular}{p{0.07\linewidth}p{0.49\linewidth}p{0.36\linewidth}}
+\toprule
+\textbf{Mã} & \textbf{Thao tác} & \textbf{Kết quả kỳ vọng} \\
+\midrule
+T-01 & Vào \texttt{/enroll}, nhập \texttt{user\_id}, tên, mật khẩu, chọn
+\texttt{favorite\_genre}; record đủ số mẫu giọng yêu cầu. & Tạo embedding
+ECAPA-TDNN; báo enroll thành công; user xuất hiện ở \texttt{/}. \\
+T-02 & Record mẫu quá ngắn / im lặng. & VAD loại mẫu, báo lỗi ``quá ngắn sau
+VAD'', yêu cầu thu lại --- không lưu mẫu rác. \\
+T-03 & Vào \texttt{/users/<id>} $\to$ \emph{re-enroll}, thu thêm mẫu mới. &
+Centroid cập nhật (incremental, không xoá lịch sử nếu bật cờ). \\
+T-04 & (Admin) thu hồi giọng + buộc re-enroll. & User phải enroll lại mới chạy
+được intent \imp{}/\per{}. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{diembox}[Điểm nhấn khi vấn đáp]
+Enroll dùng \emph{multi-window pooling} + \emph{AS-Norm-lite} + \emph{lọc chất
+lượng centroid}; mẫu được kiểm bằng \emph{Silero VAD} để loại đoạn im lặng. Đây
+là lý do nhận diện ổn định trên giọng tiếng Việt thật.
+\end{diembox}
+
+% ============================================================
+\section{Phần B --- Nhóm \nrm{} (không cần xác thực)}
+% ============================================================
+\role{Chứng minh các lệnh phổ thông chạy cho cả khách (chưa định danh).}
+
+\begin{scriptbox}
+\say{Mấy giờ rồi?} \quad/\quad \say{Thời tiết Hà Nội hôm nay thế nào?} \quad/\quad
+\say{Kể một chuyện cười đi} \quad/\quad \say{Thủ đô nước Pháp là gì?}
+\end{scriptbox}
+
+\begin{table}[H]
+\centering\small
+\caption{Kiểm thử nhóm NORMAL.}
+\begin{tabular}{p{0.07\linewidth}p{0.20\linewidth}p{0.30\linewidth}p{0.35\linewidth}}
+\toprule
+\textbf{Mã} & \textbf{Intent} & \textbf{Lời thoại} & \textbf{Kết quả kỳ vọng} \\
+\midrule
+T-05 & \texttt{get\_time} & \say{Mấy giờ rồi} & Đọc giờ hiện tại; chạy kể cả chưa định danh. \\
+T-06 & \texttt{get\_weather} & \say{Thời tiết Hà Nội hôm nay} & Trả thời tiết theo \texttt{location} trích được. \\
+T-07 & \texttt{tell\_joke} & \say{Kể chuyện cười đi} & Đọc một chuyện cười. \\
+T-08 & \texttt{general\_question} & \say{Newton là ai?} & Gemini trả lời ngắn gọn; nếu hết quota $\to$ câu trả lời offline/thông báo quota. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{luuybox}[Kiểm thử định tuyến intent (regression)]
+Đọc các câu \emph{lệnh rõ ràng nhưng dễ bị nhầm}: \say{Phát nhạc đi},
+\say{mấy giờ rồi.}, \say{Chào}. \expect{KHÔNG bị rơi nhầm vào
+\texttt{general\_question} --- đây là lỗi đã được sửa trong \texttt{core/nlu.py}
+(chạy rule-based trước khi mặc định general\_question, vá lỗ hổng ``hi'' khớp
+nhầm trong ``ghi'').}
+\end{luuybox}
+
+% ============================================================
+\section{Phần C --- Nhóm \per{} (cần định danh SID)}
+% ============================================================
+\role{Chứng minh hệ thống \emph{nhận ra ai đang nói} và cá nhân hoá phản hồi.}
+
+\begin{scriptbox}
+(User \texttt{quan} nói) \say{Chào} \quad/\quad \say{Phát nhạc cho tôi nghe}
+\quad/\quad \say{Lịch hôm nay của tôi} \quad/\quad \say{Tôi có nhắc việc nào không?}
+\end{scriptbox}
+
+\begin{table}[H]
+\centering\small
+\caption{Kiểm thử nhóm PERSONAL.}
+\begin{tabular}{p{0.07\linewidth}p{0.18\linewidth}p{0.34\linewidth}p{0.32\linewidth}}
+\toprule
+\textbf{Mã} & \textbf{Intent} & \textbf{Lời thoại / thao tác} & \textbf{Kết quả kỳ vọng} \\
+\midrule
+T-09 & \texttt{greet} & \say{Chào} (giọng \texttt{quan}) & Chào \emph{đích danh}: ``Chào Quân''. \\
+T-10 & \texttt{play\_music} & \say{Phát nhạc cho tôi nghe} & Phát theo \texttt{favorite\_genre} của \texttt{quan}; mở panel nhạc. \\
+T-11 & \texttt{show\_schedule} & \say{Lịch hôm nay của tôi} & Đọc lịch cá nhân (kèm Google Calendar nếu đã OAuth). \\
+T-12 & \texttt{list\_reminders} & \say{Tôi có nhắc việc nào không} & Liệt kê reminder đang chờ/đến hạn của user. \\
+T-13 & \textit{(khách)} & Người chưa enroll nói \say{Phát nhạc} & Không cá nhân hoá --- phát nhạc chung cho ``khách''. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Phần D --- Nhóm \imp{} (bắt buộc Speaker Verification)}
+% ============================================================
+\role{Chứng minh hành động nhạy cảm \textbf{bắt buộc xác minh giọng đúng chủ},
+không chỉ ``nghe giống là cho qua''.}
+
+\subsection{Các intent IMPORTANT đơn lượt}
+\begin{table}[H]
+\centering\small
+\caption{Kiểm thử nhóm IMPORTANT (một lượt).}
+\begin{tabular}{p{0.06\linewidth}p{0.17\linewidth}p{0.33\linewidth}p{0.33\linewidth}}
+\toprule
+\textbf{Mã} & \textbf{Intent} & \textbf{Lời thoại} & \textbf{Kết quả kỳ vọng} \\
+\midrule
+T-14 & \texttt{read\_notes} & \say{Đọc ghi chú của tôi} & SV pass $\to$ đọc note; SV fail $\to$ chặn + yêu cầu xác minh. \\
+T-15 & \texttt{check\_balance} & \say{Kiểm tra số dư} & SV pass $\to$ đọc số dư (mô phỏng). \\
+T-16 & \texttt{add\_note} & \say{Thêm ghi chú mua sữa} & Lưu note mới vào preferences. \\
+T-17 & \texttt{add\_schedule} & \say{Thêm lịch họp lúc 9 giờ} & Lưu mục lịch (\texttt{content}+\texttt{time}). \\
+T-18 & \texttt{add\_contact} & \say{Thêm liên hệ Tuấn email tuan@example.com} & Lưu contact (\texttt{name}+\texttt{email}). \\
+T-19 & \texttt{set\_reminder} & \say{Nhắc tôi 30 phút nữa uống thuốc} & Đặt reminder; đến giờ pop notification + đọc TTS. \\
+T-20 & \texttt{open\_files} & \say{Mở file của tôi} & SV pass $\to$ mở panel file cá nhân (xem/tải/xoá). \\
+T-21 & \texttt{delete\_data} & \say{Xóa hết ghi chú} & SV pass $\to$ xác nhận rồi xoá; dữ liệu cá nhân bị xoá đúng. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{\texttt{send\_email} --- luồng đa lượt \texttt{email\_flow}}
+\role{Trình diễn hội thoại nhiều lượt có giữ trạng thái: recipient $\to$ subject
+$\to$ body $\to$ xác nhận gửi.}
+
+\begin{scriptbox}[Kịch bản hội thoại email]
+\textbf{User:} \say{Gửi email cho sếp} \\
+\textbf{Bot:} hỏi địa chỉ/người nhận $\to$ \textbf{User:} \say{gửi tới \texttt{sep@company.vn}} \\
+\textbf{Bot:} hỏi tiêu đề $\to$ \textbf{User:} \say{Báo cáo tuần} \\
+\textbf{Bot:} hỏi nội dung $\to$ \textbf{User:} \say{Em gửi báo cáo tuần này, nhờ anh duyệt} \\
+\textbf{Bot:} đọc lại + hỏi xác nhận $\to$ \textbf{User:} \say{Xác nhận gửi}
+\end{scriptbox}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{p{0.06\linewidth}p{0.42\linewidth}p{0.42\linewidth}}
+\toprule
+\textbf{Mã} & \textbf{Thao tác} & \textbf{Kết quả kỳ vọng} \\
+\midrule
+T-22 & Chạy hết luồng email ở trên (đã OAuth Gmail). & Email gửi qua Gmail API; bot báo đã gửi. \\
+T-23 & Chưa OAuth Gmail mà gọi \texttt{send\_email}. & Hiện modal OAuth Google; sau khi cấp quyền thì tiếp tục luồng. \\
+T-24 & Giữa luồng email, đổi ý: \say{Thôi, hủy}. & Hủy \texttt{email\_flow}, không gửi gì. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{luuybox}[Chốt an toàn của email\_flow]
+Nội dung email được giữ trong trạng thái phiên; chỉ gửi sau bước \emph{xác nhận}
+tường minh. Demo nên cố nói câu lạc đề giữa chừng để cho thấy bot không tự ý gửi.
+\end{luuybox}
+
+% ============================================================
+\section{Phần E --- Tính năng bảo mật}
+% ============================================================
+\role{Đây là phần ``ăn điểm'' --- cho thấy hệ thống chặn mạo danh và có nhiều
+lớp phòng vệ.}
+
+\begin{table}[H]
+\centering\small
+\caption{Kiểm thử bảo mật (gồm ca \emph{tiêu cực}).}
+\begin{tabular}{p{0.06\linewidth}p{0.40\linewidth}p{0.44\linewidth}}
+\toprule
+\textbf{Mã} & \textbf{Thao tác} & \textbf{Kết quả kỳ vọng} \\
+\midrule
+T-25 & \textbf{Impostor}: user \texttt{lan} nói \say{Đọc ghi chú của tôi} nhưng
+hệ thực ra dò danh tính \texttt{quan}. & SV fail $\to$ \textbf{chặn}, không lộ
+note của \texttt{quan}. \\
+T-26 & \textbf{Text-mode + mật khẩu}: tab text, gọi intent \imp{}. & Mặc định
+\emph{chặn}; chỉ chạy khi \texttt{ALLOW\_PASSWORD\_FOR\_IMPORTANT=true} và nhập
+\emph{đúng} mật khẩu. \\
+T-27 & Text-mode nhập \emph{sai} mật khẩu cho intent \imp{}. & Từ chối thực thi. \\
+T-28 & \textbf{Challenge-response}: gọi intent \imp{} bằng giọng khi
+\texttt{CHALLENGE\_RESPONSE\_ENABLED=true}. & Bot yêu cầu đọc \emph{cụm 4 từ ngẫu
+nhiên}; phải đọc đúng + SV pass mới qua (chống phát lại ghi âm). \\
+T-29 & Đọc sai cụm challenge hoặc giọng không khớp. & Chặn hành động. \\
+T-30 & \textbf{Quên mật khẩu}: trang user $\to$ ``Quên mật khẩu'' (đã OAuth Gmail). &
+Gửi mã 6 chữ số tới Gmail; nhập đúng mã $\to$ đặt lại mật khẩu. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{diembox}[Thông điệp cốt lõi]
+Khác trợ lý phổ thông: action nguy hiểm (gửi email, xoá data, số dư) \textbf{bắt
+buộc voice biometric (SV)} --- không tin một câu lệnh chỉ vì ``có giọng''.
+\end{diembox}
+
+% ============================================================
+\section{Phần F --- Tích hợp ngoài \& đa phương tiện}
+% ============================================================
+\role{Trình diễn các tích hợp: Google OAuth (Calendar/Gmail) và nguồn nhạc.}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{p{0.06\linewidth}p{0.40\linewidth}p{0.44\linewidth}}
+\toprule
+\textbf{Mã} & \textbf{Thao tác} & \textbf{Kết quả kỳ vọng} \\
+\midrule
+T-31 & Liên kết Google OAuth cho user, rồi \say{Lịch hôm nay của tôi}. & Gộp
+\emph{Google Calendar} (24h tới) + lịch cá nhân; lỗi token thì fallback lịch local. \\
+T-32 & \textbf{Music --- Deezer}: vào \texttt{/music}, tìm bài, bấm phát. & Phát
+preview 30s (Deezer); thanh player điều khiển play/pause/next. \\
+T-33 & \textbf{Music --- YouTube}: trợ lý phát nhạc khi không có track cá nhân. &
+Lấy luồng audio qua \texttt{yt-dlp} và phát. \\
+T-34 & \textbf{Music --- nhạc cá nhân}: user đã upload mp3 $\to$ \say{Phát nhạc}. &
+Phát file cá nhân trong \texttt{user\_files/<id>/music/}. \\
+T-35 & Bấm nút \texttt{X} đóng player khi đang phát. & Dừng nhạc, ẩn player, không
+hiện lỗi ``không tải được bài''. \\
+T-36 & \textbf{TTS đa ngôn ngữ}: đổi \texttt{preferences.language}. & gTTS đọc đúng
+ngôn ngữ; mất mạng $\to$ tự fallback pyttsx3 (offline). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Phần G --- Quản trị, export \& nhật ký}
+% ============================================================
+\begin{table}[H]
+\centering\small
+\begin{tabular}{p{0.06\linewidth}p{0.40\linewidth}p{0.44\linewidth}}
+\toprule
+\textbf{Mã} & \textbf{Thao tác} & \textbf{Kết quả kỳ vọng} \\
+\midrule
+T-37 & Đăng nhập \texttt{/admin} bằng \texttt{ADMIN\_PASS}. & Vào dashboard;
+thông tin user bị \emph{mask}; có nút revoke/khoá. \\
+T-38 & Admin khoá / mở khoá một tài khoản. & Tài khoản bị khoá không chạy
+được intent nhạy cảm. \\
+T-39 & Trang user $\to$ \emph{Export data}. & Tải ZIP toàn bộ dữ liệu user
+(mẫu giọng, file, preferences) --- quyền truy cập GDPR. \\
+T-40 & Mở \texttt{data/turn\_log.jsonl} \& \texttt{audit} sau vài lượt. & Có log
+JSONL, \textbf{redact PII}, schema versioned (\texttt{secva.turn.v1}). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Phần H --- Robustness: ASR-correction \& fallback}
+% ============================================================
+\role{Cho thấy hệ thống vẫn hiểu khi nhận dạng giọng sai chính tả và khi Gemini
+hết quota.}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{p{0.06\linewidth}p{0.40\linewidth}p{0.44\linewidth}}
+\toprule
+\textbf{Mã} & \textbf{Thao tác} & \textbf{Kết quả kỳ vọng} \\
+\midrule
+T-41 & Nói lệnh để ASR ra bản lỗi dấu, vd \say{phat nhac cho toi nghe} /
+\say{pháp nhạc đi}. & Layer-1 correction nắn về \say{phát nhạc...} $\to$ vẫn ra
+intent \texttt{play\_music}. \\
+T-41b & Nói/gõ lệnh có chữ thừa quanh cụm lỗi, vd \say{đặt nịch 5 giờ đi học},
+\say{phát nhạk bài này đi}. & Chỉ \emph{cụm lệnh} được nắn (\say{đặt nịch}$\to$
+\say{đặt lịch}), phần còn lại giữ nguyên $\to$ đúng intent; input hiển thị cũng
+được sửa, không chỉ intent. \\
+T-42 & Bỏ trống / làm hết quota \texttt{GEMINI\_API\_KEY}, nói các lệnh cốt lõi. &
+NLU tự rớt rule-based; các lệnh chính (giờ, nhạc, ghi chú...) vẫn nhận đúng. \\
+T-43 & Nói câu hỏi mở khi rule-based đang chạy (không Gemini). & Trả về
+\texttt{general\_question} nhưng báo cần Gemini để trả lời chi tiết. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{diembox}[Nền tảng dữ liệu của robustness]
+Bộ \texttt{data/asr\_corrections.json} chứa hàng nghìn biến thể lỗi ASR của các
+\textbf{cụm lệnh đặc trưng} (sinh tự động cho từng chức năng + khai thác lỗi thật
+trong \texttt{turn\_log.jsonl}). Rule dạng \textbf{substring có ranh giới từ}
+(\texttt{\textbackslash b...\textbackslash b}) nên sửa đúng cụm lỗi \emph{bên
+trong câu} và giữ nguyên phần còn lại --- vd \say{đặt nịch 5 giờ đi học}
+$\to$ \say{đặt lịch 5 giờ đi học} (chỉ nắn \say{đặt nịch}). Bổ trợ là
+\textbf{Layer 1.5 fuzzy snap}: nếu cả câu (đã bỏ dấu) gần khớp một cụm lệnh chuẩn
+\emph{cùng số từ} với độ tương đồng $\geq$ \texttt{ASR\_FUZZY\_THRESHOLD} (0.86)
+thì nắn lỗi chính tả từng từ; ràng buộc cùng-số-từ tránh nuốt mất từ. Áp dụng cho
+\textbf{cả voice lẫn text mode}. Xem \texttt{scripts/generate\_asr\_corrections.py}.
+\end{diembox}
+
+% ============================================================
+\section{Checklist nghiệm thu tổng hợp}
+% ============================================================
+\role{In bảng này ra để tích trong buổi demo/vấn đáp.}
+
+\begin{longtable}{p{0.09\linewidth}p{0.20\linewidth}p{0.53\linewidth}p{0.06\linewidth}}
+\toprule
+\textbf{Mã} & \textbf{Nhóm} & \textbf{Nội dung} & \textbf{Đạt} \\
+\midrule
+\endhead
+T-01--04 & Enroll & Đăng ký / re-enroll / loại mẫu rác / thu hồi giọng & $\square$ \\
+T-05 & NORMAL & \texttt{get\_time} & $\square$ \\
+T-06 & NORMAL & \texttt{get\_weather} & $\square$ \\
+T-07 & NORMAL & \texttt{tell\_joke} & $\square$ \\
+T-08 & NORMAL & \texttt{general\_question} & $\square$ \\
+T-09 & PERSONAL & \texttt{greet} (đích danh) & $\square$ \\
+T-10 & PERSONAL & \texttt{play\_music} (theo gu) & $\square$ \\
+T-11 & PERSONAL & \texttt{show\_schedule} & $\square$ \\
+T-12 & PERSONAL & \texttt{list\_reminders} & $\square$ \\
+T-13 & PERSONAL & Khách không được cá nhân hoá & $\square$ \\
+T-14 & IMPORTANT & \texttt{read\_notes} (SV) & $\square$ \\
+T-15 & IMPORTANT & \texttt{check\_balance} (SV) & $\square$ \\
+T-16 & IMPORTANT & \texttt{add\_note} & $\square$ \\
+T-17 & IMPORTANT & \texttt{add\_schedule} & $\square$ \\
+T-18 & IMPORTANT & \texttt{add\_contact} & $\square$ \\
+T-19 & IMPORTANT & \texttt{set\_reminder} + notification & $\square$ \\
+T-20 & IMPORTANT & \texttt{open\_files} & $\square$ \\
+T-21 & IMPORTANT & \texttt{delete\_data} & $\square$ \\
+T-22--24 & IMPORTANT & \texttt{send\_email} / \texttt{email\_flow} / hủy & $\square$ \\
+T-25 & Bảo mật & Chặn impostor SV & $\square$ \\
+T-26--27 & Bảo mật & Text-mode + mật khẩu (đúng/sai) & $\square$ \\
+T-28--29 & Bảo mật & Challenge-response chống replay & $\square$ \\
+T-30 & Bảo mật & Reset mật khẩu qua Gmail & $\square$ \\
+T-31 & Tích hợp & Google Calendar & $\square$ \\
+T-32--35 & Đa phương tiện & Music (Deezer / YouTube / cá nhân / nút X) & $\square$ \\
+T-36 & Đa phương tiện & TTS đa ngôn ngữ + fallback & $\square$ \\
+T-37--38 & Quản trị & Admin login / khoá tài khoản & $\square$ \\
+T-39 & Quản trị & Export ZIP (GDPR) & $\square$ \\
+T-40 & Quản trị & Turn/audit log redaction & $\square$ \\
+T-41 & Robustness & ASR-correction nắn câu lỗi & $\square$ \\
+T-42--43 & Robustness & Fallback rule-based khi hết quota & $\square$ \\
+\bottomrule
+\end{longtable}
+
+\vfill
+\noindent\rule{\linewidth}{0.4pt}\\
+\small Nguồn: \texttt{core/intents.py}, \texttt{core/router.py}, \texttt{web/app.py},
+\texttt{docs/FEATURES.md}, \texttt{README.md}. Tham chiếu thiết kế model:
+\texttt{report/model\_comparison.pdf}; kết quả huấn luyện:
+\texttt{training/report/training\_report.pdf}.
+
+\end{document}

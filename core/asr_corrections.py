@@ -44,12 +44,32 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import difflib
+import unicodedata
+
 from . import config
 
 _log = logging.getLogger("secva.asr.corr")
 
 _CORRECTIONS_PATH = config.DATA_DIR / "asr_corrections.json"
 _VOCAB_PATH       = config.DATA_DIR / "asr_user_vocab.txt"
+
+
+# ==========================================================================
+# Helpers chuẩn hoá cho fuzzy snap
+# ==========================================================================
+def _strip_tones(s: str) -> str:
+    """Bỏ dấu thanh + đ→d (để so khớp bỏ qua lỗi sai dấu của Whisper)."""
+    s = s.replace("đ", "d").replace("Đ", "D")
+    nfkd = unicodedata.normalize("NFD", s)
+    return "".join(c for c in nfkd if unicodedata.category(c) != "Mn")
+
+
+def _fuzzy_key(s: str) -> str:
+    """Khoá so khớp fuzzy: thường + bỏ dấu + bỏ dấu câu + gộp khoảng trắng."""
+    s = _strip_tones(s.lower())
+    s = re.sub(r"[^\w\s]", " ", s)        # bỏ dấu câu
+    return re.sub(r"\s+", " ", s).strip()
 
 
 @dataclass
@@ -131,15 +151,85 @@ def _load_rules() -> list[_Rule]:
     return rules
 
 
+# ==========================================================================
+# Layer 1.5: fuzzy snap — nắn cả câu về câu lệnh chuẩn gần nhất
+# ==========================================================================
+# Câu lệnh chuẩn lấy từ `replacement` của rules (loại general_question).
+_snap_cache: Optional[list] = None  # list[(canonical, key, n_words)]
+
+
+def _load_snap_targets() -> list:
+    global _snap_cache
+    if _snap_cache is not None:
+        return _snap_cache
+    targets: dict[str, str] = {}
+    if _CORRECTIONS_PATH.exists():
+        try:
+            raw = json.loads(_CORRECTIONS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            raw = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            # KHÔNG snap về câu hỏi tự do → tránh nuốt nhầm general_question.
+            if item.get("intent") == "general_question":
+                continue
+            repl = item.get("replacement")
+            if not repl:
+                continue
+            k = _fuzzy_key(str(repl))
+            if k:
+                targets.setdefault(k, str(repl))
+    _snap_cache = [(canon, k, len(k.split())) for k, canon in targets.items()]
+    if _snap_cache:
+        _log.info("Loaded %d snap targets cho fuzzy ASR correction", len(_snap_cache))
+    return _snap_cache
+
+
+def _fuzzy_snap(text: str) -> str:
+    """Nếu cả câu (chuẩn hoá) gần khớp một câu lệnh chuẩn với độ tương đồng
+    >= ngưỡng → trả câu lệnh đó. Ngược lại giữ nguyên. Câu dài (vd câu hỏi tự
+    do) bị bỏ qua bằng giới hạn số từ."""
+    if not config.ASR_FUZZY_ENABLED:
+        return text
+    key = _fuzzy_key(text)
+    if not key:
+        return text
+    nwords = len(key.split())
+    if nwords > config.ASR_FUZZY_MAX_WORDS:
+        return text
+    best_canon, best_ratio = None, 0.0
+    sm = difflib.SequenceMatcher(autojunk=False)
+    sm.set_seq2(key)
+    for canon, tkey, twords in _load_snap_targets():
+        # CHỈ snap khi BẰNG số từ → chỉ sửa lỗi chính tả từng từ, KHÔNG thêm/bớt
+        # từ (tránh nắn "đọc ghi chú của tôi" thành cụm ngắn "ghi chú của tôi").
+        if twords != nwords:
+            continue
+        sm.set_seq1(tkey)
+        if sm.quick_ratio() <= best_ratio:
+            continue  # cận trên rẻ; không thể tốt hơn best hiện tại
+        r = sm.ratio()
+        if r > best_ratio:
+            best_ratio, best_canon = r, canon
+    if best_canon is not None and best_ratio >= config.ASR_FUZZY_THRESHOLD:
+        if _fuzzy_key(best_canon) != key:
+            _log.info("fuzzy snap %r → %r (ratio=%.2f)", text, best_canon, best_ratio)
+        return best_canon
+    return text
+
+
 def reload_rules():
-    """Force re-load rules từ disk (vd: sau khi admin sửa file)."""
-    global _rules_cache
+    """Force re-load rules + snap targets từ disk (vd: sau khi admin sửa file)."""
+    global _rules_cache, _snap_cache
     _rules_cache = None
+    _snap_cache = None
     _load_rules()
 
 
 def apply_corrections(text: str) -> str:
-    """Layer 1: áp dụng tất cả regex rules theo thứ tự khai báo.
+    """Layer 1: áp dụng tất cả regex rules theo thứ tự khai báo, rồi Layer 1.5
+    fuzzy snap về câu lệnh chuẩn gần nhất.
 
     Idempotent với text không match rule nào — trả nguyên text.
     Order matters: rule trước có thể tạo input cho rule sau (chain).
@@ -153,7 +243,7 @@ def apply_corrections(text: str) -> str:
         except re.error as e:
             _log.warning("rule regex error %r: %s — bỏ qua", rule.pattern, e)
             continue
-    return out
+    return _fuzzy_snap(out)
 
 
 # ==========================================================================

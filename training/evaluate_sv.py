@@ -117,6 +117,15 @@ def main(args):
             }, f, indent=2)
         print(f"Đã lưu kết quả vào {args.out}")
 
+    # Dump raw (label, score) để vẽ DET/ROC/score-distribution sau này.
+    # Evidence cũ không lưu scores nên không vẽ được đường cong; thêm flag này
+    # để 1 lần chạy lại là có đủ dữ liệu cho biểu đồ trong báo cáo.
+    if args.scores_out:
+        with open(args.scores_out, "w") as f:
+            json.dump({"labels": labels.tolist(), "scores": scores.tolist()},
+                      f)
+        print(f"Đã lưu (label, score) vào {args.scores_out}")
+
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
@@ -124,4 +133,6 @@ if __name__ == "__main__":
     p.add_argument("--data_root", required=True)
     p.add_argument("--trial_file", required=True)
     p.add_argument("--out", default="sv_results.json")
+    p.add_argument("--scores-out", default=None,
+                   help="Nếu set, lưu mảng (labels, scores) ra JSON để vẽ DET/ROC")
     main(p.parse_args())

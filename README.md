@@ -7,7 +7,7 @@ Trợ lý ảo tiếng Việt có phân quyền bằng giọng nói, kết hợp
 - **YC1 - Train & evaluate speaker model**: ECAPA-TDNN cho speaker identification và speaker verification.
 - **YC2 - Virtual assistant tích hợp SV/SID**: trợ lý có voice interaction, enrollment, user management và các tác vụ `NORMAL` / `IMPORTANT` / `PERSONAL`.
 
-> Trạng thái hiện tại: runtime/web đã hoàn thiện cho demo; evidence training/evaluation cho VoxCeleb Indian và VIVOS đã được đưa vào `training/results/`, report so sánh ở `docs/results/`, và báo cáo tổng hợp chính ở [docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md](docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md).
+> Trạng thái hiện tại: runtime/web đã hoàn thiện cho demo; evidence training/evaluation cho VoxCeleb Indian và VIVOS nằm trong `training/results/`; báo cáo nộp chính nằm ở [report/main.pdf](report/main.pdf).
 
 ---
 
@@ -70,16 +70,12 @@ Secure-Virtual-Assistant-with-Speaker-Recognition/
 ├── web/                     # YC2: Flask web app
 │   ├── app.py
 │   ├── gen_cert.py
-│   ├── README.md
 │   ├── templates/
 │   └── static/
 ├── cli/                     # CLI enrollment/assistant/smoke test
 ├── scripts/                 # benchmark, re-enroll backend, password migration
 ├── tests/                   # pytest suite
-├── docs/
-│   ├── SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md
-│   ├── Secure_Virtual_Assistant_with_Speaker_Recognition.pdf
-│   └── results/             # Training comparison + runtime calibration artifacts
+├── report/                  # Báo cáo nộp chính: main.tex + main.pdf
 ├── data/                    # Runtime DB/audio/files/logs, không nên commit dữ liệu nhạy cảm
 ├── checkpoints/             # best_model.pt, dùng Git LFS nếu commit checkpoint
 ├── .env.example             # Khung config
@@ -279,8 +275,7 @@ Khi bật, OAuth consent sẽ thêm scope read-only `calendar.events.readonly`; 
 
 ## Training Và Evaluation YC1
 
-Chi tiết ở [training/README.md](training/README.md).
-Báo cáo tổng hợp evidence nằm ở [docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md](docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md), bảng so sánh tự động nằm ở [docs/results/training_dataset_comparison.md](docs/results/training_dataset_comparison.md).
+Chi tiết ở [training/README.md](training/README.md). Báo cáo tổng hợp để nộp nằm ở [report/main.pdf](report/main.pdf).
 
 Dataset đã có evidence:
 
@@ -315,19 +310,17 @@ Artifact đã lưu:
 |---|---|
 | `training/results/vivos/` | `best_model.pt`, `training_log.json`, `spk2idx.json`, `sid_results.json`, `sv_results.json`, `iden_split.txt`, `veri_test.txt`, `vivos_summary.json`, `bad_audio_files.txt` |
 | `training/results/voxceleb_indian/` | `best_model.pt`, `training_log.json`, `spk2idx.json`, `sid_results.json`, `sv_results.json`, `iden_split.txt`, `veri_test.txt`, `dataset_summary.json` |
-| `docs/results/` | `training_dataset_comparison.md`, `benchmark_ecapa.json`, `threshold_calibration.md` |
+| `report/` | `main.pdf`, `main.tex` |
 
 ---
 
 ## Benchmark Và Re-enroll
 
-Xem [scripts/README.md](scripts/README.md).
-
 Chạy benchmark runtime sau khi enroll vài user:
 
 ```powershell
-python scripts/benchmark.py --out docs/results/benchmark_ecapa.json
-python scripts/benchmark.py --all --out docs/results/benchmark_all.json
+python scripts/benchmark.py --out training/results/benchmark_ecapa.json
+python scripts/benchmark.py --all --out training/results/benchmark_all.json
 ```
 
 File benchmark JSON có schema `secva.benchmark.v1`, metadata backend, summary WER/SID/SV và từng sample để phân tích lỗi/calibration.
@@ -379,17 +372,14 @@ Kết quả gần nhất:
 
 - [x] Chạy training thật và đưa artifact vào `training/results/`.
 - [x] Chạy evaluation SID/SV thật và có `sid_results.json`, `sv_results.json`.
-- [x] Enroll user demo, chạy benchmark ECAPA và sinh `docs/results/threshold_calibration.md`.
+- [x] Enroll user demo, chạy benchmark ECAPA và ghi nhận calibration trong báo cáo.
 - [x] Cập nhật report với caveat dataset/split/threshold và các chức năng demo/stub.
 - [ ] Quay demo đủ 3 nhóm: `NORMAL`, `IMPORTANT pass/fail`, `PERSONAL`.
 - [ ] Không commit `.env`, `data/users.db`, OAuth token, audio/biometric data nhạy cảm nếu repo public.
 
 Tài liệu nên đọc tiếp:
 
-- [docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md](docs/SECURE_VIRTUAL_ASSISTANT_FINAL_REPORT.md): báo cáo tổng hợp chính để nộp/sửa tiếp.
-- [docs/results/training_dataset_comparison.md](docs/results/training_dataset_comparison.md): bảng so sánh training sinh từ artifact.
-- [docs/results/threshold_calibration.md](docs/results/threshold_calibration.md): calibration runtime từ audio enroll demo.
+- [report/main.pdf](report/main.pdf): báo cáo tổng hợp chính để nộp.
+- [report/main.tex](report/main.tex): source LaTeX của báo cáo.
 - [training/README.md](training/README.md): hướng dẫn train/evaluate ECAPA-TDNN.
-- [web/README.md](web/README.md): hướng dẫn web app chi tiết.
-- [scripts/README.md](scripts/README.md): benchmark, re-enroll backend, migration.
 - [training/MODEL_CARD.md](training/MODEL_CARD.md): model card và caveat sử dụng.

@@ -152,6 +152,14 @@ class GeminiNLU:
             return GeminiNLU._fallback.parse(text)
 
         if not fcs:
+            # Gemini không gọi function → thử rule-based TRƯỚC khi coi là câu hỏi
+            # chung, tránh nuốt mất lệnh hành động rõ ràng ("phát nhạc", "mở
+            # file"...) khi model lỡ trả lời bằng text thay vì function call.
+            if GeminiNLU._fallback is None:
+                GeminiNLU._fallback = RuleBasedNLU()
+            rb = GeminiNLU._fallback.parse(text)
+            if rb["intent"] not in ("unknown", "general_question"):
+                return rb
             return {"intent": "general_question", "entities": {"query": text}}
 
         fc = fcs[0]  # single-intent semantics — bỏ qua multi-tool composition
@@ -266,41 +274,59 @@ class RuleBasedNLU:
     # add_* (IMPORTANT bidirectional) đặt TRƯỚC read_notes/show_schedule để
     # "thêm ghi chú X" không nhầm thành "đọc ghi chú".
     KEYWORD_MAP = [
-        ("get_time", ["mấy giờ", "giờ rồi", "giờ hiện tại"]),
-        ("get_weather", ["thời tiết", "mưa", "nắng"]),
-        ("tell_joke", ["chuyện cười", "kể cười", "câu cười"]),
+        ("get_time", ["mấy giờ", "giờ rồi", "giờ hiện tại", "xem giờ", "đồng hồ"]),
+        ("get_weather", ["thời tiết", "mưa", "nắng", "dự báo thời tiết",
+                         "trời mưa", "trời nắng"]),
+        ("tell_joke", ["chuyện cười", "kể cười", "câu cười", "kể chuyện vui",
+                       "chuyện hài", "kể chuyện hài"]),
         ("add_contact", ["thêm liên hệ", "lưu contact", "thêm contact",
-                         "tạo contact", "thêm vào danh bạ"]),
+                         "tạo contact", "thêm vào danh bạ", "lưu số", "thêm số"]),
         ("set_reminder", ["nhắc tôi", "đặt nhắc", "đặt reminder", "tạo reminder",
-                          "nhắc trong", "nhắc lúc"]),
+                          "nhắc trong", "nhắc lúc", "nhắc nhở", "đặt lời nhắc"]),
         ("list_reminders", ["nhắc việc nào", "kiểm tra reminder", "đọc danh sách nhắc",
-                            "tôi có gì cần nhớ", "show reminders", "liệt kê reminder"]),
+                            "tôi có gì cần nhớ", "show reminders", "liệt kê reminder",
+                            "danh sách nhắc nhở"]),
         ("add_note", ["thêm ghi chú", "tạo ghi chú", "lưu ghi chú", "tạo note",
                       "thêm note", "ghi chú mới", "note lại", "viết ghi chú",
-                      "ghi vào note", "thêm vào ghi chú"]),
+                      "ghi vào note", "thêm vào ghi chú", "ghi chú lại"]),
         ("add_schedule", ["thêm lịch", "đặt lịch", "lên lịch", "ghi vào lịch",
                           "thêm cuộc hẹn", "thêm vào lịch", "tạo lịch",
-                          "thêm task vào lịch"]),
-        ("read_notes", ["đọc ghi chú", "mở nhật ký", "đọc nhật ký", "ghi chú của tôi"]),
+                          "thêm task vào lịch", "đặt cuộc hẹn", "tạo cuộc hẹn"]),
+        ("read_notes", ["đọc ghi chú", "mở nhật ký", "đọc nhật ký", "ghi chú của tôi",
+                        "xem ghi chú", "mở ghi chú", "xem nhật ký"]),
         ("send_email", ["gửi email", "gửi mail", "soạn mail", "viết mail", "viết email",
-                        "mail cho", "email cho"]),
-        ("check_balance", ["số dư", "bao nhiêu tiền", "kiểm tra tài khoản"]),
+                        "mail cho", "email cho", "soạn email", "soạn thư",
+                        "viết thư", "gửi thư"]),
+        ("check_balance", ["số dư", "bao nhiêu tiền", "kiểm tra tài khoản",
+                           "kiểm tra số dư", "còn bao nhiêu tiền", "xem số dư"]),
         # open_files đặt TRƯỚC delete_data: "xóa file" phải match open_files (giả định
         # user muốn vào panel files để xóa, không phải xóa preferences/notes).
         ("open_files", ["mở file", "xem file", "file của tôi", "danh sách file",
-                        "xóa file", "xoá file"]),
+                        "xóa file", "xoá file", "mở tập tin", "xem tập tin",
+                        "tài liệu của tôi", "mở tài liệu"]),
         ("delete_data", ["xóa ghi chú", "xoá ghi chú", "xóa lịch", "xoá lịch",
                          "xóa dữ liệu", "xoá dữ liệu", "xóa thông tin", "xoá thông tin",
-                         "xóa tất cả", "xoá tất cả"]),
-        ("greet", ["xin chào", "chào bạn", "hello", "hi"]),
-        ("play_music", ["mở nhạc", "phát nhạc", "bật nhạc", "nghe nhạc"]),
-        ("show_schedule", ["lịch hôm nay", "lịch của tôi", "việc gì", "nhắc việc"]),
+                         "xóa tất cả", "xoá tất cả", "xóa hết", "xoá hết"]),
+        # "hi" bị bỏ khỏi substring-map vì khớp nhầm trong "g(hi) chú", "hình"...
+        # → xử lý riêng bằng so khớp token nguyên vẹn trong parse().
+        ("greet", ["xin chào", "chào bạn", "chào buổi", "hello"]),
+        ("play_music", ["mở nhạc", "phát nhạc", "bật nhạc", "nghe nhạc",
+                        "mở bài hát", "phát bài hát", "bật bài hát", "nghe bài hát",
+                        "mở bản nhạc", "phát bài"]),
+        ("show_schedule", ["lịch hôm nay", "lịch của tôi", "việc gì", "nhắc việc",
+                           "lịch trình", "kế hoạch hôm nay", "lịch ngày mai"]),
     ]
+
+    # Lời chào ngắn → so khớp token nguyên vẹn (tránh "hi" khớp trong "ghi").
+    _GREET_TOKENS = {"hi", "hí", "hello", "helo", "hallo", "chào", "alo",
+                     "chào bạn", "xin chào", "chào buổi sáng", "chào buổi chiều"}
 
     def parse(self, text: str) -> Dict[str, Any]:
         t = text.lower().strip()
         if _looks_like_explanatory_question(text):
             return {"intent": "general_question", "entities": {"query": text}}
+        if t.strip(" .!,?") in self._GREET_TOKENS:
+            return {"intent": "greet", "entities": {}}
         for intent, kws in self.KEYWORD_MAP:
             if any(kw in t for kw in kws):
                 return {"intent": intent, "entities": self._extract(intent, t)}

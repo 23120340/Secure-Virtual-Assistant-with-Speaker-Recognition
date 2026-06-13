@@ -143,6 +143,13 @@ PHOWHISPER_DEVICE = os.getenv("PHOWHISPER_DEVICE", "")  # rỗng = auto (cuda �
 # và gửi transcript cho Google (privacy). Có cache LRU nên 1 câu lặp lại không gọi 2 lần.
 ASR_CORRECT_ENABLED = os.getenv("ASR_CORRECT", "false").lower() in ("true", "1", "yes")
 
+# Layer-1.5: fuzzy snap. Nếu cả câu (đã chuẩn hoá, bỏ dấu) gần khớp một câu lệnh
+# chuẩn với độ tương đồng >= ngưỡng → nắn về câu lệnh đó. Bù cho việc rule khớp
+# chính xác không phủ hết mọi lỗi ASR thật. Offline, không cần Gemini.
+ASR_FUZZY_ENABLED   = os.getenv("ASR_FUZZY", "true").lower() in ("true", "1", "yes")
+ASR_FUZZY_THRESHOLD = float(os.getenv("ASR_FUZZY_THRESHOLD", "0.86"))
+ASR_FUZZY_MAX_WORDS = int(os.getenv("ASR_FUZZY_MAX_WORDS", "8"))
+
 # ==========================================================================
 # NLU
 # ==========================================================================
