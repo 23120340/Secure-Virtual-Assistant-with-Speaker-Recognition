@@ -233,6 +233,23 @@ CURATED_GARBLED = [
     ("mấy giờ rồ",    "mấy giờ rồi",       "get_time"),
 ]
 
+# Garble phụ âm đầu s/x/v của "phát"/"bật" cho lệnh play_music. Whisper VN hay
+# nhầm "phát/bật" → "sát/sáp/sạc/xát/vặt/vật", nhưng INITIAL_CONFUSIONS không sinh
+# ra (ph/b không map sang s/x/v) → các biến thể này TRƯỚC GIỜ KHÔNG có rule. Khi
+# thiếu rule, layer-1.5 fuzzy-snap nắn nhầm "sát nhạc" → "đặt nhắc" (0.875 > 0.824
+# của "phát nhạc") tức SAI INTENT. Thêm thủ công để layer-1 nắn đúng, không chạm fuzzy.
+_MUSIC_GARBLE_VERBS = ["sát", "sáp", "sạc", "xát", "xác", "vặt", "vật"]
+_MUSIC_GARBLE_OBJECTS = {
+    "nhạc": "phát nhạc", "nhạt": "phát nhạc",      # nhạc + lỗi âm cuối t↔c
+    "bài hát": "phát bài hát", "bài": "phát bài",
+    "bản nhạc": "mở bản nhạc",
+}
+CURATED_GARBLED += [
+    (f"{v} {obj}", clean, "play_music")
+    for v in _MUSIC_GARBLE_VERBS
+    for obj, clean in _MUSIC_GARBLE_OBJECTS.items()
+]
+
 
 # Cụm 2+ từ nhưng quá chung chung → bỏ để tránh sửa nhầm trong câu hỏi tự do.
 SKIP_TRIGGERS = {"việc gì"}

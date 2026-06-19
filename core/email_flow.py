@@ -12,14 +12,13 @@ _YES    = {"có", "đúng", "ok", "oke", "gửi", "gửi đi", "xác nhận", "y
 # Flow timeout — tránh state cookie sống mãi nếu user bỏ giữa chừng
 FLOW_TIMEOUT_SECONDS = 600  # 10 phút
 
-
 def _is_cancel(text: str) -> bool:
-    t = text.lower().strip()
+    t = text.lower().strip().rstrip(".")
     return any(t == w or t.startswith(w + " ") for w in _CANCEL) and len(t) < 40
 
 
 def _is_affirmative(text: str) -> bool:
-    t = text.lower().strip()
+    t = text.lower().strip().rstrip(".")
     return any(t == w or t.startswith(w + " ") for w in _YES) and len(t) < 40
 
 
@@ -30,13 +29,20 @@ def _email_preview(state: dict) -> str:
         f"  Đến   : {state['recipient_name']} ({state['recipient_email']})\n"
         f"  Chủ đề: {state['subject']}\n"
         f"  Nội dung: {body_preview}\n"
-        'Nói "có" để gửi, "không" để hủy.'
+        'Nói "xác nhận" để gửi, "hủy bỏ" để hủy.'
     )
 
 
 def _looks_like_email(text: str) -> bool:
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", text.strip()))
 
+
+STOP_WORDS = {"gửi", "cho", "nhắn", "tin", "gọi", "liên", "hệ", "với", "đến", "tới", "email"}
+
+def extract_name_from_query(query: str) -> str:
+    words = query.strip().split()
+    filtered = [w for w in words if w.lower() not in STOP_WORDS]
+    return " ".join(filtered) if filtered else query.strip()    
 
 def _find_contact(query: str, contacts: list) -> dict | None:
     """Tìm liên hệ theo tên — ưu tiên fuzzy match unique.
@@ -48,7 +54,7 @@ def _find_contact(query: str, contacts: list) -> dict | None:
       2. difflib.get_close_matches (ratio ≥ 0.7) → chỉ nhận khi unique.
       3. Substring 1-chiều (q in name) → chỉ nhận khi unique.
     """
-    q = query.lower().strip()
+    q = extract_name_from_query(query).lower().strip()
     if not q:
         return None
     names = [c.get("name", "").lower() for c in contacts]
@@ -191,6 +197,6 @@ def continue_flow(text: str, state: dict, contacts: list = None) -> tuple:
         # Cancel ("không" đã nằm trong _CANCEL với exact/startswith match)
         if _is_cancel(text):
             return "Đã hủy gửi email.", None, False
-        return 'Mình chưa hiểu. Nói "có" để gửi hoặc "không" để hủy.', state, False
+        return 'Mình chưa hiểu. Nói "xác nhận" để gửi hoặc "hủy bỏ" để hủy.', state, False
 
     return "Có lỗi trong quá trình soạn email.", None, False
