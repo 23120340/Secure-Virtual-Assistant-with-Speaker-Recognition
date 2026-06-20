@@ -42,8 +42,11 @@ ENROLL_NUM_SAMPLES = int(os.getenv("ENROLL_NUM_SAMPLES", "5"))
 # Min audio length sau VAD trim, theo từng context:
 #   - Enroll : cần chất lượng cao để build centroid → 1.0s
 #   - Turn   : chỉ cần đủ để identify → 0.5s
-MIN_AUDIO_SEC_ENROLL = 1.0
-MIN_AUDIO_SEC_TURN   = 0.5
+#   - Confirm: bước xác nhận email chỉ nói từ rất ngắn ("có"/"không") → 0.2s,
+#              nếu giữ 0.5s thì "có" sau VAD thường < ngưỡng và bị loại oan.
+MIN_AUDIO_SEC_ENROLL  = 1.0
+MIN_AUDIO_SEC_TURN    = 0.5
+MIN_AUDIO_SEC_CONFIRM = float(os.getenv("MIN_AUDIO_SEC_CONFIRM", "0.2"))
 
 # ==========================================================================
 # Speaker model backend
@@ -209,6 +212,10 @@ CHALLENGE_RESPONSE_ENABLED = os.getenv(
 
 # Số từ trong phrase challenge (mỗi từ từ pool 16 → entropy ~4 bit/từ).
 CHALLENGE_PHRASE_LEN = int(os.getenv("CHALLENGE_PHRASE_LEN", "4"))
+
+# Số lần cho phép đọc lại cụm từ challenge khi ASR nghe chưa khớp (trong TTL).
+# Sai SV (giọng) là block ngay; chỉ lỗi đọc cụm từ mới được thử lại.
+CHALLENGE_MAX_ATTEMPTS = int(os.getenv("CHALLENGE_MAX_ATTEMPTS", "4"))
 
 # Incremental re-enroll sau khi SV pass: cập nhật centroid của user 1 ít theo
 # audio mới (chống speaker drift do tuổi / mic / nhiễu thay đổi theo thời gian).

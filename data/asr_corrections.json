@@ -14458,6 +14458,18 @@
     "ignore_case": true
   },
   {
+    "pattern": "Sạch nhật!",
+    "replacement": "Xác nhận",
+    "regex": false,
+    "ignore_case": true
+  },
+  {
+    "pattern": "tấn năng",
+    "replacement": "tính năng",
+    "regex": false,
+    "ignore_case": true
+  }, 
+  {
     "pattern": "  Sạch nhật!",
     "replacement": "Xác nhận",
     "regex": false,

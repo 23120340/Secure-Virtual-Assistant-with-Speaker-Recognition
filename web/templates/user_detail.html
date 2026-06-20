@@ -170,6 +170,13 @@
       Bổ sung mẫu để hệ thống nhận diện ổn định hơn ở môi trường mới.
       Cần mật khẩu hiện tại + ít nhất 2 mẫu để đăng ký lại, 1 mẫu để bổ sung.
     </p>
+    <div class="mb-3 p-3 bg-slate-50 border rounded text-sm">
+      <strong>Câu mẫu để đọc:</strong>
+      <span id="voice-prompt-text" class="italic"></span>
+      <p class="text-xs text-slate-400 mt-1">
+        Bấm "Thu mẫu" rồi đọc to, rõ câu trên trong ~5 giây. Mỗi mẫu một câu khác nhau giúp giọng nói đa dạng hơn.
+      </p>
+    </div>
     <div class="flex items-center gap-3 flex-wrap mb-3">
       <button id="voice-rec-btn" type="button"
               class="px-4 py-2 bg-violet-100 text-violet-700 border border-violet-200 rounded text-sm hover:bg-violet-200">
@@ -501,10 +508,26 @@ let _voiceMR = null;
 let _voiceChunks = [];
 let _voiceTimer = null;
 
+// Câu mẫu để user đọc khi thu thêm mẫu giọng — xoay vòng theo số mẫu đã thu.
+const _VOICE_PROMPTS = [
+  "Trợ lý ơi, hôm nay thời tiết thế nào?",
+  "Phát một bản nhạc tôi yêu thích đi.",
+  "Cho tôi xem lịch làm việc hôm nay.",
+  "Đọc cho tôi ghi chú cuối tuần.",
+  "Một hai ba bốn năm sáu bảy tám chín mười.",
+  "Nhắc tôi họp lúc chín giờ sáng mai.",
+];
+
+function _updateVoicePrompt() {
+  const $p = document.getElementById("voice-prompt-text");
+  if ($p) $p.textContent = _VOICE_PROMPTS[_voiceSamples.length % _VOICE_PROMPTS.length];
+}
+
 function _renderVoiceSamples() {
   const $list  = document.getElementById("voice-samples-list");
   const $count = document.getElementById("voice-count");
   $count.textContent = `${_voiceSamples.length} mẫu`;
+  _updateVoicePrompt();
   if (!_voiceSamples.length) {
     $list.innerHTML = `<p class="text-sm text-slate-400 italic">Chưa có mẫu nào.</p>`;
   } else {

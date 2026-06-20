@@ -71,7 +71,9 @@ class Router:
         level    = spec["level"]
         user     = self.spk.db.get_user(uid) if uid else None
 
-        # 1) Phrase match
+        # 1) Phrase match — KHÔNG block cứng khi sai cụm từ. ASR tiếng Việt dễ
+        # đọc trượt, nên cho user đọc lại (caller giữ token trong TTL). Chỉ SV
+        # fail mới là block bảo mật thật sự.
         ok_phrase, ratio = phrase_match(phrase, transcript_2nd)
         if not ok_phrase:
             _audit("auth.challenge_check", intent=intent, user_id=uid,
@@ -81,9 +83,12 @@ class Router:
                 auth_level=level.value, entities=entities,
                 identified_user_id=uid, identified_user_name=name,
                 sid_score=state.get("sid_score") or 0.0,
-                sv_required=True, sv_passed=False, sv_score=None,
-                response=f"Câu xác nhận không khớp. Tác vụ bị từ chối.",
+                sv_required=True, sv_passed=None, sv_score=None,
+                response=(f"Mình nghe chưa khớp. Hãy đọc lại đúng cụm từ "
+                          f"để xác nhận: \"{phrase}\""),
                 blocked=True,
+                action_type="challenge_retry",
+                action_data={"phrase": phrase, "token": state.get("token", "")},
             )
 
         # 2) Re-verify SV trên audio mới
@@ -120,6 +125,26 @@ class Router:
                            trigger="challenge_pass")
             except Exception:
                 _log.exception("incremental update centroid failed for %s", uid)
+
+        # send_email cần luồng soạn nhiều bước (chủ đề → nội dung → xác nhận).
+        # KHÔNG dispatch handle_send_email ngay (sẽ thiếu subject/body) — báo
+        # caller mở luồng soạn email sau khi đã qua challenge.
+        if intent == "send_email":
+            return TurnResult(
+                transcript=transcript_2nd, intent=intent,
+                auth_level=level.value, entities=entities,
+                identified_user_id=uid, identified_user_name=name,
+                sid_score=state.get("sid_score") or 0.0,
+                sv_required=True, sv_passed=True, sv_score=sv_score,
+                response="", blocked=False,
+                action_type="start_email_flow",
+                action_data={
+                    "recipient": entities.get("recipient", "")
+                                 or entities.get("recipient_email", ""),
+                    "subject":   entities.get("subject", ""),
+                    "body":      entities.get("body", "") or entities.get("content", ""),
+                },
+            )
 
         action_type = None
         action_data = None

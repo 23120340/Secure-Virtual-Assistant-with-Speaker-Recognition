@@ -622,6 +622,13 @@
             Đăng ký lại khi giọng nói thay đổi rõ hoặc bị quản trị yêu cầu.
             Bổ sung mẫu để hệ thống nhận diện ổn định hơn. Cần mật khẩu hiện tại + ít nhất 2 mẫu giọng.
           </p>
+          <div style="margin-bottom:.6rem;padding:.65rem .85rem;background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.15);border-radius:.75rem;font-size:.82rem">
+            <strong>Câu mẫu để đọc:</strong>
+            <span id="modal-voice-prompt-text" style="font-style:italic;margin-left:.35rem"></span>
+            <div style="font-size:.72rem;color:var(--txt-2);margin-top:.3rem">
+              Bấm "Thu mẫu" rồi đọc to, rõ câu trên trong ~5 giây. Mỗi mẫu một câu khác nhau giúp nhận diện ổn định hơn.
+            </div>
+          </div>
           <div id="modal-voice-revoke-banner" class="hidden"
                style="margin-bottom:.7rem;padding:.6rem .75rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;font-size:.78rem;color:#b91c1c">
             Admin đã thu hồi vector giọng. Bạn phải <strong>Đăng ký lại</strong> trước khi
@@ -2423,7 +2430,22 @@ let _modalVoiceMR = null;
 let _modalVoiceChunks = [];
 let _modalVoiceTimer = null;
 
+// Câu mẫu để user đọc khi thu thêm mẫu / đăng ký lại — xoay vòng theo số mẫu.
+const _VOICE_PROMPTS = [
+  "Trợ lý ơi, hôm nay thời tiết thế nào?",
+  "Phát một bản nhạc tôi yêu thích đi.",
+  "Cho tôi xem lịch làm việc hôm nay.",
+  "Đọc cho tôi ghi chú cuối tuần.",
+  "Một hai ba bốn năm sáu bảy tám chín mười.",
+  "Nhắc tôi họp lúc chín giờ sáng mai.",
+];
+function _updateVoicePrompt() {
+  const $p = document.getElementById("modal-voice-prompt-text");
+  if ($p) $p.textContent = _VOICE_PROMPTS[_modalVoiceSamples.length % _VOICE_PROMPTS.length];
+}
+
 function _renderVoiceSamples() {
+  _updateVoicePrompt();
   const $list = document.getElementById("modal-voice-samples-list");
   if (!_modalVoiceSamples.length) {
     $list.innerHTML = `<p style="font-size:.78rem;color:var(--txt-2);font-style:italic">Chưa có mẫu nào — bấm "Thu mẫu" để bắt đầu.</p>`;

@@ -27,6 +27,20 @@ def _looks_like_explanatory_question(text: str) -> bool:
     return bool(re.search(r"\b(giải thích|vì sao|tại sao)\b", t))
 
 
+# Dấu hiệu một câu hỏi tự do thật (để KHÔNG tốn Gemini-correct cho nó khi đã rơi
+# vào general_question). Lệnh bị ASR đọc sai thường ngắn và không có các dấu này.
+_QUESTION_MARKERS = (
+    "?", " gì", "gì ", " sao", "sao ", " nào", "nào ", " đâu", "đâu ", " ai ",
+    "mấy ", " mấy", "bao nhiêu", "thế nào", "tại sao", "vì sao", "là gì",
+    "như thế nào", "khi nào", "bao giờ", "ở đâu", "thế nào", "ra sao",
+)
+
+
+def _looks_like_genuine_question(text: str) -> bool:
+    t = " " + text.lower().strip() + " "
+    return any(m in t for m in _QUESTION_MARKERS)
+
+
 # ==========================================================================
 # Gemini function-calling NLU
 # ==========================================================================
@@ -478,8 +492,22 @@ def parse_with_correction(text: str, nlu=None) -> tuple:
         nlu = get_nlu()
 
     result = nlu.parse(text)
-    if result["intent"] != "unknown" or not config.GEMINI_API_KEY:
+    # Khi backend là Gemini, câu không khớp tool thường về "general_question"
+    # (không phải "unknown") → trước đây nhánh sửa lỗi này chết, nên một lệnh
+    # IMPORTANT bị ASR đọc sai (vd "đọc ghi chú" → "đọc ghê chú") sẽ rơi thẳng
+    # vào general_question và KHÔNG kích hoạt xác thực giọng. Coi cả
+    # general_question như "chưa chắc" để thử sửa transcript rồi parse lại.
+    UNSURE = ("unknown", "general_question")
+    intent = result["intent"]
+    if intent not in UNSURE or not config.GEMINI_API_KEY:
         return text, result
+
+    # general_question là đường PHỔ BIẾN → chỉ tốn thêm Gemini call khi câu
+    # GIỐNG LỆNH BỊ ĐỌC SAI: ngắn và không có dấu hiệu câu hỏi tự do. Câu hỏi
+    # thật ("thủ đô Pháp là gì") bỏ qua → không tăng cost/latency.
+    if intent == "general_question":
+        if len(text.split()) > 8 or _looks_like_genuine_question(text):
+            return text, result
 
     # Lazy import để tránh vòng tròn nlu ↔ asr lúc module load.
     from .asr import correct_transcript
@@ -488,9 +516,9 @@ def parse_with_correction(text: str, nlu=None) -> tuple:
         return text, result
 
     retry = nlu.parse(corrected)
-    if retry["intent"] == "unknown":
-        # Sửa rồi vẫn không hiểu → trả về kết quả gốc, đỡ confuse user
-        # về việc transcript bị thay đổi mà chẳng giúp gì.
+    if retry["intent"] in UNSURE:
+        # Sửa rồi vẫn không nhận ra intent cụ thể → giữ kết quả gốc (đỡ đổi
+        # transcript vô ích, và câu hỏi tự do thật vẫn đi đúng general_question).
         return text, result
     _log.info("NLU fallback corrected %r → %r (intent=%s)",
               text, corrected, retry["intent"])

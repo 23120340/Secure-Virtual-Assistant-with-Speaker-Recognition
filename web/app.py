@@ -592,6 +592,32 @@ def _get_recent_assistant_uid() -> str | None:
     return uid
 
 
+def _email_contacts(db, user, recipient_hint: str = "") -> list:
+    """Danh bạ để giải người nhận trong flow email.
+
+    Gồm contacts cá nhân + (nếu `recipient_hint` là TÊN của một user đã đăng ký
+    có email trong hồ sơ) thêm user đó vào — để "gửi email cho Nguyễn Trọng Phúc"
+    giải được ngay mà không phải hỏi lại địa chỉ. Cùng nguồn dữ liệu mà
+    handle_send_email dùng lúc gửi (db.find_user_by_name_substring), nên không
+    lộ thêm thông tin gì.
+    """
+    contacts = list((user or {}).get("preferences", {}).get("contacts", []) or [])
+    hint = (recipient_hint or "").strip()
+    if hint and "@" not in hint:
+        try:
+            match = db.find_user_by_name_substring(_ef.extract_name_from_query(hint))
+        except Exception:
+            match = None
+        if match:
+            email = (match.get("preferences") or {}).get("email", "")
+            if email and not any(
+                (c.get("name", "").lower() == (match["name"] or "").lower())
+                for c in contacts
+            ):
+                contacts = contacts + [{"name": match["name"], "email": email}]
+    return contacts
+
+
 def _continue_email_flow_if_active(text: str, db, nlu):
     """Nếu session có email_flow đang active, drive flow tiếp.
 
@@ -608,20 +634,28 @@ def _continue_email_flow_if_active(text: str, db, nlu):
     flow_state = session["email_flow"]
     uid   = flow_state.get("user_id")
     _user = db.get_user(uid) if uid else None
-    contacts = (_user["preferences"].get("contacts", []) if _user else [])
+    # Chỉ ở bước recipient/email mới dùng `text` làm gợi ý giải tên qua user đã
+    # đăng ký; ở subject/body/confirm `text` là nội dung nên không tra DB thừa.
+    _hint = text if flow_state.get("step") in ("recipient", "email") else ""
+    contacts = _email_contacts(db, _user, _hint)
 
     # Intent guard: CHỈ áp dụng ở step "recipient" — user chưa cam kết flow.
-    # Khi user đang nói recipient mà sub câu lệnh khác (vd "phát nhạc đi"),
-    # exit flow để xử lý intent mới.
-    # Step "subject" và "body" KHÔNG có guard — đây là free-form text user
-    # đang đọc cho assistant chép, intent classifier sẽ phá luồng nếu chủ đề
-    # nghe giống lệnh (vd "đọc ghi chú" → bị classify read_notes → kill flow).
-    # Step "email" cũng skip guard vì user chỉ nhập địa chỉ email.
-    # Step "confirm" cũng skip — "có/không" tự xử lý trong email_flow.continue_flow.
+    # Khi user đang nói recipient mà sub một LỆNH HÀNH ĐỘNG khác (vd "phát nhạc
+    # đi", "đọc ghi chú") → exit flow để xử lý intent mới.
+    # NHƯNG các intent NHẸ/giao tiếp (chào hỏi, hỏi giờ, thời tiết, kể chuyện)
+    # KHÔNG được phá luồng — chúng có thể chỉ là tên người bị ASR nghe nhầm, và
+    # phá luồng vì một câu "xin chào" làm mất tiến trình soạn email. Các câu này
+    # rơi xuống continue_flow → không tìm thấy contact → hỏi lại tên (flow sống).
+    # Muốn thoát hẳn, user nói "hủy".
+    # Step "subject"/"body" KHÔNG có guard — free-form text (chủ đề/nội dung).
+    # Step "email" skip guard (chỉ nhập địa chỉ). Step "confirm" tự xử lý "có/không".
+    _FLOW_SAFE_INTENTS = (
+        "send_email", "unknown", "general_question",
+        "greet", "get_time", "get_weather", "tell_joke",
+    )
     if flow_state.get("step") == "recipient":
         _quick_nlu = nlu.parse(text)
-        if _quick_nlu.get("intent", "unknown") not in (
-                "send_email", "unknown", "general_question"):
+        if _quick_nlu.get("intent", "unknown") not in _FLOW_SAFE_INTENTS:
             session.pop("email_flow", None)
             return None, False
 
@@ -654,6 +688,10 @@ def _continue_email_flow_if_active(text: str, db, nlu):
         session["email_flow"] = new_state
         flow_active = True
 
+    # flow_step cho frontend biết bước kế (đặc biệt "confirm" → nghe ngắn hơn).
+    flow_step = (new_state.get("step")
+                 if (flow_active and isinstance(new_state, dict)) else None)
+
     payload = {
         "transcript":           text,
         "intent":               "email_flow",
@@ -668,10 +706,78 @@ def _continue_email_flow_if_active(text: str, db, nlu):
         "response":             resp,
         "blocked":              False,
         "flow_active":          flow_active,
+        "flow_step":            flow_step,
         "tts_url":              f"/api/tts?text={_quote(resp)}",
         **_oauth_extras,
     }
     return payload, True
+
+
+def _finalize_challenge(result, db):
+    """Dựng payload sau khi `router.complete_challenge` trả kết quả.
+
+    Dùng chung cho route voice `/turn` (fallback) và `/challenge-response`:
+      - action_type="start_email_flow": mở luồng soạn email (send_email đi qua
+        challenge thì phải soạn chủ đề/nội dung, không gửi thẳng).
+      - action_type="challenge_retry": giữ nguyên (frontend cho đọc lại cụm từ).
+      - thành công intent khác: attach action_data (open_files / play_music...).
+    """
+    payload = asdict(result)
+
+    if result.action_type == "start_email_flow" and not result.blocked:
+        uid = result.identified_user_id
+        _u = db.get_user(uid) if uid else None
+        ad = result.action_data or {}
+        recipient = ad.get("recipient", "")
+        contacts = _email_contacts(db, _u, recipient)
+        question, flow_state = _ef.start_flow(
+            recipient, contacts, subject=ad.get("subject", ""), body=ad.get("body", ""))
+        flow_state["user_id"] = uid
+        session["email_flow"] = flow_state
+        payload["intent"]      = "send_email"
+        payload["response"]    = question
+        payload["flow_active"] = True
+        payload["flow_step"]   = flow_state["step"]
+        payload["action_type"] = None
+        payload["action_data"] = None
+        payload["tts_url"]     = f"/api/tts?text={_quote(question)}"
+        return payload
+
+    payload["tts_url"]     = f"/api/tts?text={_quote(result.response)}"
+    payload["flow_active"] = False
+    if not result.blocked:
+        uid = result.identified_user_id
+        _u = db.get_user(uid) if uid else None
+        _attach_action_data(
+            payload, result.intent, result.blocked, uid,
+            result.identified_user_name, result.entities,
+            (_u["preferences"] if _u else {}), auth_method="voice")
+    return payload
+
+
+def _handle_challenge_token_lifecycle(ch_store, tok, state, result):
+    """Giữ hay xoá token sau 1 lần complete_challenge, rồi lưu vào session.
+
+    - challenge_retry (đọc sai cụm từ): giữ token để đọc lại trong TTL, đếm số
+      lần thử; quá `CHALLENGE_MAX_ATTEMPTS` thì xoá token + chuyển thành block
+      để user ra lệnh lại từ đầu.
+    - còn lại (thành công / SV fail / start_email_flow): one-shot → xoá token.
+    """
+    if result.action_type == "challenge_retry":
+        attempts = int(state.get("attempts", 0)) + 1
+        if attempts >= config.CHALLENGE_MAX_ATTEMPTS:
+            ch_store.pop(tok, None)
+            result.response = ("Bạn đã đọc chưa khớp nhiều lần. "
+                               "Hãy ra lệnh lại từ đầu để xác thực.")
+            result.action_type = None
+            result.action_data = None
+            result.blocked = True
+        else:
+            state["attempts"] = attempts
+            ch_store[tok] = state
+    else:
+        ch_store.pop(tok, None)
+    session["challenges"] = ch_store
 
 
 # ==========================================================================
@@ -1425,8 +1531,17 @@ def register_routes(app):
                                e, len(blob) if blob else 0)
             return jsonify({"error": f"Giải mã audio thất bại: {e}"}), 400
 
-        audio, has_speech = audio_io.SileroVAD.trim(audio, return_speech_detected=True)
-        _min_turn = int(config.SAMPLE_RATE * config.MIN_AUDIO_SEC_TURN)
+        # Bước xác nhận email chỉ nói từ rất ngắn ("có"/"không") → nới ngưỡng độ
+        # dài VÀ hạ độ nhạy VAD (min_speech_ms) để bắt được từ đơn âm. NHƯNG vẫn
+        # GIỮ yêu cầu has_speech: đây là cổng trước hành động gửi email không hoàn
+        # tác, không để tiếng ồn/silence lọt vào ASR rồi thành xác nhận nhầm.
+        _ef_state = session.get("email_flow")
+        _in_confirm = bool(_ef_state and _ef_state.get("step") == "confirm")
+        _vad_min_ms = 150 if _in_confirm else 250
+        audio, has_speech = audio_io.SileroVAD.trim(
+            audio, min_speech_ms=_vad_min_ms, return_speech_detected=True)
+        _min_turn = int(config.SAMPLE_RATE * (
+            config.MIN_AUDIO_SEC_CONFIRM if _in_confirm else config.MIN_AUDIO_SEC_TURN))
         if not has_speech or audio.size < _min_turn:
             return jsonify({"ok": False, "no_audio": True,
                             "reason": "no_speech"}), 200
@@ -1467,18 +1582,8 @@ def register_routes(app):
                 tok, state = pending[-1]   # challenge mới nhất
                 result = router.complete_challenge(
                     audio, transcript, state, extra_context={"db": db})
-                ch_store.pop(tok, None)
-                session["challenges"] = ch_store
-                payload = asdict(result)
-                payload["tts_url"] = f"/api/tts?text={_quote(result.response)}"
-                payload["flow_active"] = False
-                if not result.blocked:
-                    _uid = result.identified_user_id
-                    _u = db.get_user(_uid) if _uid else None
-                    _attach_action_data(
-                        payload, result.intent, result.blocked, _uid,
-                        result.identified_user_name, result.entities,
-                        (_u["preferences"] if _u else {}), auth_method="voice")
+                _handle_challenge_token_lifecycle(ch_store, tok, state, result)
+                payload = _finalize_challenge(result, db)
                 _log_assistant_turn(payload, source="web_voice_challenge_response",
                                     auth_method="voice")
                 return jsonify(payload)
@@ -1527,14 +1632,18 @@ def register_routes(app):
                                 auth_method="voice")
             return jsonify(payload)
 
-        # Nếu send_email vừa pass SV → bắt đầu flow thay vì gửi ngay
+        # Nếu send_email vừa pass SV → bắt đầu flow thay vì gửi ngay.
+        # Tách sẵn recipient/subject/body từ câu lệnh để chỉ hỏi phần còn thiếu.
         if result.intent == "send_email" and not result.blocked:
             uid   = result.identified_user_id
             _user = db.get_user(uid) if uid else None
-            contacts = (_user["preferences"].get("contacts", [])
-                        if _user else [])
+            _ents = result.entities or {}
+            recipient = _ents.get("recipient", "") or _ents.get("recipient_email", "")
+            contacts = _email_contacts(db, _user, recipient)
             question, flow_state = _ef.start_flow(
-                result.entities.get("recipient", ""), contacts)
+                recipient, contacts,
+                subject=_ents.get("subject", ""),
+                body=_ents.get("body", "") or _ents.get("content", ""))
             flow_state["user_id"] = uid
             session["email_flow"] = flow_state
 
@@ -1542,6 +1651,7 @@ def register_routes(app):
             payload["response"]    = question
             payload["tts_url"]     = f"/api/tts?text={_quote(question)}"
             payload["flow_active"] = True
+            payload["flow_step"]   = flow_state["step"]
             _log_assistant_turn(payload, source="web_voice",
                                 auth_method="voice")
             return jsonify(payload)
@@ -1617,25 +1727,10 @@ def register_routes(app):
         result = router.complete_challenge(audio, transcript, state,
                                            extra_context={"db": db})
 
-        # Mark token used (one-shot), cleanup
-        state["used"] = True
-        ch_store.pop(token, None)
-        session["challenges"] = ch_store
-
-        payload = asdict(result)
-        payload["tts_url"] = f"/api/tts?text={_quote(result.response)}"
-        payload["flow_active"] = False
-
-        # Attach action_data cho frontend nếu pass + handler có signal
-        if not result.blocked:
-            _uid = result.identified_user_id
-            _user = db.get_user(_uid) if _uid else None
-            _prefs = _user["preferences"] if _user else {}
-            _attach_action_data(
-                payload, result.intent, result.blocked,
-                _uid, result.identified_user_name,
-                result.entities, _prefs, auth_method="voice",
-            )
+        # Token lifecycle: đọc sai cụm từ thì giữ token cho đọc lại (trong TTL);
+        # còn lại one-shot. Xử lý start_email_flow + attach action_data.
+        _handle_challenge_token_lifecycle(ch_store, token, state, result)
+        payload = _finalize_challenge(result, db)
         _log_assistant_turn(payload, source="web_challenge_response",
                             auth_method="voice")
         return jsonify(payload)
@@ -1663,6 +1758,14 @@ def register_routes(app):
 
         db  = app.config["db"]
         nlu = app.config["nlu"]
+
+        # Voice→text giữa lúc đang chờ challenge giọng nói: challenge KHÔNG thể
+        # hoàn tất bằng text (cần audio để re-verify SV). Hủy challenge đang chờ
+        # để (1) nó không "chặn" một lượt VOICE mới sau này (token còn trong TTL
+        # sẽ nuốt lượt voice kế tiếp), (2) lệnh text dưới đây được xử lý bình
+        # thường — IMPORTANT vẫn phải qua cổng mật khẩu. Không đụng email_flow.
+        if session.pop("challenges", None):
+            _log.info("Cleared pending voice challenge(s) due to text-mode turn")
 
         # Email flow continuation (dùng chung với voice route — xem
         # _continue_email_flow_if_active). Dùng text THÔ vì subject/body là nội
@@ -1735,13 +1838,16 @@ def register_routes(app):
                 # hiển thị warning rõ.
                 sv_passed = True
 
-        # Nếu send_email pass auth → bắt đầu flow thay vì gửi ngay
+        # Nếu send_email pass auth → bắt đầu flow thay vì gửi ngay.
+        # Tách sẵn recipient/subject/body từ câu lệnh để chỉ hỏi phần còn thiếu.
         if intent == "send_email" and not blocked:
             _user2 = db.get_user(uid) if uid else None
-            contacts = (_user2["preferences"].get("contacts", [])
-                        if _user2 else [])
+            recipient = entities.get("recipient", "") or entities.get("recipient_email", "")
+            contacts = _email_contacts(db, _user2, recipient)
             question, flow_state = _ef.start_flow(
-                entities.get("recipient", ""), contacts)
+                recipient, contacts,
+                subject=entities.get("subject", ""),
+                body=entities.get("body", "") or entities.get("content", ""))
             flow_state["user_id"] = uid
             session["email_flow"] = flow_state
 
@@ -1759,6 +1865,7 @@ def register_routes(app):
                 "response":             question,
                 "blocked":              False,
                 "flow_active":          True,
+                "flow_step":            flow_state["step"],
                 "tts_url":              f"/api/tts?text={_quote(question)}",
             }
             _log_assistant_turn(payload, source="web_text",

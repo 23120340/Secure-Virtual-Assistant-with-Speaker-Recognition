@@ -261,6 +261,10 @@ let _mr = null, _chunks = [], _stream = null;
 let _starting = false, _pendingStop = false, _aborted = false;
 let _recStartTime = 0;
 const MIN_REC_MS = 500;
+// Bước xác nhận email ("có"/"không") nói rất ngắn → cho phép bấm-giữ ngắn hơn.
+const MIN_REC_MS_CONFIRM = 150;
+// Bước hiện tại của luồng email (vd "confirm") để chỉnh ngưỡng ghi âm.
+let _currentFlowStep = null;
 
 const $chat   = document.getElementById("chat");
 const $btn    = document.getElementById("ptt-btn");
@@ -323,7 +327,8 @@ async function startRec() {
 function stopRec() {
   if (_starting) { _pendingStop = true; return; }
   if (_mr?.state === "recording") {
-    if (Date.now() - _recStartTime < MIN_REC_MS) {
+    const minRec = _currentFlowStep === "confirm" ? MIN_REC_MS_CONFIRM : MIN_REC_MS;
+    if (Date.now() - _recStartTime < minRec) {
       _aborted = true;
       _mr.stop(); setRec(false); $status.textContent = "Sẵn sàng";
       return;
@@ -419,6 +424,8 @@ async function sendAudio(blob) {
     }
 
     rememberAssistantUser(data);
+    // Ghi nhớ bước luồng email để lần ghi âm sau chỉnh ngưỡng (confirm → ngắn).
+    _currentFlowStep = data.flow_active ? (data.flow_step || null) : null;
     document.getElementById("flow-indicator")
             .classList.toggle("hidden", !data.flow_active);
     handleTurnAction(data);
@@ -552,6 +559,10 @@ function handleTurnAction(data) {
     // Lưu token → lần ghi âm KẾ TIẾP sẽ gửi tới /challenge-response.
     _pendingChallenge = data.action_data && data.action_data.token || null;
     $status.textContent = "🔐 Giữ Space và đọc lại cụm từ để xác nhận…";
+  } else if (data.action_type === "challenge_retry") {
+    // Đọc cụm từ chưa khớp (giọng vẫn đúng) → giữ token, cho đọc lại trong TTL.
+    _pendingChallenge = data.action_data && data.action_data.token || null;
+    $status.textContent = "🔐 Chưa khớp — giữ Space và đọc lại cụm từ…";
   } else if (data.action_type === "oauth_required") {
     showOAuthModal(data.action_data.auth_url, data.identified_user_id);
   } else if (data.action_type === "play_music") {
@@ -1126,6 +1137,9 @@ function showToast(msg, isErr=false) {
   async function sendText() {
     const text = $input.value.trim();
     if (!text) return;
+    // Gõ text = bỏ challenge giọng đang chờ (server cũng hủy ở /api/assistant/text)
+    // → lượt voice sau không gửi token đã hủy gây lỗi "token không hợp lệ".
+    _pendingChallenge = null;
     _pendingText   = text;
     _pendingUserId = $userSel.value;
     $pwRow.classList.add("hidden");
@@ -1169,6 +1183,9 @@ function showToast(msg, isErr=false) {
         return;
       }
 
+      // Đồng bộ bước luồng email với voice path — tránh kẹt "confirm" làm
+      // ngưỡng ghi âm ngắn áp nhầm cho lệnh voice sau đó (voice→text→voice).
+      _currentFlowStep = data.flow_active ? (data.flow_step || null) : null;
       document.getElementById("flow-indicator")
               .classList.toggle("hidden", !data.flow_active);
       $pwRow.classList.add("hidden");

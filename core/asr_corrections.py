@@ -213,9 +213,16 @@ def _fuzzy_snap(text: str) -> str:
         if r > best_ratio:
             best_ratio, best_canon = r, canon
     if best_canon is not None and best_ratio >= config.ASR_FUZZY_THRESHOLD:
+        # Snap target là dạng câu lệnh chuẩn, KHÔNG kèm dấu câu cuối. Giữ lại
+        # dấu câu cuối của input để không nuốt mất (vd "đọc ghi chú." không bị
+        # cụt thành "đọc ghi chú").
+        m = re.search(r"\s*([.!?…]+)\s*$", text)
+        snapped = best_canon
+        if m and not best_canon.endswith((".", "!", "?", "…")):
+            snapped = best_canon + m.group(1)
         if _fuzzy_key(best_canon) != key:
-            _log.info("fuzzy snap %r → %r (ratio=%.2f)", text, best_canon, best_ratio)
-        return best_canon
+            _log.info("fuzzy snap %r → %r (ratio=%.2f)", text, snapped, best_ratio)
+        return snapped
     return text
 
 
